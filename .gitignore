@@ -1,0 +1,41 @@
+# macOS 与编辑器
+.DS_Store
+.idea/
+.vscode/
+
+# 本地环境与敏感信息
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# Node.js / HyperFrames
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 构建、缓存与临时产物
+build/
+dist/
+coverage/
+.cache/
+tmp/
+work/
+*.log
+
+# 项目本地输入与生成物
+inputs/
+outputs/
+renders/
