@@ -11,12 +11,14 @@
 项目采用“Codex Skill + 确定性脚本工具链”的结构。Skill 负责需要理解语义、上下文和创作意图的判断；脚本负责必须稳定、可重复、可校验的机械操作。二者通过 `animation-manifest.json` 解耦。
 
 ```text
-项目输入
-├── rough-cut.fcpxml / .fcpxmld
-├── narration.wav
-├── captions.srt 或时间线字幕
-├── animation-brief.yaml
-└── 可选：字体、Logo、配色规范
+实际项目工作区
+├── user-inbox/（用户维护，Skill 只读）
+│   └── YYYY-MM-DD_Vn/（用户创建和选择，材料平铺）
+│       ├── 必要：rough-cut.fcpxml / .fcpxmld
+│       ├── 必要：低码粗剪参考视频
+│       ├── 可替代旁白证据：SRT、时间线字幕、转写稿或已有文字稿
+│       └── 可选设计约束：Marker、时间线文字、notes
+└── AfterForge/（Skill 维护，唯一默认写入区；显示名可替换）
              ↓
 fcpxml-animation-pipeline Skill
 ├── 分析时间线
@@ -51,6 +53,39 @@ fcpxml-animation-pipeline Skill
 - 按既定顺序调用确定性脚本，并根据验证结果决定是否继续。
 
 Skill 不自行承担 FCPXML 时间运算、XML 拼装、媒体转码或文件完整性校验。
+
+### 第一阶段项目入口
+
+Skill 首先接收用户的实际项目工作区路径，依次创建或识别 `AfterForge/` 和 `user-inbox/`，再对用户明确指定的投放版本目录调用 `scripts/intake_project.py` 执行只读扫描。
+
+用户工作目录初始化器遵守以下边界：
+
+- 默认显示名为 `AfterForge`，可通过参数替换；
+- 内部 `skill_id` 始终为 `fcpxml-animation-pipeline`，显示名不进入既有业务协议；
+- 目标不存在时只创建该目录，不在其中预建文件或子目录；
+- 目标目录已存在时原样复用，不修改其内容；
+- 同名路径是文件或符号链接时阻塞，不覆盖、不跟随；
+- 本阶段真实项目中除该目录外不允许其他写入。
+
+`user-inbox/` 初始化器遵守以下边界：
+
+- 只创建或识别项目根目录下的 `user-inbox/` 顶层目录；
+- 已存在时原样复用，不修改其中任何版本目录或材料；
+- 同名路径是文件或符号链接时阻塞，不覆盖、不跟随；
+- 不创建 V1，不递增版本号，不选择“最新版本”，不执行其他版本管理；
+- `YYYY-MM-DD_Vn/` 由用户创建、选择和维护，其材料直接放在版本目录根层；
+- intake 对版本目录使用 `--flat`，只读取根层材料；原有递归模式保持不变，避免既有调用回归；
+- Skill 对 `user-inbox/` 全树只读，所有工作产物仍只能默认写入 `AfterForge/`。
+
+随后，intake 工具负责：
+
+- 自动发现并唯一选择粗剪 FCPXML/FCPXMLD 和对应低码参考视频；
+- 发现旁白 SRT、转写稿、文字稿、notes 及 FCPXML 内的 Marker 和时间线文字；
+- 解析 sequence/spine、项目规格、显式 `<gap>` 和 primary storyline 中的隐式时间洞；
+- 依据 caption 元素、name/role 语义和外部文本匹配，将文字标为 `narration_subtitle`、`design_text` 或 `ambiguous`；
+- 输出 `ready`/`blocked`、具体证据、blocker、warning 和最小问题清单。
+
+FCPXML/FCPXMLD 与低码粗剪参考视频是入口硬要求。animation brief、逐镜设计稿、品牌资料和重复旁白格式不是硬要求。普通文字歧义不阻塞入口；只有缺少必要输入、必要候选无法唯一确定或 FCPXML 无法解析时，才在入口阶段向用户提问。
 
 ### scripts 负责确定性操作
 
@@ -142,12 +177,15 @@ V1 采用先审阅、后高质量渲染与回填的两阶段工作模式。
 
 ### 阶段一：分析与确认
 
-1. 检查 FCPXML/FCPXMLD、旁白 WAV、SRT 或时间线字幕、YAML 动画提示及可选视觉规范；
-2. 解析项目规格、时间线、素材引用和字幕信息；
-3. 对齐旁白、字幕与用户提供的大致动画时间点；
-4. 细化动画设计并生成 `animation-manifest.json`；
-5. 输出时间线分析、逐句对齐结果、动画清单和必要的低分辨率预览；
-6. 收集用户确认，并保留无法可靠判断的人工确认项。
+1. 在用户提供的实际项目根目录创建或识别 `AfterForge/` 和 `user-inbox/`；
+2. 由用户创建并明确当前使用的 `user-inbox/YYYY-MM-DD_Vn/`；
+3. 从该扁平版本目录发现 FCPXML/FCPXMLD、低码参考视频、已有旁白证据和可选设计约束；
+4. 判断必要输入是否存在且可唯一确定，缺失时只索取真正阻塞的材料；
+5. 解析项目规格、时间线、素材引用、显式/隐式空缺和文字证据；
+6. 对齐旁白、字幕与版本目录中已有的动画提示；没有主观动画提示时由后续 Skill 自主设计；
+7. 细化动画设计并生成 `animation-manifest.json`；
+8. 输出时间线分析、逐句对齐结果、动画清单和必要的低分辨率预览；
+9. 收集用户确认，并保留无法可靠判断的人工确认项。
 
 ### 阶段二：渲染、回填与验证
 
@@ -162,7 +200,12 @@ V1 采用先审阅、后高质量渲染与回填的两阶段工作模式。
 
 第一版固定支持以下主流程：
 
-- 输入：FCPXML/FCPXMLD、旁白 WAV、SRT 字幕、YAML 动画提示；
+- 入口：用户提供实际项目工作区，Skill 复用其中已有材料；
+- 用户工作目录：默认在项目根目录使用 `AfterForge/`，仅作为可替换显示名，内部身份保持 `fcpxml-animation-pipeline`；
+- 用户投料区：项目根目录使用 `user-inbox/`，版本目录由用户按 `YYYY-MM-DD_Vn/` 创建和选择，Skill 全程只读；
+- 必要输入：FCPXML/FCPXMLD 与对应低码粗剪参考视频；
+- 可替代旁白证据：旁白 SRT、时间线字幕、转写稿或已有文字稿；已有一种足够时不要求重复格式；
+- 可选设计约束：Marker、时间线文字、notes 或其他已有材料；animation brief 不作为默认要求；
 - 视觉场景：以 16:9 横屏口播类视频为首要目标；
 - 渲染：HyperFrames；
 - 透明动画交付：ProRes 4444 MOV；

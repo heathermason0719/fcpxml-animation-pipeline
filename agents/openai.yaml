@@ -1,0 +1,4 @@
+interface:
+  display_name: "FCPXML 动画项目入口"
+  short_description: "从粗剪工作区自动发现并检查动画规划所需的现有项目材料"
+  default_prompt: "使用 $fcpxml-animation-pipeline 检查这个粗剪工作区是否具备开始动画分析的条件。"

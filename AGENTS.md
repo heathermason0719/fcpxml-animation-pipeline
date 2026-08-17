@@ -30,6 +30,8 @@
 ## 风险与限制
 
 - 永不覆盖用户提供的原始 FCPXML、FCPXMLD、旁白、字幕或媒体素材；默认生成新输出。
+- 第一阶段允许创建的项目顶层目录只有 `AfterForge/` 和 `user-inbox/`。`AfterForge/` 是 Skill 唯一默认写入区；`user-inbox/` 由用户维护，Skill 不得在其中创建、修改、移动、重命名或删除版本目录及材料。
+- 默认显示名 `AfterForge` 只是可替换门牌号，不得替代内部 ID `fcpxml-animation-pipeline`。目录已存在时不得修改其中已有内容。
 - 不直接修改 Final Cut Pro 资源库，也不把普通开发任务解释为导入、发布或安装授权。
 - 处理 FCPXML 时间值时必须保留项目帧率和有理数时间基准，不能使用未经校验的浮点近似回写。
 - 媒体、渲染产物、临时文件、凭据和本地环境配置不得进入版本控制。
@@ -37,7 +39,22 @@
 
 ## 命令与验证
 
-仓库目前没有 build、test、lint 或验证命令。引入可执行实现时，必须同时在此处记录必要命令，并在 `docs/CURRENT.md` 中准确标明验证状态。
+当前没有 build 或 lint 命令。使用以下命令验证第一阶段能力：
+
+```bash
+python3 -m unittest discover -s tests -v
+python3 "$HOME/.codex/skills/.system/skill-creator/scripts/quick_validate.py" .
+```
+
+只读检查项目工作区：
+
+```bash
+python3 scripts/init_user_workspace.py "/absolute/project/workspace"
+python3 scripts/init_user_inbox.py "/absolute/project/workspace"
+python3 scripts/intake_project.py --flat "/absolute/project/workspace/user-inbox/YYYY-MM-DD_Vn"
+```
+
+引入新的验证命令时，必须同时更新本节和 `docs/CURRENT.md`。
 
 ## 文档同步规则
 
