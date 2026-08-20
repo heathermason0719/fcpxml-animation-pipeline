@@ -140,7 +140,7 @@ Expected: 全部 PASS，无 warning 或 error。
 
 - [x] **Step 3: 验证 Skill 结构**
 
-Run: `python3 /Users/xiaobaimac/.codex/skills/.system/skill-creator/scripts/quick_validate.py .`
+Run: `python3 "$HOME/.codex/skills/.system/skill-creator/scripts/quick_validate.py" .`
 
 Expected: Skill validation passed。
 
