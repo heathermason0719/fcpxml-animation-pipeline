@@ -10,6 +10,7 @@
 - `scripts/init_user_workspace.py` 已能在项目根目录幂等创建或识别用户工作目录，默认显示名为 `AfterForge`，同时保持内部 ID `fcpxml-animation-pipeline`；
 - `scripts/init_user_inbox.py` 已能幂等创建或识别用户维护、Skill 只读的 `user-inbox/`，且不会创建或修改任何版本目录；
 - `user-inbox/` 初始化已在一个真实项目根目录完成验证：首次返回 `created`，重复运行返回 `existing`，目录保持为空且既有 `AfterForge/` 未改变；
+- 已在 Sequoia 系统盘真实项目工作区 `/Users/xiaobaimac/Movies/trumen` 完成 `AfterForge/` 与 `user-inbox/` 初始化；首次运行返回 `created`，重复运行返回 `existing`，两个目录均未预建其他内容；
 - 用户工作目录初始化已在一个真实项目根目录完成验证：首次返回 `created`，重复运行返回 `existing`，目录内未生成其他内容；
 - 入口能以 `ready`/`blocked`、blocker、warning、ambiguity 和最小问题清单表达是否具备后续分析条件；
 - 第一阶段行为已通过 20 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
@@ -17,7 +18,7 @@
 
 ## 尚未开始
 
-- 尚未对真实用户项目工作区执行兼容性验证；当前自动化验证使用合成 FCPXML 和占位参考视频；
+- 尚未对真实用户投放版本执行 intake 兼容性验证；`/Users/xiaobaimac/Movies/trumen` 根目录已有电影项目材料，但尚未由用户创建并选择 `user-inbox/YYYY-MM-DD_Vn/` 投放版本，因此当前不扫描根目录，避免误读用户材料；
 - 尚未实现参考视频内容理解或语音转写；
 - 尚未实现完整旁白时间对齐和 `animation-manifest.json` 生成；
 - 尚未实现 HyperFrames 调用、动画渲染、转码、FCPXML 回填或 Final Cut Pro 导入验证；
@@ -29,4 +30,4 @@
 
 ## 下一步
 
-在用户提供真实项目工作区后，先运行项目入口并核对诊断结果；后续能力仍需另行授权，不得自动扩展到 HyperFrames 动画生成或 FCPXML 回填。
+等待用户在 `/Users/xiaobaimac/Movies/trumen/user-inbox/` 下投放并明确选择 `YYYY-MM-DD_Vn/` 版本目录；收到后先以 `--flat` 运行项目入口并核对诊断结果。后续能力仍需另行授权，不得自动扩展到 HyperFrames 动画生成或 FCPXML 回填。
