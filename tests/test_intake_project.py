@@ -76,6 +76,43 @@ def create_ready_workspace(root: Path) -> dict[str, Path]:
 
 
 class WorkspaceDiscoveryTests(unittest.TestCase):
+    def test_preserves_animation_script_when_srt_already_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            files = create_ready_workspace(workspace)
+            animation_script = workspace / "P1-sence-01 脚本.docx"
+            animation_script.write_bytes(b"structured animation guidance")
+
+            report = analyze_workspace(workspace)
+
+            self.assertEqual(
+                report["materials"]["narration_sources"],
+                [str(files["srt"].resolve())],
+            )
+            self.assertEqual(
+                report["materials"]["animation_guidance"],
+                [str(animation_script.resolve())],
+            )
+
+    def test_lone_animation_script_remains_fallback_narration_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            files = create_ready_workspace(workspace)
+            files["srt"].unlink()
+            animation_script = workspace / "P1-sence-01 脚本.docx"
+            animation_script.write_bytes(b"narration anchors and animation guidance")
+
+            report = analyze_workspace(workspace)
+
+            self.assertEqual(
+                report["materials"]["animation_guidance"],
+                [str(animation_script.resolve())],
+            )
+            self.assertEqual(
+                report["materials"]["narration_sources"],
+                [str(animation_script.resolve())],
+            )
+
     def test_flat_mode_uses_only_version_root_materials(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)

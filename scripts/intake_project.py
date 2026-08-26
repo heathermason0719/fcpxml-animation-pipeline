@@ -32,6 +32,16 @@ IGNORED_DIRECTORIES = {
 ROUGH_KEYWORDS = ("rough", "proxy", "preview", "reference", "review", "lowres", "粗剪", "参考", "审片", "低码")
 NARRATION_KEYWORDS = ("narration", "transcript", "caption", "subtitle", "script", "旁白", "字幕", "转写", "口播", "文稿", "稿")
 DESIGN_KEYWORDS = ("animation", "anim", "design", "motion", "note", "动画", "设计", "动效", "备注", "想法")
+ANIMATION_GUIDANCE_KEYWORDS = (
+    "animation-brief",
+    "animation_brief",
+    "animation-script",
+    "shot-by-shot",
+    "storyboard",
+    "动画方案",
+    "动画脚本",
+    "脚本",
+)
 SUBTITLE_NAME_KEYWORDS = ("caption", "subtitle", "subtitles", "cc", "字幕", "旁白")
 DESIGN_NAME_KEYWORDS = ("animation", "anim", "design", "motion", "note", "动画", "设计", "动效", "备注", "想法")
 
@@ -115,6 +125,11 @@ def _is_narration_source(path: Path) -> bool:
     return any(keyword in name for keyword in NARRATION_KEYWORDS)
 
 
+def _is_animation_guidance(path: Path) -> bool:
+    name = path.stem.lower()
+    return any(keyword in name for keyword in ANIMATION_GUIDANCE_KEYWORDS)
+
+
 def scan_workspace(workspace: Path, recursive: bool = True) -> dict[str, list[Path]]:
     paths = _walk_workspace(workspace, recursive=recursive)
     fcpxml = [
@@ -131,6 +146,13 @@ def scan_workspace(workspace: Path, recursive: bool = True) -> dict[str, list[Pa
         and _is_design_note(path)
     ]
     narration_sources = [path for path in paths if path.is_file() and _is_narration_source(path)]
+    animation_guidance = [
+        path
+        for path in paths
+        if path.is_file()
+        and path.suffix.lower() in NARRATION_SUFFIXES
+        and _is_animation_guidance(path)
+    ]
 
     # A lone readable document with no design-note signal is useful even when its filename is generic.
     generic_texts = [
@@ -149,6 +171,7 @@ def scan_workspace(workspace: Path, recursive: bool = True) -> dict[str, list[Pa
         "reference_videos": videos,
         "narration_sources": sorted(narration_sources),
         "design_notes": sorted(design_notes),
+        "animation_guidance": sorted(animation_guidance),
     }
 
 
@@ -422,7 +445,11 @@ def analyze_workspace(workspace: Path, recursive: bool = True) -> dict[str, Any]
             "workspace": str(workspace),
             "status": "blocked",
             "selected": {"fcpxml": None, "reference_video": None},
-            "materials": {"narration_sources": [], "design_notes": []},
+            "materials": {
+                "narration_sources": [],
+                "design_notes": [],
+                "animation_guidance": [],
+            },
             "timeline": None,
             "ambiguities": [],
             "warnings": [],
@@ -483,6 +510,9 @@ def analyze_workspace(workspace: Path, recursive: bool = True) -> dict[str, Any]
         "materials": {
             "narration_sources": [str(path) for path in discovery["narration_sources"]],
             "design_notes": [str(path) for path in discovery["design_notes"]],
+            "animation_guidance": [
+                str(path) for path in discovery["animation_guidance"]
+            ],
         },
         "timeline": timeline,
         "ambiguities": ambiguities,

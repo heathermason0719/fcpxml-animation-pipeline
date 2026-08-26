@@ -55,7 +55,7 @@ Use the report fields as the decision contract:
 | Low-bitrate rough-cut reference video | Required. Use it to understand selected shots and adjacent visual context without scanning the full source film. |
 | Narration SRT, timeline captions, transcript, or manuscript | Alternative evidence sources. Reuse whichever existing source is sufficient; never demand duplicate forms. |
 | Marker, timeline text, notes, or design ideas | Optional constraints. Discover and preserve them when present. Their absence is not missing information. |
-| Animation brief or shot-by-shot design | Never a default intake requirement. Subsequent animation design belongs to this Skill. |
+| Animation brief or shot-by-shot design | Never a default intake requirement. When supplied, preserve it in `materials.animation_guidance` even when an SRT already exists; its timecodes never override FCPXML. |
 
 If no narration text is found but the selected reference video can provide narration audio for later transcription, keep intake ready and report the limitation instead of asking preemptively for duplicate text.
 
@@ -76,7 +76,7 @@ Keep ambiguous text unchanged and expose the reason. Never infer certainty from 
 At the end of intake, report:
 
 1. selected FCPXML/FCPXMLD and reference video;
-2. narration sources, notes, Markers, timeline text, and detected gaps;
+2. narration sources, animation guidance, notes, Markers, timeline text, and detected gaps;
 3. readiness status and any exact blocker;
 4. unresolved text items with evidence and reason;
 5. the unchanged boundary: no animation rendering and no FCPXML write-back in this phase.

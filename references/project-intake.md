@@ -24,7 +24,7 @@ python3 scripts/intake_project.py --flat "/absolute/project/workspace/user-inbox
 | `status` | `ready` 或 `blocked`。 |
 | `selected` | 唯一选中的 FCPXML/FCPXMLD 与低码参考视频。 |
 | `candidates` | 扫描发现的必要输入候选，用于解释自动选择或歧义。 |
-| `materials` | 已发现的旁白/转写来源和设计 notes。 |
+| `materials` | 已发现的旁白/转写来源、动画脚本/逐镜要求和设计 notes。 |
 | `timeline` | 项目规格、精确时间、空缺、文字和 Marker 证据。 |
 | `ambiguities` | 不能可靠分类的具体时间线文字及原因；不等于入口阻塞。 |
 | `warnings` | 可以继续但后续需要注意的限制。 |
@@ -35,7 +35,9 @@ python3 scripts/intake_project.py --flat "/absolute/project/workspace/user-inbox
 
 FCPXML/FCPXMLD 和低码粗剪参考视频各自必须能够唯一确定。目录中只有一个候选时直接使用；存在多个候选时，根据文件名和目录中的 `rough`、`proxy`、`preview`、`reference`、`粗剪`、`参考`、`低码` 等信号排序。最高分只有一个时自动选择；同等可信的最高分候选不得猜测，必须产生 `ambiguous_*` blocker。
 
-旁白材料和设计材料不是必要输入候选，不参与入口阻塞。一个已存在的 SRT、时间线 caption、转写稿或文稿只要足以支撑后续对应关系，就不再索取其他格式。
+旁白材料、动画脚本和设计材料不是必要输入候选，不参与入口阻塞。一个已存在的 SRT、时间线 caption、转写稿或文稿只要足以支撑后续对应关系，就不再索取其他旁白格式；但用户已经提供的动画脚本仍必须保留在 `materials.animation_guidance`，不能因为 SRT 已存在而从报告中丢失。
+
+同一文件可以承担多个证据角色。例如没有独立 SRT 时，一份包含对应旁白原句的动画脚本可以通过唯一通用文档兜底同时出现在 `narration_sources` 与 `animation_guidance`；存在独立 SRT 时，SRT 负责旁白对齐，动画脚本只保留为创作约束。动画脚本中的帧率、帧号或时间码不替代 FCPXML/FCPXMLD 的时间权威。
 
 ## 时间线空缺
 

@@ -2,6 +2,7 @@
 .DS_Store
 .idea/
 .vscode/
+.codex/environments/environment.toml
 
 # 本地环境与敏感信息
 .env
