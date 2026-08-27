@@ -9,11 +9,14 @@
 - `scripts/intake_project.py` 已能只读发现工作区材料、解析 FCPXML/FCPXMLD、识别显式/隐式空缺、提取 Marker，并按证据区分旁白字幕、设计文字与歧义文字；
 - `scripts/init_user_workspace.py` 已能在项目根目录幂等创建或识别用户工作目录，默认显示名为 `AfterForge`，同时保持内部 ID `fcpxml-animation-pipeline`；
 - `scripts/init_user_inbox.py` 已能幂等创建或识别用户维护、Skill 只读的 `user-inbox/`，且不会创建或修改任何版本目录；
+- `scripts/init_afterforge_project.py` 已能在既有 AfterForge 工作目录中一次性初始化项目级 `AGENTS.md` 和 `CLAUDE.md`：只补缺失文件、逐字节保留既有文件，并且不创建或更新 canonical `frame.md`、任何 Vn 或版本资产；
+- 项目入口步骤 A1、A2 保留独立编号和内部职责，但面向用户连续执行，中间不单独汇报或等待确认；
 - `user-inbox/` 初始化已在一个真实项目根目录完成验证：首次返回 `created`，重复运行返回 `existing`，目录保持为空且既有 `AfterForge/` 未改变；
 - 已在 Sequoia 系统盘真实项目工作区 `/Users/xiaobaimac/Movies/trumen` 完成 `AfterForge/` 与 `user-inbox/` 初始化；首次运行返回 `created`，重复运行返回 `existing`，两个目录均未预建其他内容；
+- 已在同一真实项目中执行一次性 AfterForge 项目初始化：既有 `AfterForge/` 与 `user-inbox/` 原样复用，只在 `AfterForge/` 根层创建缺失的项目级 `AGENTS.md` 和 `CLAUDE.md`，未创建 canonical `frame.md` 或 Vn；
 - 用户工作目录初始化已在一个真实项目根目录完成验证：首次返回 `created`，重复运行返回 `existing`，目录内未生成其他内容；
 - 入口能以 `ready`/`blocked`、blocker、warning、ambiguity 和最小问题清单表达是否具备后续分析条件；
-- 第一阶段行为已通过 22 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
+- 第一阶段行为已通过 28 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-25_V2` 执行 `--flat` intake：唯一选择 `P1-sence-01-粗剪.fcpxmld` 和 `P1-sence-01 粗剪.m4v`，识别 `P1-sence-01 脚本.docx` 为旁白证据，结果为 `ready`，无 blocker、warning 或 ambiguity；
 - intake 已新增 `materials.animation_guidance`，用于独立保留用户主动提供的动画脚本或逐镜要求；存在 SRT 时不再因旁白来源已经成立而丢弃动画脚本，脚本内时码仍不具备 FCPXML 时间权威；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-26_V1` 重新执行 `--flat` intake：唯一选择 `P1-sence-01.fcpxmld` 与 `P1-sence-01 粗剪.m4v`，同时把 `P1-sence-01 字幕.srt` 保留为旁白证据、`P1-sence-01 脚本.docx` 保留为动画指导，结果为 `ready`，无 blocker、warning 或 ambiguity；
@@ -22,6 +25,8 @@
 - 上述 V2 交付副本已通过 HyperFrames 完整检查：lint、runtime、layout 和 motion 均为 0 问题，31/31 文本对比度检查通过；成片重新抽帧确认六段动画均实际进入输出，V2 的 FCPXML、参考视频和脚本文档哈希保持记录一致；
 - V2 用户审阅确认了新的创意验收要求：每个视频先冻结自己的整体视觉包装与统一运动气质；逐条动画的文字方案和真实文案静态关键画面合并为一次验收；`STORYBOARD.md` 只作为草稿 `animation-manifest.json` 的 HyperFrames 审阅视图；
 - 已确认项目级与 Vn 级资产边界：AfterForge 根层 `AGENTS.md`、`CLAUDE.md` 只初始化一次，`frame.md` 是项目级 canonical visual spec；每个 Vn 保存 manifest、storyboard、compositions、固定构建配置和 `frame.md` 校验快照；
+- 已确认并落地跨项目视觉语法路由：每条候选动画先判断主次信息功能及其与原画的主次关系，再在项目视觉规范内选择主要及可选辅助参考语言；开放索引、混合关系和自主判断规则集中记录在 `references/visual-grammar.md`；
+- 视觉语法路由不新增逐条用户确认，实际结果写入草稿 manifest 的 cue 级 `designRoute`，并在既有 A11 storyboard 联合验收中暴露；只有显著改变范围、违反已确认约束或产生难以逆转后果的分叉才单独请求确认；
 - 已确认 Vn 创建不使用通用 `hyperframes init`，改由仓库控制的确定性脚手架建立最小可重渲染工程，且不得触碰项目级 Agent 文件；
 - 已移除旧版 HyperFrames marketplace plugin，并在软件重启后确认源码安装的新版 HyperFrames 技能可用；
 - Git 仓库已经初始化。
@@ -30,7 +35,7 @@
 
 - 尚未实现参考视频内容理解或语音转写；
 - 尚未把本次人工完成的旁白对齐、`animation-manifest.json` 生成、HyperFrames 工程生成和音频生成整理为仓库内可复用的确定性流水线；
-- 尚未实现一次性 AfterForge 项目初始化器，以及不调用通用 `hyperframes init` 的 Vn `scaffold_hyperframes.py`；
+- 尚未实现不调用通用 `hyperframes init` 的 Vn `scaffold_hyperframes.py`；
 - 尚未执行 1080p 透明 ProRes 4444 最终渲染、FCPXML 回填或 Final Cut Pro 导入验证；
 - 当前没有 build 或 lint 命令。
 
@@ -40,4 +45,4 @@
 
 ## 下一步
 
-先实现并测试一次性 AfterForge 项目初始化与确定性 Vn HyperFrames 脚手架，证明创建多个 Vn 不会生成或更新根层 `AGENTS.md`、`CLAUDE.md` 和 canonical `frame.md`，且每版 frame 快照、固定配置、compositions 和本地素材可以独立检查与重渲染。随后以 `2026-08-25_V3` 作为下一轮正式测试输入，用 `--flat` 重跑 intake，验证 SRT 辅助对齐效率和新的三道确认门槛：整体视觉包装与运动气质、合并 storyboard 验收、480p 动画与声音预览。V2 不进入 1080p 最终渲染和 FCPXML 回填。
+下一项是设计并实现不调用通用 `hyperframes init` 的确定性 Vn HyperFrames 脚手架，证明创建多个 Vn 不会生成或更新根层 `AGENTS.md`、`CLAUDE.md` 和 canonical `frame.md`，且每版 frame 快照、固定配置、compositions 和本地素材可以独立检查与重渲染。随后以新的投放版本作为下一轮正式测试输入，用 `--flat` 重跑 intake，验证 SRT 辅助对齐效率和新的三道确认门槛：整体视觉包装与运动气质、合并 storyboard 验收、480p 动画与声音预览。V2 不进入 1080p 最终渲染和 FCPXML 回填。

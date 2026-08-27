@@ -51,13 +51,16 @@ python3 -m unittest discover -s tests -v
 python3 "$HOME/.codex/skills/.system/skill-creator/scripts/quick_validate.py" .
 ```
 
-只读检查项目工作区：
+初始化并检查项目工作区：
 
 ```bash
 python3 scripts/init_user_workspace.py "/absolute/project/workspace"
 python3 scripts/init_user_inbox.py "/absolute/project/workspace"
+python3 scripts/init_afterforge_project.py "/absolute/project/workspace"
 python3 scripts/intake_project.py --flat "/absolute/project/workspace/user-inbox/YYYY-MM-DD_Vn"
 ```
+
+前三条初始化命令会在各自严格边界内创建缺失目录或文件；`intake_project.py` 是只读检查。
 
 引入新的验证命令时，必须同时更新本节和 `docs/CURRENT.md`。
 

@@ -7,9 +7,10 @@
 ```bash
 python3 scripts/init_user_workspace.py "/absolute/project/workspace"
 python3 scripts/init_user_inbox.py "/absolute/project/workspace"
+python3 scripts/init_afterforge_project.py "/absolute/project/workspace"
 python3 scripts/intake_project.py --flat "/absolute/project/workspace/user-inbox/YYYY-MM-DD_Vn"
 ```
 
-第一条命令创建或识别 Skill 唯一默认写入区，默认显示名为 `AfterForge`；该名称可替换，不改变内部身份 `fcpxml-animation-pipeline`。第二条命令创建或识别由用户维护、Skill 只读的 `user-inbox/`。用户自行建立并选择 `YYYY-MM-DD_Vn/` 版本目录，第三条命令只读扫描该版本根目录并向 stdout 输出 JSON。本阶段不自动创建版本、不生成动画，也不修改或回填 FCPXML。
+第一条命令创建或识别 Skill 唯一默认写入区，默认显示名为 `AfterForge`；该名称可替换，不改变内部身份 `fcpxml-animation-pipeline`。第二条命令创建或识别由用户维护、Skill 只读的 `user-inbox/`。第三条命令只在 `AfterForge/` 根层缺失时创建项目级 `AGENTS.md` 和 `CLAUDE.md`，重复运行不会更新既有文件，也不会创建 `frame.md` 或任何 Vn。用户自行建立并选择 `YYYY-MM-DD_Vn/` 投放目录，第四条命令只读扫描该版本根目录并向 stdout 输出 JSON。本阶段不自动创建版本、不生成动画，也不修改或回填 FCPXML。
 
 项目目标与边界见 `docs/PROJECT.md`，架构基线见 `docs/ARCHITECTURE.md`，当前状态见 `docs/CURRENT.md`。
