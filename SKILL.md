@@ -9,7 +9,7 @@ description: Use when a user provides a Final Cut Pro rough-cut workspace, FCPXM
 
 Treat the user's actual project workspace as the source of context. Establish the Skill's user-visible work directory, discover and inspect existing materials before asking for files, preserve the rough cut exactly, and ask only for information that blocks reliable continuation.
 
-This version implements one-time AfterForge project instructions plus project intake and readiness analysis. Do not generate a Vn HyperFrames project, animation, transcode media, rewrite FCPXML, or alter a Final Cut Pro library.
+This version implements one-time AfterForge project instructions, project intake and readiness analysis, and an isolated HyperFrames Vn scaffold after the project visual package is approved. Do not generate animation, transcode media, rewrite FCPXML, or alter a Final Cut Pro library unless a later implemented phase and the user's current authorization explicitly permit it.
 
 ## Start From the Workspace
 
@@ -45,6 +45,16 @@ This version implements one-time AfterForge project instructions plus project in
 7. Read `references/project-intake.md` when interpreting the JSON report, diagnosing a blocker, or explaining a text-classification ambiguity.
 8. Treat every discovered input as read-only. The only permitted project mutations in this phase are creating the top-level `AfterForge/` and `user-inbox/` directories and initializing the two project-level Agent instruction files described above. Never write inside `user-inbox/`.
 
+## Create an Approved Vn Scaffold
+
+After the user has approved the project's canonical `AfterForge/frame.md` and identified the target `YYYY-MM-DD_Vn`, create that version with:
+
+```bash
+python3 <skill-directory>/scripts/scaffold_hyperframes.py "/absolute/project/workspace" "YYYY-MM-DD_Vn"
+```
+
+The command creates only a previously absent `AfterForge/YYYY-MM-DD_Vn/`. It copies the current canonical `frame.md` and project fonts as version snapshots, fixes the HyperFrames CLI version in the local package scripts, and creates the minimum independently checkable project structure. If canonical `frame.md` is missing or the target already exists, stop on the returned `blocked` result. Never call generic `hyperframes init` as a substitute, merge into an existing Vn, generate or update project-level `AGENTS.md` or `CLAUDE.md`, or write inside `user-inbox/`.
+
 ## Route Animation Design Before Choosing Form
 
 When subsequent workflow capabilities turn aligned content into animation proposals, read `references/visual-grammar.md` before proposing the project's visual direction or designing individual cues.
@@ -52,6 +62,12 @@ When subsequent workflow capabilities turn aligned content into animation propos
 Use two internal passes without adding a user gate. Before A8, identify each candidate cue's information function and relationship to the source image so the project-level visual package is grounded in the video's actual needs. After A8 approves that package, choose useful reference language within the approved `frame.md` and complete the route before designing the concrete cue. Choose one primary function and one primary source relationship; secondary functions and a mixed source relationship are allowed only when they remain subordinate and have a stated reason. Preserving source visibility alone does not make a cue source-led; apply the reference's double-deletion test before using a mixed relationship. Treat both indexes as open vocabularies rather than fixed enums.
 
 Record the resulting route in the draft manifest and expose it through the existing A11 storyboard review together with real copy and static keyframes. Do not add a per-cue approval step. Ask separately only when a branch would materially change scope, violate an approved constraint, or create a hard-to-reverse consequence. Do not copy the cross-project grammar into project `frame.md`; that file records only the current video's approved visual package.
+
+## Deliver A8 and A11 for User Review
+
+At A8 and A11, prioritize handing the reviewable result to the user promptly. Run low-cost deterministic checks only when they are immediately available; treat their findings as non-blocking self-checks unless they prove that the user cannot review the result.
+
+Block delivery only for an observable review failure, such as a storyboard that cannot open, a critical referenced asset that is missing, or a page with an obvious runtime error that prevents the intended result from being viewed. A lint/check command failure, browser-automation failure, screenshot mismatch, aesthetic uncertainty, or an Agent's own content/structure/visual review does not block delivery when the user can still inspect the result. Do not repeat checks to decide whether the work is attractive, polished, or visually approved; aesthetic approval belongs to the user. After making an A8 or A11 revision, hand it back for review as soon as the result remains viewable.
 
 ## Decide Whether to Ask
 

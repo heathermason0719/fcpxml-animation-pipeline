@@ -58,9 +58,10 @@ python3 scripts/init_user_workspace.py "/absolute/project/workspace"
 python3 scripts/init_user_inbox.py "/absolute/project/workspace"
 python3 scripts/init_afterforge_project.py "/absolute/project/workspace"
 python3 scripts/intake_project.py --flat "/absolute/project/workspace/user-inbox/YYYY-MM-DD_Vn"
+python3 scripts/scaffold_hyperframes.py "/absolute/project/workspace" "YYYY-MM-DD_Vn"
 ```
 
-前三条初始化命令会在各自严格边界内创建缺失目录或文件；`intake_project.py` 是只读检查。
+前三条初始化命令会在各自严格边界内创建缺失目录或文件；`intake_project.py` 是只读检查。`scaffold_hyperframes.py` 只在 canonical `frame.md` 已存在且目标 Vn 不存在时创建隔离版本工程，阻塞时不得留下半成品或修改项目级文件。
 
 引入新的验证命令时，必须同时更新本节和 `docs/CURRENT.md`。
 
