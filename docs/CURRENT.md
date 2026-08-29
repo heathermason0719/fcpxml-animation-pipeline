@@ -21,7 +21,7 @@
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-25_V2` 执行 `--flat` intake：唯一选择 `P1-sence-01-粗剪.fcpxmld` 和 `P1-sence-01 粗剪.m4v`，识别 `P1-sence-01 脚本.docx` 为旁白证据，结果为 `ready`，无 blocker、warning 或 ambiguity；
 - intake 已新增 `materials.animation_guidance`，用于独立保留用户主动提供的动画脚本或逐镜要求；存在 SRT 时不再因旁白来源已经成立而丢弃动画脚本，脚本内时码仍不具备 FCPXML 时间权威；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-26_V1` 重新执行 `--flat` intake：唯一选择 `P1-sence-01.fcpxmld` 与 `P1-sence-01 粗剪.m4v`，同时把 `P1-sence-01 字幕.srt` 保留为旁白证据、`P1-sence-01 脚本.docx` 保留为动画指导，结果为 `ready`，无 blocker、warning 或 ambiguity；
-- 已确认首个真实项目的生产规格：FCPXML 负责时间位置、帧率和时间基准；参考视频实际口播负责旁白措辞；用户脚本和 SRT 作为允许存在错别字的语义与对齐证据；开发审阅使用 480p 合成预览，最终透明动画使用 1080p ProRes 4444 MOV，音效和音乐使用逐条或独立的 48 kHz、24-bit PCM WAV；
+- 已确认首个真实项目的生产规格：FCPXML 负责时间位置、帧率和时间基准；参考视频实际口播负责旁白措辞；用户脚本和 SRT 作为允许存在错别字的语义与对齐证据；开发审阅使用保留粗剪原声的 480p 合成预览，最终透明动画使用 1080p ProRes 4444 MOV；AfterForge 不再生成、设计、混合、交付或回填音效与音乐；
 - 已冻结 V2 作为第一镜试制输入，并在 `/Users/xiaobaimac/Movies/trumen/AfterForge/2026-08-25_V2-first-scene-review` 完成一次性真实交付：包含语义对齐后的 `animation-manifest.json`、六段 HyperFrames 动画、18 条独立 48 kHz/24-bit PCM WAV 和一条 854×480、24 fps、54.083333 秒的合成审阅 MP4；
 - 上述 V2 交付副本已通过 HyperFrames 完整检查：lint、runtime、layout 和 motion 均为 0 问题，31/31 文本对比度检查通过；成片重新抽帧确认六段动画均实际进入输出，V2 的 FCPXML、参考视频和脚本文档哈希保持记录一致；
 - V2 用户审阅确认了新的创意验收要求：每个视频先冻结自己的整体视觉包装与统一运动气质；逐条动画的文字方案和真实文案静态关键画面合并为一次验收；`STORYBOARD.md` 只作为草稿 `animation-manifest.json` 的 HyperFrames 审阅视图；
@@ -30,21 +30,21 @@
 - 视觉语法路由不新增逐条用户确认，实际结果写入草稿 manifest 的 cue 级 `designRoute`，并在既有 A11 storyboard 联合验收中暴露；只有显著改变范围、违反已确认约束或产生难以逆转后果的分叉才单独请求确认；
 - 已确认 A8、A11 使用可验收性门槛：优先尽快交付用户查看，低成本自动检查只作非阻塞自检；只有 storyboard 无法打开、关键资源缺失或页面明显报错等导致用户无法验收的问题才阻塞，Agent 不代替用户完成审美验收；
 - 已确认 Vn 创建不使用通用 `hyperframes init`，改由仓库控制的确定性脚手架建立最小可重渲染工程，且不得触碰项目级 Agent 文件；
-- 已在真实项目 `/Users/xiaobaimac/Movies/trumen` 创建项目级 canonical `AfterForge/frame.md`，并通过确定性脚手架创建 `/Users/xiaobaimac/Movies/trumen/AfterForge/2026-08-26_V1`；该版本保存 frame 与字体快照、固定 HyperFrames 配置、草稿 `animation-manifest.json`、八镜 `STORYBOARD.md` 和静态关键画面，当前停在 A11 联合验收，尚未进入动画实施；
+- 已在真实项目 `/Users/xiaobaimac/Movies/trumen` 创建项目级 canonical `AfterForge/frame.md`，并通过确定性脚手架创建 `/Users/xiaobaimac/Movies/trumen/AfterForge/2026-08-26_V1`；A8 与 A11 已通过，A12 已按确认方案制作第 1–5、8 镜完整动画，第 6、7 镜按用户确认保留原画且不生成动画占位，并输出 854×480、24 fps、54.083333 秒的合成审阅 MP4；A13 已确认整体观感方向，删除声音制作，完成第 8 镜纯文字交替与水平线修正，并将第 3 镜的全宽揭示遮罩与原始 27 px 内缩问号排版解耦，避免裁切和位移；
 - 已移除旧版 HyperFrames marketplace plugin，并在软件重启后确认源码安装的新版 HyperFrames 技能可用；
 - Git 仓库已经初始化。
 
 ## 尚未开始
 
 - 尚未实现参考视频内容理解或语音转写；
-- 尚未把本次人工完成的旁白对齐、`animation-manifest.json` 生成、HyperFrames 工程生成和音频生成整理为仓库内可复用的确定性流水线；
+- 尚未把本次人工完成的旁白对齐、`animation-manifest.json` 生成和 HyperFrames 工程生成整理为仓库内可复用的确定性流水线；
 - 尚未执行 1080p 透明 ProRes 4444 最终渲染、FCPXML 回填或 Final Cut Pro 导入验证；
 - 当前没有 build 或 lint 命令。
 
 ## 已知问题与阻塞
 
-当前没有已知技术阻塞。V2 的 480p 合成审阅证明一次性试制路径可行，也暴露了实施前缺少视觉包装、运动气质和静态关键画面合并验收的问题；其内容和观感不能作为已确认方向。现有 V2 工作目录仍是一次性旧结构：HyperFrames 通用 scaffold 在 V2 根层生成了内容相同的 `AGENTS.md` 和 `CLAUDE.md`；该目录未迁移或删除，不代表后续正式资产布局。新 V1 已按项目级 canonical 与版本快照分层，但当前静态设计仍等待用户 A11 验收。当前结果不等于仓库已经具备自动化流水线；参考视频理解、manifest 与动画工程自动生成、1080p 透明转码、FCPXML 回填和 Final Cut Pro 导入仍待实现与验证。
+当前没有已知技术阻塞。V2 的 480p 合成审阅证明一次性试制路径可行，也暴露了实施前缺少视觉包装、运动气质和静态关键画面合并验收的问题；其内容和观感不能作为已确认方向。现有 V2 工作目录仍是一次性旧结构：HyperFrames 通用 scaffold 在 V2 根层生成了内容相同的 `AGENTS.md` 和 `CLAUDE.md`；该目录未迁移或删除，不代表后续正式资产布局。新 V1 已按项目级 canonical 与版本快照完成 A12，A13 已确认整体观感方向，当前只剩修订版动画复验。真实试制同时确认声音制作不属于 AfterForge 工作流。当前结果不等于仓库已经具备自动化流水线；参考视频理解、manifest 与动画工程自动生成、1080p 透明转码、FCPXML 回填和 Final Cut Pro 导入仍待实现与验证。
 
 ## 下一步
 
-下一项是完成 `2026-08-26_V1` 的 A11 storyboard 联合验收；通过后按已确认的 cue 路由、项目视觉规范和统一运动气质实施 480p 动画与逐条声音预览，不在验收前渲染。实操同时用于发现 manifest、HyperFrames composition 与音频生成中仍需沉淀为确定性脚本的部分。V2 不进入 1080p 最终渲染和 FCPXML 回填。
+下一项是由用户查看 `2026-08-26_V1` 的第三版 A13 修订审阅 MP4，复验第 3 镜问号与 Storyboard 对位且完整显示；第 4 镜 LIVE 已抽帧确认存在，播放器控制层会在激活时遮挡右下角。A13 完全通过前不进入 1080p 透明渲染、ProRes 4444 转换、FCPXML 回填或 Final Cut Pro 导入；实操中暴露的可复用部分随后再评估是否沉淀为确定性脚本。
