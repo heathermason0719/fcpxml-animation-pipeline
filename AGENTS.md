@@ -67,9 +67,13 @@ python3 scripts/sync_delivery.py "/absolute/project/workspace/AfterForge/YYYY-MM
 python3 scripts/validate_hyperframes_adapter.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/migrate_delivery_layout.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/render_animations.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
+python3 scripts/register_delivery_assets.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
+python3 scripts/build_delivery_package.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
+python3 scripts/validate_fcpxml_package.py "/absolute/project/workspace/AfterForge/AfterForge__YYYY-MM-DD_Vn__d-<fingerprint>.fcpxmld" "/absolute/project/workspace/user-inbox/YYYY-MM-DD_Vn/source.fcpxml" "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn/animation-manifest.json" --dtd "/Applications/Final Cut Pro.app/Contents/Frameworks/Interchange.framework/Versions/A/Resources/FCPXMLv1_14.dtd"
+python3 scripts/compare_fcpxml_roundtrip.py "/absolute/project/workspace/AfterForge/AfterForge__YYYY-MM-DD_Vn__d-<fingerprint>.fcpxmld/Info.fcpxml" "/absolute/reexported.fcpxml" "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn/animation-manifest.json"
 ```
 
-前三条初始化命令会在各自严格边界内创建缺失目录或文件；`intake_project.py` 是只读检查。`scaffold_hyperframes.py` 只在 canonical `frame.md` 已存在且目标 Vn 不存在时创建隔离版本工程，阻塞时不得留下半成品或修改项目级文件。后续命令分别生成 A11/A12 review projection、完成并验证已批准布局、生成 1920×1080 delivery host、迁移旧 480p canonical cue，并在 layout lock 有效时原生渲染透明 ProRes 4444；详细协议见 `references/hyperframes-single-source.md`。
+前三条初始化命令会在各自严格边界内创建缺失目录或文件；`intake_project.py` 是只读检查。`scaffold_hyperframes.py` 只在 canonical `frame.md` 已存在且目标 Vn 不存在时创建隔离版本工程，阻塞时不得留下半成品或修改项目级文件。后续命令分别生成 A11/A12 review projection、完成并验证已批准布局、生成 1920×1080 delivery host、迁移旧 480p canonical cue，并在 layout lock 有效时原生渲染透明 ProRes 4444。正式渲染后，注册器只通过 ledger 重新探测并注册媒体；包构建器此后只消费源 FCPXML、manifest 与实际 MOV，创建不可覆盖的扁平根层 `.fcpxmld`。验证器负责自动工程校验，round-trip 比较器用于首次 FCP 导入后的再导出回归；详细布局协议见 `references/hyperframes-single-source.md`，FCPXML 交付协议见 `docs/ARCHITECTURE.md`。
 
 引入新的验证命令时，必须同时更新本节和 `docs/CURRENT.md`。
 

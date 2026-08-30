@@ -9,7 +9,7 @@ description: Use when a user provides a Final Cut Pro rough-cut workspace, FCPXM
 
 Treat the user's actual project workspace as the source of context. Establish the Skill's user-visible work directory, discover and inspect existing materials before asking for files, preserve the rough cut exactly, and ask only for information that blocks reliable continuation.
 
-This version implements one-time AfterForge project instructions, project intake and readiness analysis, and an isolated HyperFrames Vn scaffold after the project visual package is approved. Do not generate animation, transcode media, rewrite FCPXML, or alter a Final Cut Pro library unless a later implemented phase and the user's current authorization explicitly permit it.
+This version implements one-time AfterForge project instructions, project intake and readiness analysis, an isolated HyperFrames Vn scaffold, native transparent delivery rendering, and a deterministic FCPXMLD delivery backend. Never alter a Final Cut Pro library directly. Render, register, or build a new FCPXMLD only in the implemented phase and with the user's current authorization.
 
 ## Start From the Workspace
 
@@ -78,6 +78,32 @@ After the user approves A11, freeze the canonical cue and its declared styles/fo
 Every new animated canonical cue must declare the exact `project.delivery` dimensions, currently 1920×1080 for horizontal self-media projects. `sync_storyboard.py` and `assemble_hyperframes.py` generate 854×480 projections that scale the delivery-native cue; they never own editable layout. Before final rendering, run `sync_delivery.py` to generate one renderable 1920×1080 host per animated cue. Render only after the 480p full-motion review is approved and every projection-aware layout lock verifies. `render_animations.py` renders at composition resolution and must not use HyperFrames `--resolution` or a post-render resize.
 
 When an older Vn still has 854×480 canonical cues, run `migrate_delivery_layout.py`. The migration wraps the existing layout in a deterministic delivery-native stage, invalidates the old A11 locks, and requires a new 480p equivalence review. Do not freeze revision 2 locks or batch-render delivery files until the user approves that regenerated review.
+
+## Register and Build the FCPXMLD Delivery
+
+After the user approves the full-motion review and native transparent MOV rendering succeeds, register the actual media before FCPXML injection:
+
+```bash
+python3 <skill-directory>/scripts/register_delivery_assets.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
+```
+
+The registrar is the only delivery step allowed to consume `delivery/render-ledger.json`. It verifies every animated MOV again, records stable `deliveryAsset` data in the main manifest, and leaves every `source-only` cue unregistered. Registration must not invalidate or rewrite A11 layout locks.
+
+Then build the formal package:
+
+```bash
+python3 <skill-directory>/scripts/build_delivery_package.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
+```
+
+The builder verifies the source FCPXML hash, complete A11 approval, registered media hashes, exact rational placement, positive lane allocation, source-sequence preservation, flat package contents, references, and the Final Cut Pro bundled DTD. It publishes only a new `AfterForge__<sourceVersion>__d-<fingerprint>.fcpxmld` directly under project-level `AfterForge/`. The package contains only `Info.fcpxml` and the animated MOV files; it never overwrites a package, source FCPXML, canonical MOV, or Final Cut Pro Library. A same-fingerprint package is reusable only after complete validation.
+
+The first real import for a protocol version remains a user acceptance gate. Ask the user to import the new Project, verify media/alpha/editability and the absence of source-only placeholders, then export that imported Project as FCPXML. Compare the re-export with:
+
+```bash
+python3 <skill-directory>/scripts/compare_fcpxml_roundtrip.py "/absolute/project/workspace/AfterForge/AfterForge__YYYY-MM-DD_Vn__d-<fingerprint>.fcpxmld/Info.fcpxml" "/absolute/reexported.fcpxml" "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn/animation-manifest.json"
+```
+
+Do not describe the FCPXML delivery capability as fully accepted for a new protocol version until this manual import and semantic round-trip pass.
 
 ## Decide Whether to Ask
 

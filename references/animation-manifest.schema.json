@@ -44,6 +44,21 @@
       },
       "additionalProperties": true
     },
+    "deliveryAsset": {
+      "type": "object",
+      "required": ["fileName", "sha256", "width", "height", "frameRate", "duration", "codec", "hasAlpha"],
+      "properties": {
+        "fileName": { "type": "string", "pattern": "^AF__[A-Za-z0-9][A-Za-z0-9.-]*\\.mov$" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "frameRate": { "type": "string", "pattern": "^[0-9]+(?:/[1-9][0-9]*)?$" },
+        "duration": { "$ref": "#/$defs/rationalTime" },
+        "codec": { "const": "prores_4444" },
+        "hasAlpha": { "const": true }
+      },
+      "additionalProperties": false
+    },
     "layoutLock": {
       "type": ["object", "null"],
       "required": ["revision", "algorithm", "files", "aggregateSha256", "reviewProjection", "projectionSpec", "approvedPoster", "approvedPosterSha256"],
@@ -110,6 +125,7 @@
         "id": { "type": "string", "minLength": 1 },
         "productionMode": { "enum": ["animation", "source-only"] },
         "workflowState": { "enum": ["design-draft", "layout-built", "layout-approved", "motion-built", "motion-approved", "rendered"] },
+        "deliveryAsset": { "$ref": "#/$defs/deliveryAsset" },
         "resolvedTimeline": {
           "type": "object",
           "required": ["start", "duration", "authority"],
@@ -129,7 +145,10 @@
         {
           "if": { "properties": { "productionMode": { "const": "animation" } } },
           "then": { "properties": { "renderAdapters": { "properties": { "hyperframes": { "$ref": "#/$defs/animatedAdapter" } } } } },
-          "else": { "properties": { "renderAdapters": { "properties": { "hyperframes": { "$ref": "#/$defs/sourceOnlyAdapter" } } } } }
+          "else": {
+            "properties": { "renderAdapters": { "properties": { "hyperframes": { "$ref": "#/$defs/sourceOnlyAdapter" } } } },
+            "not": { "required": ["deliveryAsset"] }
+          }
         }
       ],
       "additionalProperties": true

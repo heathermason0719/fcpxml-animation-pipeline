@@ -19,7 +19,7 @@
 - 已在同一真实项目中执行一次性 AfterForge 项目初始化：既有 `AfterForge/` 与 `user-inbox/` 原样复用，只在 `AfterForge/` 根层创建缺失的项目级 `AGENTS.md` 和 `CLAUDE.md`，未创建 canonical `frame.md` 或 Vn；
 - 用户工作目录初始化已在一个真实项目根目录完成验证：首次返回 `created`，重复运行返回 `existing`，目录内未生成其他内容；
 - 入口能以 `ready`/`blocked`、blocker、warning、ambiguity 和最小问题清单表达是否具备后续分析条件；
-- 当前可靠行为已通过 51 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
+- 当前可靠行为已通过 69 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-25_V2` 执行 `--flat` intake：唯一选择 `P1-sence-01-粗剪.fcpxmld` 和 `P1-sence-01 粗剪.m4v`，识别 `P1-sence-01 脚本.docx` 为旁白证据，结果为 `ready`，无 blocker、warning 或 ambiguity；
 - intake 已新增 `materials.animation_guidance`，用于独立保留用户主动提供的动画脚本或逐镜要求；存在 SRT 时不再因旁白来源已经成立而丢弃动画脚本，脚本内时码仍不具备 FCPXML 时间权威；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-26_V1` 重新执行 `--flat` intake：唯一选择 `P1-sence-01.fcpxmld` 与 `P1-sence-01 粗剪.m4v`，同时把 `P1-sence-01 字幕.srt` 保留为旁白证据、`P1-sence-01 脚本.docx` 保留为动画指导，结果为 `ready`，无 blocker、warning 或 ambiguity；
@@ -40,7 +40,8 @@
 - 用户已批准迁移后的 854×480 完整动画审阅；六条 animated cue 已使用批准 hero poster 建立并验证 revision 2 layout lock，项目级 A11 状态为 approved；
 - 第 3 镜已完成原生 1920×1080 alpha 工程探针，六条正式动画随后全部在 composition 原生尺寸直接渲染到 `delivery/prores4444/`；逐条均通过 ProRes 4444、`yuva444p12le` alpha、1920×1080、24 fps 和时长校验，正式结果记录在 `delivery/render-ledger.json`；
 - Terra 早期生成的 854×480 捕获后放大产物未删除，已从正式文件名隔离到 V1 的 `delivery/quarantine/terra-upscaled-20260830/`，对应 worktree 的 Git 状态未触碰；
-- 已完成并在仓库权威文档中冻结正式 FCPXML 交付后端设计：主 manifest 注册稳定 `deliveryAsset`、render ledger 只作执行证据；交付包直接位于 `AfterForge/` 根层并平铺 `Info.fcpxml` 与 MOV；输出创建新 Event / Project、完整复制原时间线并以独立 connected clips 粗略回填动画；构建采用不可覆盖 fingerprint、同卷临时包与原子发布，并以自动验证、首次 FCP 导入和协议级 round-trip 建立基线；既有“回填策略版本”统一规范为唯一的 `deliveryProtocolVersion`，不形成第二权威，也不进入 A11 lock；该后端设计尚未实现；
+- 已实现正式 FCPXML 交付后端：`register_delivery_assets.py` 只在重新探测实际 MOV 后向主 manifest 注册稳定 `deliveryAsset`；`fcpxml_timing.py`、`inject_fcpxml.py`、`build_delivery_package.py`、`validate_fcpxml_package.py` 与 `compare_fcpxml_roundtrip.py` 分别承担有理数时间/lane、Project 克隆与 connected clips 注入、唯一协议版本指纹与原子发布、完整工程验证和 FCP 再导出语义比较；render ledger 仍只作注册证据，不成为包构建输入；
+- 真实 `2026-08-26_V1` 已将第 1、2、3、4、5、8 镜共六条已验证透明 MOV 注册进 manifest，第 6、7 镜保持 `source-only` 且无占位；已在项目级 `AfterForge/` 根层发布 `AfterForge__2026-08-26_V1__d-2c692941c719d02a48374ebc2ceaba53c973428e5376da465cd0567724e708f8.fcpxmld`，包内只有 `Info.fcpxml` 与六条 MOV，通过源哈希、A11 lock、媒体哈希、时间/lane、引用、源 sequence 不变性、FCPXML 1.14 DTD 和第二次同指纹完整复用验证；
 - 已移除旧版 HyperFrames marketplace plugin，并在软件重启后确认源码安装的新版 HyperFrames 技能可用；
 - Git 仓库已经初始化。
 
@@ -48,13 +49,13 @@
 
 - 尚未实现参考视频内容理解或语音转写；
 - 尚未把本次人工完成的旁白对齐和初始 `animation-manifest.json` 内容生成整理为仓库内可复用的确定性流水线；HyperFrames 单一布局源装配、review projection、layout lock、adapter 验证和旧 Vn 迁移已经脚本化；
-- 尚未执行 FCPXML 回填或 Final Cut Pro 导入验证；
+- 尚未执行真实 V1 的 Final Cut Pro 导入、逐条可编辑性确认和再导出 round-trip；自动 FCPXML 回填、扁平包发布与验证已经完成；
 - 当前没有 build 或 lint 命令。
 
 ## 已知问题与阻塞
 
-当前没有已知技术阻塞。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。双分辨率单一布局源、审阅投影、delivery composition、单调递增布局锁、正式渲染驱动和交付校验已经具备确定性实现；真实 V1 已完成 revision 2 批准与六条原生透明交付渲染。参考视频理解、初始 manifest 内容生成、FCPXML 回填和 Final Cut Pro 导入仍待实现与验证。
+当前没有已知技术阻塞。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。双分辨率单一布局源、审阅投影、delivery composition、单调递增布局锁、正式渲染驱动、媒体注册、FCPXML 注入、扁平包发布与自动交付验证已经具备确定性实现；真实 V1 已完成 revision 2 批准、六条原生透明交付渲染和首个正式 `.fcpxmld`。参考视频理解和初始 manifest 内容生成仍待实现；FCP 导入与再导出 round-trip 是当前剩余的人工验收门槛。
 
 ## 下一步
 
-下一项是按已冻结设计实现 FCPXML 交付注册器、时间映射、注入器、扁平包构建器、交付验证器和 round-trip 比较器；先以 `2026-08-26_V1` 的六条已验证透明 MOV 完成 manifest 注册、不可覆盖 `.fcpxmld` 原子发布、自动验证、Final Cut Pro 实际导入与首次 round-trip，之后才能把正式回填能力标记为可靠成立。
+下一项是由用户把真实 V1 的正式 `.fcpxmld` 导入 Final Cut Pro，确认新 Event / Project、完整粗剪、六条透明动画在线且可独立编辑、第 6/7 镜无占位，并从 FCP 再导出该 Project 的 FCPXML。随后运行 `compare_fcpxml_roundtrip.py`；通过后才能把 `deliveryProtocolVersion = 1` 的首个真实 FCP 交付基线标记为完整成立。

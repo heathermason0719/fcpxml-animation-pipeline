@@ -121,14 +121,14 @@ V1 计划由以下脚本组件承担机械操作；名称表达职责，具体�
 - `migrate_delivery_layout.py`：把旧 854×480 canonical cue 包装为 delivery-native root，并强制重新执行等价验收；
 - `render_animations.py`：只在 layout lock 有效时按 composition 原生尺寸渲染透明 ProRes 4444；
 - `validate_delivery.py`：检查 ProRes 4444、alpha、尺寸、帧率与逐 cue 时长；
-- 交付注册器：重新探测 ledger 对应的实际 MOV，只把验证通过的稳定 `deliveryAsset` 注册进 manifest；
-- FCPXML 时间映射模块：负责宿主定位、有理数时间、`offset` / `start`、lane 分配和 `timeMap`；
-- FCPXML 注入器：克隆目标 Project、创建新 Event / Project 身份、注册资源并插入独立 connected clips；
-- 交付包构建器：计算 `deliveryFingerprint`，创建临时扁平包，hard link 或复制 MOV，并原子发布；
-- 交付验证器：验证媒体、DTD、引用图、时间位置、原时间线不变性、包结构和幂等复用；
-- Round-trip 比较器：对首次 FCP 导入以及后端协议变化后的再导出结果执行回归验证。
+- `register_delivery_assets.py`：重新探测 ledger 对应的实际 MOV，只把验证通过的稳定 `deliveryAsset` 注册进 manifest；
+- `fcpxml_timing.py`：负责宿主定位、有理数时间、`offset` / `start`、lane 分配和 `timeMap` 边界；
+- `inject_fcpxml.py`：克隆目标 Project、创建新 Event / Project 身份、注册资源并插入独立 connected clips；
+- `build_delivery_package.py`：持有唯一 `deliveryProtocolVersion`，计算 `deliveryFingerprint`，创建临时扁平包，hard link 或复制 MOV，并原子发布；
+- `validate_fcpxml_package.py`：验证媒体、DTD、引用图、时间位置、原时间线不变性、包结构和幂等复用；
+- `compare_fcpxml_roundtrip.py`：对首次 FCP 导入以及后端协议变化后的再导出结果执行回归验证。
 
-后六项是已经批准但尚未实现的 FCPXML 交付后端职责；具体文件名可按仓库现有脚本命名习惯确定，但不得合并或改变其权威边界。
+上述 FCPXML 交付后端职责已有确定性实现；首次真实 FCP 导入与再导出 round-trip 仍是协议基线的人工作业边界，不由脚本伪造。
 
 脚本必须把原始项目输入视为只读，并产生可单独检查的新输出。
 
