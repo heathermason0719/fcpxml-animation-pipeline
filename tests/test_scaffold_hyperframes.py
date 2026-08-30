@@ -51,6 +51,7 @@ class HyperFramesScaffoldTests(unittest.TestCase):
             self.assertEqual(
                 sorted(path.name for path in target.iterdir()),
                 [
+                    "approvals",
                     "assets",
                     "compositions",
                     "frame.md",
@@ -58,6 +59,24 @@ class HyperFramesScaffoldTests(unittest.TestCase):
                     "index.html",
                     "meta.json",
                     "package.json",
+                ],
+            )
+            self.assertEqual(
+                sorted(path.relative_to(target).as_posix() for path in target.rglob("*") if path.is_dir()),
+                [
+                    "approvals",
+                    "approvals/a11",
+                    "assets",
+                    "assets/fonts",
+                    "assets/fonts/family",
+                    "assets/media",
+                    "assets/stills",
+                    "assets/styles",
+                    "assets/vendor",
+                    "compositions",
+                    "compositions/cues",
+                    "compositions/motion",
+                    "compositions/review",
                 ],
             )
             self.assertEqual((target / "frame.md").read_bytes(), (afterforge / "frame.md").read_bytes())

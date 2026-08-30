@@ -69,6 +69,12 @@ At A8 and A11, prioritize handing the reviewable result to the user promptly. Ru
 
 Block delivery only for an observable review failure, such as a storyboard that cannot open, a critical referenced asset that is missing, or a page with an obvious runtime error that prevents the intended result from being viewed. A lint/check command failure, browser-automation failure, screenshot mismatch, aesthetic uncertainty, or an Agent's own content/structure/visual review does not block delivery when the user can still inspect the result. Do not repeat checks to decide whether the work is attractive, polished, or visually approved; aesthetic approval belongs to the user. After making an A8 or A11 revision, hand it back for review as soon as the result remains viewable.
 
+## Build A11 and A12 From One Layout Source
+
+Before authoring or revising an A11 storyboard frame or an A12 animation, read `references/hyperframes-single-source.md`. For every animated cue, author the final copy, DOM, layout, and CSS end state only in `compositions/cues/<cue>.html`. Put timing and motion in `compositions/motion/<cue>.js`; motion must not rewrite layout properties. Generate `compositions/review/`, `STORYBOARD.md`, and the composited `index.html` from manifest v2 with the deterministic scripts. Never hand-maintain a second A11 layout or copy its DOM/CSS into A12.
+
+After the user approves A11, freeze the canonical cue and its declared styles/fonts with `layout_lock.py freeze` using the approved hero poster. If a later change invalidates the lock, return the affected cue to A11 review instead of silently moving dependent elements. Cues explicitly approved as source-only have no formal composition, motion file, or render slot.
+
 ## Decide Whether to Ask
 
 Use the report fields as the decision contract:

@@ -191,9 +191,15 @@ def scaffold_hyperframes_version(
     try:
         with tempfile.TemporaryDirectory(prefix=f".scaffold-{version}-", dir=afterforge) as staging_name:
             staging = Path(staging_name)
-            (staging / "compositions").mkdir()
+            compositions = staging / "compositions"
+            compositions.mkdir()
+            for name in ("cues", "motion", "review"):
+                (compositions / name).mkdir()
             assets = staging / "assets"
             assets.mkdir()
+            for name in ("media", "stills", "styles", "vendor"):
+                (assets / name).mkdir()
+            (staging / "approvals" / "a11").mkdir(parents=True)
             shutil.copy2(canonical, staging / "frame.md")
             if fonts_source.is_dir():
                 shutil.copytree(

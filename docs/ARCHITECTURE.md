@@ -31,6 +31,10 @@
         ├── meta.json
         ├── index.html
         ├── compositions/
+        │   ├── cues/（正式 DOM、布局与 CSS 唯一源）
+        │   ├── motion/（独立运动时间线）
+        │   └── review/（自动生成 A11 projection）
+        ├── approvals/a11/（批准 hero poster）
         ├── assets/
         ├── previews/*.mp4
         ├── animations/*.mov
@@ -103,6 +107,11 @@ V1 计划由以下脚本组件承担机械操作；名称表达职责，具体�
 - `build_manifest.py`：生成并校验统一动画清单；
 - `init_afterforge_project.py`：一次性创建项目级 Agent 指令入口；已存在时不覆盖，且不承担 Vn 创建；
 - `scaffold_hyperframes.py`：使用仓库控制的最小模板，根据动画清单创建一个新的、可独立重渲染的 Vn HyperFrames 工程；不调用通用 `hyperframes init`，不生成或更新项目级 Agent 文件；
+- `sync_storyboard.py`：从 manifest v2 生成 `STORYBOARD.md` 和只引用 canonical cue 的 A11 review projection；
+- `layout_lock.py`：冻结并验证 A11 已批准 composition、样式、字体与 hero poster 的 SHA-256；
+- `assemble_hyperframes.py`：按 manifest 中的 FCPXML 有理数时间装配正式 cue composition；
+- `validate_hyperframes_adapter.py`：检查 adapter 路径、ID、依赖、review projection、motion/layout 边界与 layout lock；
+- `migrate_single_source.py`：把旧 Vn 的最新 animation composition 拆分为 canonical cue 与 motion，同时保留旧目录作迁移对照；
 - `render_animations.py`：检查并渲染动画；
 - `transcode_alpha.py`：将透明动画转换为 ProRes 4444；
 - `inject_fcpxml.py`：将动画引用写入新的时间线；
@@ -186,7 +195,7 @@ V1 计划由以下脚本组件承担机械操作；名称表达职责，具体�
 }
 ```
 
-正式实现前必须把该概念结构收敛为可验证的数据模式。至少应表达：
+当前 HyperFrames adapter 使用 manifest schema v2；机器可读约束见 `references/animation-manifest.schema.json`。至少表达：
 
 - 项目画幅、帧率和时间基准；
 - 480p 审阅与 1080p 最终交付规格；
@@ -217,6 +226,10 @@ Agent 默认自主完成该路由，不新增逐条用户确认。只有分叉�
 
 `STORYBOARD.md` 是 HyperFrames 适配层从草稿状态 `animation-manifest.json` 生成的人工审阅视图，不是独立权威源，也不负责精确时间。它利用 HyperFrames Studio 的关键画面联系表和逐卡反馈能力，把每条动画的稳定 cue ID、用户材料中的原镜号、视觉语法路由、文字方案、真实展示文案、信息层级、元素数量、从属关系、构图和运动意图与对应静态关键画面放在一起审阅；用户材料未提供镜号时不伪造原镜号。
 
+每条 animated cue 的真实文案、DOM、布局和 CSS 终态只写在 `compositions/cues/<cue>.html`。A11 不再另写静态 frame：`sync_storyboard.py` 生成的 `compositions/review/<cue>.html` 把对应原画 still 与该正式 cue composition 叠加，并由 `heroTime` 选择静态验收状态。A12 的正式合成入口同样直接装载该 cue composition。review、`STORYBOARD.md` 与顶层 `index.html` 都是 projection，不是可独立编辑的布局源；生成器只允许覆盖带自身 marker 的文件。
+
+运动写在 `compositions/motion/<cue>.js`。它可以控制时间、transform、opacity、clip/mask 进度等动画状态，但不得改写 `left/top/width/height/font/gap/display` 等布局属性。A11 用户通过后，`layout_lock.py` 用批准 hero poster 和 `layoutDependencies` 中 canonical HTML、CSS、字体等文件建立 SHA-256 锁；任何依赖变化都使该 cue 回到 A11，而不是在 A12 静默重新对位。`source-only` cue 只有原画 review projection，不创建正式 composition、motion 或渲染槽。完整 adapter 协议见 `references/hyperframes-single-source.md`。
+
 内部制作仍按“先形成文字方案，再制作使用真实文案的静态关键画面”的顺序执行，但不在两步之间打断用户。只有两部分都准备好后才合并提交一次用户验收。反馈先修正草稿 manifest，再重新生成 storyboard 和受影响的静态关键画面；确认后 manifest 才标记为 `approved` 并进入完整动画制作。HyperFrames 所称 storyboard frame 是关键画面卡，不是 FCPXML 的帧级时间输入。
 
 A8 与 A11 使用“可验收性门槛”而不是 Agent 质量验收门槛：完成当前产物后应尽快交给用户查看。低成本、确定性的自动检查可以执行，但结果默认只作为非阻塞自检；内容复读、结构复查、浏览器截图比较和 Agent 自行判断视觉完成度不得成为重复往返或延迟交付的理由。只有 storyboard 无法打开、关键资源缺失、页面明显报错等使用户无法正常查看目标产物的问题才构成 blocker。检查工具自身失败但用户仍能查看结果时，记录限制并继续交付。该宽松边界只适用于 A8、A11，不降低后续动画渲染、透明素材、FCPXML 回填和最终交付的工程验证要求。
@@ -238,7 +251,7 @@ HyperFrames 是 V1 的动画渲染后端，但不是整个系统的架构中心�
 
 未来可以用 Apple Motion 模板、After Effects、Remotion、Blender 或人工制作替换渲染后端。替换时只应新增或更换渲染适配层，不应重写前端分析、`animation-manifest.json` 或 FCPXML 回填逻辑。
 
-V1 中，HyperFrames 使用同一套响应式布局和动画逻辑生成两个输出层级：
+V1 中，HyperFrames 使用同一 canonical cue composition 和独立 motion 生成两个输出层级：
 
 - 审阅层：854×480 合成 MP4，把动画叠加在对应粗剪画面上，并保留粗剪参考视频自带的原声；该文件只用于动画效果确认；
 - 交付层：用户确认后生成 1920×1080 透明动画，并转换为适合 Final Cut Pro 合成的 ProRes 4444 MOV；帧率始终跟随源 FCPXML。
@@ -278,10 +291,11 @@ V1 采用先审阅、后高质量渲染与回填的两阶段工作模式。
 7. 依据参考视频实际口播校正明显文字错误，将旁白原句和可选触发词句对齐到 FCPXML 时间线；对每条候选动画先判断主次信息功能和与原画的主次关系，没有主观动画提示时由 Skill 自主完成；
 8. 根据本视频的实际功能与原画关系统计，向用户提出适合当前视频的整体视觉包装与运动气质候选，并在产物可正常查看时尽快提交 A8 验收；确认后创建或更新项目级 canonical `AfterForge/frame.md`，并把统一运动气质写入草稿 `animation-manifest.json`；
 9. 使用确定性版本脚手架创建新的 Vn HyperFrames 工程，复制 canonical `frame.md` 为本版快照并记录 SHA-256；不得调用通用 `hyperframes init` 或触碰项目级 Agent 文件；
-10. 在已确认的项目视觉规范内为每条动画选择主要及可选辅助参考语言，完成 `designRoute`；随后内部先细化逐条动画文字方案，再制作使用真实文案的静态关键画面，由草稿 manifest 生成 `STORYBOARD.md`；
-11. 将视觉语法路由、文字方案与静态关键画面合并为一次用户验收，不新增逐条确认；产物可正常查看时尽快提交 A11 验收，低成本自动检查不阻塞交付；依据反馈修正草稿 manifest、storyboard 和受影响的关键画面，确认后将 manifest 标记为 `approved`；
-12. 根据已确认方案制作完整动画，输出时间线分析、逐句对齐结果、动画清单和保留粗剪原声的 854×480 合成审阅 MP4；
-13. 收集动画运动和整体观感的最终确认，并保留无法可靠判断的人工确认项。
+10. 在已确认的项目视觉规范内为每条动画选择主要及可选辅助参考语言，完成 `designRoute`；随后内部细化逐条文字方案，并直接在正式 `compositions/cues/` 完成真实文案、DOM、布局和 CSS 终态；
+11. 从 manifest 和正式 cue composition 自动生成 `STORYBOARD.md` 与 review projection，将视觉语法路由、文字方案与 hero frame 合并为一次用户验收；产物可正常查看时尽快提交 A11，确认后用批准 poster 冻结 layout dependencies；
+12. 只在独立 `compositions/motion/` 中实现运动，并由 manifest 自动装配正式合成预览；不得复制或重写 A11 已批准布局；
+13. 根据已确认方案制作完整动画，输出时间线分析、逐句对齐结果、动画清单和保留粗剪原声的 854×480 合成审阅 MP4；
+14. 收集动画运动和整体观感的最终确认，并保留无法可靠判断的人工确认项。
 
 ### 阶段二：渲染、回填与验证
 

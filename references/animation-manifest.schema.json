@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://afterforge.local/schemas/animation-manifest-v2.json",
+  "title": "AfterForge animation manifest v2",
+  "type": "object",
+  "required": ["schemaVersion", "sourceVersion", "project", "cues"],
+  "properties": {
+    "schemaVersion": { "const": "2.0" },
+    "sourceVersion": { "type": "string", "minLength": 1 },
+    "reviews": { "type": "object" },
+    "project": {
+      "type": "object",
+      "required": ["source", "preview", "delivery"],
+      "properties": {
+        "source": {
+          "type": "object",
+          "required": ["width", "height", "frameDuration", "duration"],
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 },
+            "frameDuration": { "$ref": "#/$defs/rationalTime" },
+            "duration": { "$ref": "#/$defs/rationalTime" }
+          }
+        },
+        "preview": { "$ref": "#/$defs/dimensions" },
+        "delivery": { "$ref": "#/$defs/dimensions" },
+        "renderAdapters": { "type": "object" }
+      }
+    },
+    "cues": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/cue" }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "rationalTime": { "type": "string", "pattern": "^-?[0-9]+(?:/[1-9][0-9]*)?s$" },
+    "dimensions": {
+      "type": "object",
+      "required": ["width", "height"],
+      "properties": {
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": true
+    },
+    "layoutLock": {
+      "type": ["object", "null"],
+      "required": ["revision", "algorithm", "files", "aggregateSha256", "approvedPoster", "approvedPosterSha256"],
+      "properties": {
+        "revision": { "type": "integer", "minimum": 1 },
+        "algorithm": { "const": "sha256" },
+        "files": { "type": "array" },
+        "aggregateSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "approvedPoster": { "type": "string" },
+        "approvedPosterSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "animatedAdapter": {
+      "type": "object",
+      "required": ["compositionId", "compositionSrc", "motionSrc", "reviewSrc", "stillSrc", "heroTime", "layoutDependencies", "layoutLock"],
+      "properties": {
+        "compositionId": { "type": "string", "minLength": 1 },
+        "compositionSrc": { "type": "string", "pattern": "^compositions/cues/.+\\.html$" },
+        "motionSrc": { "type": "string", "pattern": "^compositions/motion/.+\\.js$" },
+        "reviewSrc": { "type": "string", "pattern": "^compositions/review/.+\\.html$" },
+        "stillSrc": { "type": "string", "minLength": 1 },
+        "heroTime": { "type": "number", "minimum": 0 },
+        "layoutDependencies": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
+        "layoutLock": { "$ref": "#/$defs/layoutLock" }
+      },
+      "additionalProperties": false
+    },
+    "sourceOnlyAdapter": {
+      "type": "object",
+      "required": ["reviewSrc", "stillSrc", "heroTime"],
+      "properties": {
+        "reviewSrc": { "type": "string", "pattern": "^compositions/review/.+\\.html$" },
+        "stillSrc": { "type": "string", "minLength": 1 },
+        "heroTime": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "cue": {
+      "type": "object",
+      "required": ["id", "productionMode", "workflowState", "resolvedTimeline", "renderAdapters"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "productionMode": { "enum": ["animation", "source-only"] },
+        "workflowState": { "enum": ["design-draft", "layout-built", "layout-approved", "motion-built", "motion-approved", "rendered"] },
+        "resolvedTimeline": {
+          "type": "object",
+          "required": ["start", "duration", "authority"],
+          "properties": {
+            "start": { "$ref": "#/$defs/rationalTime" },
+            "duration": { "$ref": "#/$defs/rationalTime" },
+            "authority": { "const": "fcpxml" }
+          }
+        },
+        "renderAdapters": {
+          "type": "object",
+          "required": ["hyperframes"],
+          "properties": { "hyperframes": { "type": "object" } }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "productionMode": { "const": "animation" } } },
+          "then": { "properties": { "renderAdapters": { "properties": { "hyperframes": { "$ref": "#/$defs/animatedAdapter" } } } } },
+          "else": { "properties": { "renderAdapters": { "properties": { "hyperframes": { "$ref": "#/$defs/sourceOnlyAdapter" } } } } }
+        }
+      ],
+      "additionalProperties": true
+    }
+  }
+}

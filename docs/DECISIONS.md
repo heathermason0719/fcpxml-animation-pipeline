@@ -141,3 +141,13 @@
 **主要替代方案：** 每版执行 `hyperframes init` 后删除 Agent 文件，或在每个 Vn 中保留完整副本。前者仍把两个生命周期耦合并依赖事后清理，后者会制造重复维护和规则漂移。项目级隐藏 base 模板可以作为过渡实现，但不应成为必须手工升级的第二套 canonical 工程。
 
 **影响：** 一次性项目初始化器只负责缺失的根层项目入口，存在即保留；版本脚手架只写入全新的 Vn 目录，目标存在即阻塞，并固定 HyperFrames 版本、项目配置、frame 快照、compositions 和本地素材。HyperFrames skills 更新属于机器环境维护，不由项目或 Vn 创建隐式触发。Vn 的独立重渲染不依赖 `AGENTS.md` 或 `CLAUDE.md`。
+
+## A11 与 A12 共享唯一正式 cue composition
+
+**决定：** 每条 animated cue 只维护一份 `compositions/cues/<cue>.html`，其中真实文案、DOM、布局和 CSS 终态是 ground truth。运动单独位于 `compositions/motion/<cue>.js`，不得改写会触发布局分叉的尺寸、定位、字体或流式布局属性。A11 的 `compositions/review/` 和 `STORYBOARD.md` 由 manifest 自动生成，把原画 still 与该正式 cue composition 组合为 hero frame；A12 的 `index.html` 也直接装入同一 composition。`source-only` cue 不创建 composition、motion 或渲染槽。
+
+**原因：** 旧流程分别维护静态 frame 与 animation composition，Storyboard 通过后仍可能在复制、动画化或局部修复时发生裁切和位移。事后对位检查只能发现部分漂移，不能从机制上消除两份布局实现。让 A11 直接投影正式 composition，符合 Layout Before Animation 与 CSS 终态为 ground truth，并让局部修改只作用于一个结构。
+
+**主要替代方案：** 保留两套布局并做截图 diff，或从 storyboard frame 复制生成 animation composition。两者仍允许后续独立修改和累积漂移，长期依赖用户发现回归。
+
+**影响：** manifest 升级为 v2，记录 `productionMode`、`workflowState`、HyperFrames adapter 路径、`heroTime`、布局依赖与 SHA-256 layout lock。A11 批准后冻结 composition、样式、字体和批准截图；依赖变化必须重新进入 A11。生成脚本拒绝覆盖手写 review。旧 Vn 可用迁移器拆出 canonical layout 与 motion，旧 `frames/animation` 在迁移对照完成前保留。

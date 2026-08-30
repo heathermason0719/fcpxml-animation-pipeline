@@ -59,9 +59,14 @@ python3 scripts/init_user_inbox.py "/absolute/project/workspace"
 python3 scripts/init_afterforge_project.py "/absolute/project/workspace"
 python3 scripts/intake_project.py --flat "/absolute/project/workspace/user-inbox/YYYY-MM-DD_Vn"
 python3 scripts/scaffold_hyperframes.py "/absolute/project/workspace" "YYYY-MM-DD_Vn"
+python3 scripts/sync_storyboard.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
+python3 scripts/layout_lock.py approve "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
+python3 scripts/layout_lock.py verify "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
+python3 scripts/assemble_hyperframes.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
+python3 scripts/validate_hyperframes_adapter.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 ```
 
-前三条初始化命令会在各自严格边界内创建缺失目录或文件；`intake_project.py` 是只读检查。`scaffold_hyperframes.py` 只在 canonical `frame.md` 已存在且目标 Vn 不存在时创建隔离版本工程，阻塞时不得留下半成品或修改项目级文件。
+前三条初始化命令会在各自严格边界内创建缺失目录或文件；`intake_project.py` 是只读检查。`scaffold_hyperframes.py` 只在 canonical `frame.md` 已存在且目标 Vn 不存在时创建隔离版本工程，阻塞时不得留下半成品或修改项目级文件。后续命令分别生成 A11 review projection、完成并验证已批准布局、装配正式预览入口和验证单一布局源 adapter；详细协议见 `references/hyperframes-single-source.md`。
 
 引入新的验证命令时，必须同时更新本节和 `docs/CURRENT.md`。
 
