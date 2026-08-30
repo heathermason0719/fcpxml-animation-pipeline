@@ -22,7 +22,10 @@
     ├── AGENTS.md（项目级 Agent 规则，只在项目初始化时创建）
     ├── CLAUDE.md（项目级 Claude 入口，只在项目初始化时创建）
     ├── frame.md（当前视频项目视觉规范的 canonical source）
-    └── YYYY-MM-DD_Vn/（本版可独立重渲染的 HyperFrames 工程与交付）
+    ├── AfterForge__<sourceVersion>__d-<fingerprint>.fcpxmld/（正式扁平交付包）
+    │   ├── Info.fcpxml
+    │   └── AF__<stableCueId>__<semanticSlug>.mov
+    └── YYYY-MM-DD_Vn/（本版可独立重渲染的 HyperFrames 工程与内部交付资产）
         ├── animation-manifest.json
         ├── frame.md（本版构建时快照）
         ├── STORYBOARD.md
@@ -38,8 +41,9 @@
         ├── approvals/a11/（批准 hero poster）
         ├── assets/
         ├── previews/*.mp4
-        ├── animations/*.mov
-        └── completed.fcpxml
+        └── delivery/
+            ├── prores4444/*.mov（canonical 正式渲染资产）
+            └── render-ledger.json（渲染执行证据）
 ```
 
 `fcpxml-animation-pipeline` Skill 负责分析时间线、对齐旁白与动画要求、细化设计、生成 manifest、调用 HyperFrames、转码透明动画、回填新的 FCPXML 和执行完整性检查。项目级长期资产与 Vn 版本资产物理分层，不能把通用脚手架文件误计为每版创作成果。
@@ -116,8 +120,15 @@ V1 计划由以下脚本组件承担机械操作；名称表达职责，具体�
 - `migrate_single_source.py`：把旧 Vn 的最新 animation composition 拆分为 canonical cue 与 motion，同时保留旧目录作迁移对照；
 - `migrate_delivery_layout.py`：把旧 854×480 canonical cue 包装为 delivery-native root，并强制重新执行等价验收；
 - `render_animations.py`：只在 layout lock 有效时按 composition 原生尺寸渲染透明 ProRes 4444；
-- `inject_fcpxml.py`：将动画引用写入新的时间线；
-- `validate_delivery.py`：检查 ProRes 4444、alpha、尺寸、帧率与逐 cue 时长；后续 FCPXML 验证由回填组件另行承担。
+- `validate_delivery.py`：检查 ProRes 4444、alpha、尺寸、帧率与逐 cue 时长；
+- 交付注册器：重新探测 ledger 对应的实际 MOV，只把验证通过的稳定 `deliveryAsset` 注册进 manifest；
+- FCPXML 时间映射模块：负责宿主定位、有理数时间、`offset` / `start`、lane 分配和 `timeMap`；
+- FCPXML 注入器：克隆目标 Project、创建新 Event / Project 身份、注册资源并插入独立 connected clips；
+- 交付包构建器：计算 `deliveryFingerprint`，创建临时扁平包，hard link 或复制 MOV，并原子发布；
+- 交付验证器：验证媒体、DTD、引用图、时间位置、原时间线不变性、包结构和幂等复用；
+- Round-trip 比较器：对首次 FCP 导入以及后端协议变化后的再导出结果执行回归验证。
+
+后六项是已经批准但尚未实现的 FCPXML 交付后端职责；具体文件名可按仓库现有脚本命名习惯确定，但不得合并或改变其权威边界。
 
 脚本必须把原始项目输入视为只读，并产生可单独检查的新输出。
 
@@ -210,6 +221,8 @@ V1 计划由以下脚本组件承担机械操作；名称表达职责，具体�
 - 人工确认状态；
 - 渲染结果及其可回填引用。
 
+正式渲染通过后，每条 `animated` cue 注册一个渲染后端无关的 `deliveryAsset`，至少保存稳定文件名、SHA-256、宽高、源帧率、实际有理数时长、codec 和 alpha 状态。manifest 不保存正式包的绝对路径；`source-only` cue 不得拥有 `deliveryAsset`。具体 schema 字段在后端实施时落地，但这项职责与权威边界已经冻结。
+
 用户脚本中的旁白词句是语义锚点，不是精确时间输入。开始或结束触发词句留空时，默认使用整段对应旁白范围。所有写入 FCPXML 的时间最终必须转换为符合源项目时间基准的精确有理数表示；SRT 时间、文档时间码和未经校验的浮点秒数不得直接回写。
 
 ## 视频级创意方向与 Storyboard 审阅层
@@ -280,6 +293,71 @@ AfterForge 不生成、设计、混合、交付或回填音效与音乐。粗剪
 - 不直接修改 Final Cut Pro 资源库，最终由用户导入新 FCPXML；
 - 无法可靠对齐或无法验证的项目不得静默写入，必须进入人工确认清单。
 
+### 产品结果与数据权威
+
+正式结果是一份可导入 Final Cut Pro 的新 `.fcpxmld`：它包含原目标 Project 的完整时间线副本，并在其上增加每条 `animated` cue 对应的透明动画 connected clip。`source-only` cue 不生成动画、空文件或占位片段。用户导入后可以逐条移动、裁切、禁用或复制动画；AfterForge 不替用户完成最终帧级剪辑。
+
+各数据源职责固定如下：
+
+- 原 FCPXML / FCPXMLD 是源 Project 时间线结构、帧率、有理数时间、原媒体、转场、变速、音频和嵌套故事线的唯一权威，始终只读；
+- `animation-manifest.json` 是 cue 身份、`animated` / `source-only` 状态、系统解析的粗略回填区间和已验证 `deliveryAsset` 的长期机器契约；
+- `render-ledger.json` 只是一轮渲染命令、实际路径、探测结果、哈希和 layout lock 对应关系的执行证据，不是 FCPXML 的长期权威；
+- 正式注册必须根据 ledger 重新探测实际 MOV，再把稳定媒体属性写入 manifest；FCPXML 生成器不得直接依赖 HyperFrames 私有 ledger；
+- 生成的 `Info.fcpxml` 是原 FCPXML、manifest 和已注册媒体的派生交付物，不反向成为时间、设计或媒体状态权威；
+- 不建立第二份 delivery manifest。
+
+### 扁平交付包与媒体引用
+
+正式包直接创建在项目级 `AfterForge/` 根层，命名为 `AfterForge__<sourceVersion>__d-<deliveryFingerprint>.fcpxmld`。包根目录只允许一个 `Info.fcpxml` 和全部已注册动画 MOV，不创建 `Media/`、`delivery/` 或其他子目录，也不放入 manifest、ledger、日志、验证报告、临时文件和原电影媒体。
+
+动画文件名来自 manifest 的 `deliveryAsset.fileName`，建议形式为 `AF__<stableCueId>__<semanticSlug>.mov`；XML 只使用包根目录同级相对引用，例如 `./AF__p1s01-c01-question.mov`，禁止写入构建机绝对路径或 Vn 内部路径。原 Project 已有媒体引用保持源 XML 语义，不复制原电影素材。
+
+正式 MOV 的 canonical source 仍位于 Vn 内部 delivery 区。构建包时，同一文件系统优先创建 hard link，不可用时复制；无论采用哪种方式，发布前都重新计算包内文件哈希。canonical MOV 与已经发布的 `.fcpxmld` 都不可原地覆盖。
+
+### 新 Event、Project 与 connected clips
+
+输出明确创建新的 `AfterForge__<sourceVersion>` Event 和其中新的 `AfterForge__<sourceVersion>__<sourceProjectName>` Project。用户在导入时选择目标 Library；输出不得指定、更新或直接操作既有 Library、Event 或 Project。
+
+生成器从源 XML 克隆目标 Project 的完整 sequence，并建立新的导入身份：不沿用原 Event `uid`，不沿用原 Project `uid`、`modDate` 等可能被识别为更新既有对象的字段，不复制与目标 Project 无关的原 Event 组织内容。V1 保留原 `resources` 集合后再确定性追加动画资源，不提前裁剪可能被嵌套结构引用的资源。除明确新增的身份、动画资源和 connected clips 外，sequence 总时长、主故事线、原媒体、音频、转场、变速和既有元数据语义必须保持不变。
+
+每个 `deliveryAsset` 对应一个新的纯视频 asset resource，引用包根目录同名 MOV，并使用实际时长、无音频属性和匹配的 1920×1080 源帧率 format；没有匹配 format 时确定性新增。resource ID 从现有资源集合中分配，不假设连续。
+
+动画分别写为独立 connected clips，不合并为 compound clip、统一 secondary storyline 或完整透明时间线。lane 根据回填后的时间区间确定：重叠 cue 使用不同正向 lane，不重叠 cue 使用最低可用正向 lane，不把镜号硬编码为 lane。
+
+### 粗放定位与精确时间记账
+
+回填只要求动画落在正确镜头或旁白语义段落附近，不要求踩中某个字、某一帧或严格旁白出入点，也不把实际 MOV 拉伸到 manifest 粗略区间长度。工程表达仍必须严格使用源 FCPXML 的帧率、合法结构和有理数时间。
+
+时间映射模块必须从 cue 的序列时间找到对应主故事线宿主，将序列时间转换为合法 connected-clip `offset`；存在嵌套、非零 `start`、局部 `offset` 或 `timeMap` 时，必须处理宿主局部时间和序列时间之间的映射。写入后再从输出 XML 反算序列位置，确认动画仍落在目标镜头或语义段落范围内。该验证防止放错镜头，不替用户完成帧级同步。
+
+### 交付指纹与单一生成语义版本
+
+FCPXML 交付后端使用 `deliveryFingerprint` 识别可验证、可复用且不可原地覆盖的正式交付包。指纹的规范化输入至少包括：原 FCPXML 文件哈希、按 cue ID 排序后的已验证 `deliveryAsset` 注册信息、系统解析出的粗略回填位置，以及后端持有的稳定常量 `deliveryProtocolVersion`。
+
+`deliveryProtocolVersion` 是交付输出语义的唯一版本，也是交付设计中“回填策略版本”的规范名称；两者不是并行字段或两套版本机制。它不写入 `animation-manifest.json` 充当第二个业务权威，也不参与 A11 layout lock。相同业务输入只有在当前 `deliveryProtocolVersion` 也相同时，才允许命中同一 `deliveryFingerprint` 并验证、复用已有交付包。
+
+只要后端变化会使相同业务输入产生语义不同的正式交付结果，就必须提升 `deliveryProtocolVersion`，包括 FCPXML 注入结构、时间映射、lane 分配、媒体引用、Event / Project 身份处理、交付包结构或既有包复用语义的变化。纯重构、日志、测试、性能或错误提示变化若不改变交付输出语义，则不提升版本。版本提升后，当前后端重新计算的指纹必须与旧包不同；不得用 Git commit、实现文件哈希或另一套隐式版本替代这项显式契约。
+
+### 确定性生成、失败恢复与原子发布
+
+正式流程固定为：验证原 FCPXML、approved manifest、layout lock、render ledger 和实际 MOV；注册 `deliveryAsset`；执行交付预检；在内存中克隆目标 Project 并注入资源和 connected clips；在 `AfterForge/` 根层创建同文件系统临时包；生成 `Info.fcpxml` 并 hard link 或复制 MOV；通过全部自动验证后，原子重命名为正式 `.fcpxmld`。
+
+任何输入缺失、哈希不符、锁失效、媒体规格错误、时间越界或 XML 构建错误都必须在正式发布前阻塞。失败时只清理本轮创建且可明确识别的临时包，不删除或修改原输入、canonical MOV 或既有正式包。检测到同 fingerprint 包时先完整验证：通过则幂等复用，失败则报告损坏并阻塞，不自动修补或覆盖。
+
+### 自动验证与 Final Cut Pro 验收
+
+回填属于工程交付，不沿用 A8/A11 的轻量审美检查策略。自动验证至少覆盖：
+
+- 输入身份、源 XML 哈希、manifest、layout lock、ledger 与 Vn 对应关系；
+- 只有 `animated` cue 拥有 `deliveryAsset`，实际 MOV 的名称、哈希、ProRes 4444、alpha、1920×1080、源帧率、实际时长和无音频属性与注册值一致；
+- `Info.fcpxml` well-formed，并通过源 XML 版本对应 DTD；resource ID 唯一、全部 `ref` 可解析，动画资源和 connected clips 数量与 animated cues 精确一致；
+- 动画只使用包根目录相对路径，不出现构建目录、Vn 深层目录、临时目录或音频节点；
+- 同 lane 无重叠冲突，反算序列位置位于目标镜头或语义段落内，sequence 总时长不变；
+- 排除新导入身份、AfterForge resources 和 connected clips 后，输出 Project / sequence 与源目标 Project 规范化比较一致；
+- 包直接位于 `AfterForge/` 根层，只有一个 `Info.fcpxml` 和预期 MOV，不含子目录、隐藏临时文件或内部资产。
+
+DTD 与自动检查通过不等于 Final Cut Pro 必然接受。首个真实基线 `2026-08-26_V1` 必须完成实际导入，确认新 Event / Project、完整粗剪、媒体在线、alpha、无音频、六条动画可独立编辑、第 6/7 镜无占位且未被强制代理或优化。随后从 FCP 再导出并执行 round-trip 比较，验证动画、相对引用、粗略位置、纯视频属性、主故事线和总时长。FCPXML 版本、时间映射或 `deliveryProtocolVersion` 发生语义变化时重新执行 round-trip；普通 Vn 在协议未变化时只需完整自动验证、一次实际导入和可编辑性确认。
+
 ## V1 工作流
 
 V1 采用先审阅、后高质量渲染与回填的两阶段工作模式。
@@ -306,9 +384,11 @@ V1 采用先审阅、后高质量渲染与回填的两阶段工作模式。
 1. 验证 480p 完整动画审阅已批准，canonical 尺寸等于 delivery，projection-aware layout lock 有效；
 2. 为 animated cues 生成 1920×1080 delivery host，并在 composition 原生尺寸直接渲染透明 ProRes 4444 MOV；
 3. 逐 cue 验证 codec/profile、alpha、尺寸、帧率和时长；
-4. 将渲染结果注册并写入新的 FCPXML；
-5. 验证 XML、素材引用、时间位置、帧率和总时长；
-6. 交付完整、可迁移的项目目录，由用户导入 Final Cut Pro 继续检查和编辑。
+4. 重新探测实际 MOV，把稳定 `deliveryAsset` 注册进 manifest，`source-only` cue 保持无交付资产；
+5. 计算包含 `deliveryProtocolVersion` 的 `deliveryFingerprint`，克隆原目标 Project，创建新 Event / Project 身份并注入独立 connected clips；
+6. 在 `AfterForge/` 根层的同卷临时目录构建平铺 `.fcpxmld`，执行媒体、DTD、引用图、时间映射、原时间线不变性、包结构和幂等性验证；
+7. 自动验证通过后原子发布正式包，由用户导入 Final Cut Pro 检查媒体在线、alpha、独立可编辑性和粗略位置；
+8. 首次 V1 及交付协议语义变化时，从 Final Cut Pro 再导出并完成 round-trip 回归验证。
 
 ## V1 范围
 
@@ -328,7 +408,7 @@ V1 采用先审阅、后高质量渲染与回填的两阶段工作模式。
 - 审阅：854×480 合成 MP4，只用于确认构图、节奏和动画效果；视频保留粗剪参考视频自带的原声；
 - 透明动画交付：1920×1080 ProRes 4444 MOV，帧率跟随源 FCPXML；
 - 声音边界：不生成、设计、混合、交付或回填音效与音乐；
-- 回填：生成新的 FCPXML 和关联媒体，不覆盖原始输入；
+- 回填：在项目级 `AfterForge/` 根层生成平铺、不可覆盖、可验证复用的 `.fcpxmld`，包含完整原 Project 副本和逐条独立动画，不覆盖原始输入；
 - 审阅门槛：先确认当前视频的整体视觉包装与运动气质；文字方案与真实文案静态关键画面合并为一次验收；完整动画制作后再确认 480p 合成预览；
 - 异常处理：不能可靠对齐的内容进入人工确认清单。
 

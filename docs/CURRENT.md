@@ -40,6 +40,7 @@
 - 用户已批准迁移后的 854×480 完整动画审阅；六条 animated cue 已使用批准 hero poster 建立并验证 revision 2 layout lock，项目级 A11 状态为 approved；
 - 第 3 镜已完成原生 1920×1080 alpha 工程探针，六条正式动画随后全部在 composition 原生尺寸直接渲染到 `delivery/prores4444/`；逐条均通过 ProRes 4444、`yuva444p12le` alpha、1920×1080、24 fps 和时长校验，正式结果记录在 `delivery/render-ledger.json`；
 - Terra 早期生成的 854×480 捕获后放大产物未删除，已从正式文件名隔离到 V1 的 `delivery/quarantine/terra-upscaled-20260830/`，对应 worktree 的 Git 状态未触碰；
+- 已完成并在仓库权威文档中冻结正式 FCPXML 交付后端设计：主 manifest 注册稳定 `deliveryAsset`、render ledger 只作执行证据；交付包直接位于 `AfterForge/` 根层并平铺 `Info.fcpxml` 与 MOV；输出创建新 Event / Project、完整复制原时间线并以独立 connected clips 粗略回填动画；构建采用不可覆盖 fingerprint、同卷临时包与原子发布，并以自动验证、首次 FCP 导入和协议级 round-trip 建立基线；既有“回填策略版本”统一规范为唯一的 `deliveryProtocolVersion`，不形成第二权威，也不进入 A11 lock；该后端设计尚未实现；
 - 已移除旧版 HyperFrames marketplace plugin，并在软件重启后确认源码安装的新版 HyperFrames 技能可用；
 - Git 仓库已经初始化。
 
@@ -56,4 +57,4 @@
 
 ## 下一步
 
-下一项是设计并实现正式交付后端：把六条已验证的透明 MOV 注册到 manifest，生成新的 FCPXML，将动画按权威时间位置放到原时间线之上，并验证 XML、素材引用、帧率、时长与 Final Cut Pro 实际导入。开始回填前仍需先确定新 FCPXML 的输出命名和可迁移媒体组织方式。
+下一项是按已冻结设计实现 FCPXML 交付注册器、时间映射、注入器、扁平包构建器、交付验证器和 round-trip 比较器；先以 `2026-08-26_V1` 的六条已验证透明 MOV 完成 manifest 注册、不可覆盖 `.fcpxmld` 原子发布、自动验证、Final Cut Pro 实际导入与首次 round-trip，之后才能把正式回填能力标记为可靠成立。

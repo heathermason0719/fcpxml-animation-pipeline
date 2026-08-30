@@ -30,6 +30,56 @@
 
 **影响：** 所有脚本和验收流程必须把输入视为只读，并验证输出素材引用的完整性。
 
+## 用单一交付协议版本约束可复用 FCPXML 包
+
+**决定：** `deliveryFingerprint` 除业务输入外，必须包含由 FCPXML 交付后端持有的稳定常量 `deliveryProtocolVersion`。它是既有交付设计中“回填策略版本”的规范名称和唯一实现，不再建立并行的策略版本、包格式版本或生成器版本。
+
+**原因：** 即使原 FCPXML、动画资产和回填位置完全相同，FCPXML 注入、时间映射、lane 分配、媒体引用、Event / Project 身份处理或包结构的语义修复也可能改变最终交付。若指纹只覆盖业务输入，更新后的生成器可能错误复用旧包；显式语义版本可以让后端在这类变化发生时确定性地产生新指纹。
+
+**主要替代方案：** 使用 Git commit、实现文件哈希或每次都生成随机新包。前两者会把不改变输出的重构误判为协议变化，也可能遗漏环境外语义；后者失去相同输入的验证复用能力。
+
+**影响：** 会使相同业务输入产生语义不同交付结果的后端改动必须提升 `deliveryProtocolVersion`；不改变输出语义的重构不提升。该版本只属于交付后端和交付指纹，不进入 manifest 业务权威、不参与 A11 冻结，也不改变非破坏性回填目标。
+
+## 用 manifest 注册稳定交付资产，render ledger 只保留执行证据
+
+**决定：** 每条 `animated` cue 在正式 MOV 重新探测并验证后，把后端无关的 `deliveryAsset` 注册进主 `animation-manifest.json`；`source-only` cue 不注册。`render-ledger.json` 只证明一轮渲染如何执行，不成为 FCPXML 生成器的长期依赖，也不创建第二份 delivery manifest。
+
+**原因：** manifest 已经是分析、渲染与回填的稳定契约。让 FCPXML 直接依赖 HyperFrames ledger 会把交付后端绑定到特定渲染器；另建 delivery manifest 则会重复保存 cue、媒体和时间状态并产生漂移。
+
+**主要替代方案：** 直接消费 render ledger，或新增独立 delivery manifest。两者分别造成渲染器耦合和双重权威。
+
+**影响：** 注册器必须重新读取实际 MOV，把稳定文件名、哈希、规格、时长和 alpha 状态写入 manifest；manifest 不保存正式包绝对路径。`deliveryAsset` 不改变 A11 已批准布局的冻结边界。
+
+## 使用 AfterForge 根层的扁平、不可覆盖 FCPXMLD 交付包
+
+**决定：** 正式 `.fcpxmld` 直接发布在项目级 `AfterForge/` 根层，包根目录只平铺一个 `Info.fcpxml` 和已注册动画 MOV。XML 使用同级相对路径；同卷优先 hard link，失败时复制。包名包含 `deliveryFingerprint`，已有正式包不得原地覆盖。
+
+**原因：** 深层媒体路径在实际 Final Cut Pro 工作流中可能改变资源库外媒体引用和代理/优化媒体行为。扁平、自包含且不可覆盖的包便于移动、验证、回退和问题定位。
+
+**主要替代方案：** 在 Vn 深层 `delivery/Media/` 发布、写入构建机绝对路径，或覆盖固定名称包。它们分别增加 FCP 媒体管理风险、破坏迁移性和丢失历史结果。
+
+**影响：** 包内不包含 manifest、ledger、日志、临时文件或原电影媒体。包构建必须在同文件系统临时目录完成全部验证后原子发布；相同 fingerprint 只允许验证复用，损坏包必须阻塞而不是自动覆盖。
+
+## 创建新 Event / Project，并以独立 connected clips 粗略回填动画
+
+**决定：** 输出创建新的 AfterForge Event 和 Project，Project 是原目标 Project 的完整时间线副本，只增加每条 `animated` cue 对应的独立 connected clip。第 6、7 镜等 `source-only` cue 不生成占位；动画使用实际 MOV 时长，按目标镜头或语义段落粗略定位，不追求帧级旁白同步。
+
+**原因：** Final Cut Pro XML 导入没有可靠的“直接追加到既有 Event”交付路径，用户也需要把每条动画继续移动、裁切、禁用或复制。完整复制并叠加可以保持非破坏性，同时给粗剪阶段保留微调空间。
+
+**主要替代方案：** 更新原 Event / Project、统一 secondary storyline、compound clip、完整透明覆盖层或逐帧旁白同步。这些方案会增加原项目风险、降低逐条可编辑性，或把不必要的精度成本转嫁给粗剪。
+
+**影响：** 输出不得沿用可能触发既有对象更新的 Event / Project 身份；除新身份、动画资源和 connected clips 外，必须证明原 sequence 语义不变。lane 根据时间重叠确定，时间映射使用源 FCPXML 有理数并支持嵌套、`offset`、`start` 和 `timeMap`。
+
+## 以自动验证、首次实际导入和协议级 round-trip 建立交付基线
+
+**决定：** 正式包只有在媒体、DTD、引用图、时间位置、原时间线不变性、包结构和幂等性验证全部通过后才发布。首个真实 V1 必须完成 Final Cut Pro 实际导入和再导出 round-trip；后续仅在 FCPXML 或交付协议语义变化时重复 round-trip。
+
+**原因：** DTD 只能证明 XML 结构合法，不能证明 FCP 一定正常导入、保持相对媒体引用或按预期规范化时间线。另一方面，每个普通 Vn 重复完整 round-trip 会制造没有必要的人工成本。
+
+**主要替代方案：** 只做 DTD / 脚本验证，或每版都做完整 round-trip。前者覆盖不足，后者不符合高频生产效率目标。
+
+**影响：** `2026-08-26_V1` 是首个端到端基线；后端实施完成前不能宣称 FCPXML 交付能力已经成立。机器验证工程正确性，不重新评价动画审美或要求逐帧同步。
+
 ## 采用“工作区优先、阻塞才询问”的项目入口
 
 **决定：** Skill 先接收用户的实际项目工作区并自动发现已有材料。只有 FCPXML/FCPXMLD、低码粗剪参考视频缺失或无法唯一确定，或者时间线无法解析时，入口才向用户提出最小必要问题。animation brief、逐镜设计稿、品牌资料和重复旁白格式不作为默认必填项。
