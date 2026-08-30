@@ -572,10 +572,24 @@ class RoundTripTests(unittest.TestCase):
             event.set("uid", "NEW-EVENT-UID")
             project.set("uid", "NEW-PROJECT-UID")
             project.set("modDate", "2026-08-30 20:00:00 +0800")
+            resources = root.find("resources")
+            original_resource = next(item for item in resources.findall("asset") if item.get("name") == "Source Movie")
+            original_resource.set("id", "r99")
+            for element in root.iter():
+                if element.get("ref") == "r20":
+                    element.set("ref", "r99")
             for resource in root.find("resources").findall("asset"):
                 if resource.get("name", "").startswith("AF__"):
                     file_name = resource.get("name")
                     resource.find("media-rep").set("src", f"file:///Library/Original%20Media/{file_name}")
+            first_animation = next(
+                item for item in resources.findall("asset") if item.get("name") == "AF__p1s01-c01-title.mov"
+            )
+            first_animation.set("duration", "6145/3072s")
+            root.find(".//spine/clip/marker").set("start", "204/2s")
+            timepoints = root.findall(".//spine/clip/timeMap/timept")
+            timepoints[0].set("value", "1000/2s")
+            timepoints[1].set("value", "510000000001/1000000000s")
             ET.ElementTree(root).write(reexported, encoding="utf-8", xml_declaration=True)
 
             result = compare_roundtrip(delivered, reexported, manifest)
@@ -594,6 +608,9 @@ class RoundTripTests(unittest.TestCase):
             "media identity": lambda root: next(
                 item for item in root.find("resources").findall("asset") if item.get("name") == "AF__p1s01-c01-title.mov"
             ).find("media-rep").set("src", "file:///other.mov"),
+            "resource duration": lambda root: next(
+                item for item in root.find("resources").findall("asset") if item.get("name") == "AF__p1s01-c01-title.mov"
+            ).set("duration", "3s"),
             "position": lambda root: next(
                 item for item in root.findall(".//spine/clip/asset-clip") if item.get("name") == "AF__p1s01_c01_title"
             ).set("offset", "110s"),

@@ -42,6 +42,8 @@
 - Terra 早期生成的 854×480 捕获后放大产物未删除，已从正式文件名隔离到 V1 的 `delivery/quarantine/terra-upscaled-20260830/`，对应 worktree 的 Git 状态未触碰；
 - 已实现正式 FCPXML 交付后端：`register_delivery_assets.py` 只在重新探测实际 MOV 后向主 manifest 注册稳定 `deliveryAsset`；`fcpxml_timing.py`、`inject_fcpxml.py`、`build_delivery_package.py`、`validate_fcpxml_package.py` 与 `compare_fcpxml_roundtrip.py` 分别承担有理数时间/lane、Project 克隆与 connected clips 注入、唯一协议版本指纹与原子发布、完整工程验证和 FCP 再导出语义比较；render ledger 仍只作注册证据，不成为包构建输入；
 - 真实 `2026-08-26_V1` 已将第 1、2、3、4、5、8 镜共六条已验证透明 MOV 注册进 manifest，第 6、7 镜保持 `source-only` 且无占位；已在项目级 `AfterForge/` 根层发布 `AfterForge__2026-08-26_V1__d-2c692941c719d02a48374ebc2ceaba53c973428e5376da465cd0567724e708f8.fcpxmld`，包内只有 `Info.fcpxml` 与六条 MOV，通过源哈希、A11 lock、媒体哈希、时间/lane、引用、源 sequence 不变性、FCPXML 1.14 DTD 和第二次同指纹完整复用验证；
+- 用户已将上述正式包实际导入 Final Cut Pro，确认时间线与导出视频均无问题；FCP 再导出的 `round-trip-AfterForge__2026-08-26_V1__00-片头.fcpxmld` 已通过语义 round-trip，六条动画身份、connected clip 精确时长与粗略位置、纯视频属性、source-only 状态、主故事线和总时长均保持有效，`deliveryProtocolVersion = 1` 的首个真实 FCP 交付基线完整成立；
+- 首次 round-trip 证实 FCP 会重排 resource ID、改写媒体路径前缀与等价有理数，并可能产生微秒以下 `timeMap` 规范化和不超过一帧的 MOV resource 物理尾差；比较器已在不放宽 connected clip 时长、语义位置、音频属性或主故事线约束的前提下规范化这些非语义差异；
 - 已移除旧版 HyperFrames marketplace plugin，并在软件重启后确认源码安装的新版 HyperFrames 技能可用；
 - Git 仓库已经初始化。
 
@@ -49,13 +51,12 @@
 
 - 尚未实现参考视频内容理解或语音转写；
 - 尚未把本次人工完成的旁白对齐和初始 `animation-manifest.json` 内容生成整理为仓库内可复用的确定性流水线；HyperFrames 单一布局源装配、review projection、layout lock、adapter 验证和旧 Vn 迁移已经脚本化；
-- 尚未执行真实 V1 的 Final Cut Pro 导入、逐条可编辑性确认和再导出 round-trip；自动 FCPXML 回填、扁平包发布与验证已经完成；
 - 当前没有 build 或 lint 命令。
 
 ## 已知问题与阻塞
 
-当前没有已知技术阻塞。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。双分辨率单一布局源、审阅投影、delivery composition、单调递增布局锁、正式渲染驱动、媒体注册、FCPXML 注入、扁平包发布与自动交付验证已经具备确定性实现；真实 V1 已完成 revision 2 批准、六条原生透明交付渲染和首个正式 `.fcpxmld`。参考视频理解和初始 manifest 内容生成仍待实现；FCP 导入与再导出 round-trip 是当前剩余的人工验收门槛。
+当前没有已知技术阻塞。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。双分辨率单一布局源、审阅投影、delivery composition、单调递增布局锁、正式渲染驱动、媒体注册、FCPXML 注入、扁平包发布、自动交付验证和协议级 round-trip 已经具备确定性实现；真实 V1 已完成 revision 2 批准、六条原生透明交付渲染、正式 `.fcpxmld`、FCP 实际导入与再导出验证。参考视频理解和初始 manifest 内容生成仍待实现。
 
 ## 下一步
 
-下一项是由用户把真实 V1 的正式 `.fcpxmld` 导入 Final Cut Pro，确认新 Event / Project、完整粗剪、六条透明动画在线且可独立编辑、第 6/7 镜无占位，并从 FCP 再导出该 Project 的 FCPXML。随后运行 `compare_fcpxml_roundtrip.py`；通过后才能把 `deliveryProtocolVersion = 1` 的首个真实 FCP 交付基线标记为完整成立。
+本轮正式回填开发与真实 V1 端到端验证已经收口。下一步先由用户审查当前仓库 diff 并决定 commit / push；后续功能开发可转向尚未脚本化的参考视频内容理解与初始 manifest 内容生成，或使用新的 Vn 重跑一次完整生产流程验证复用性。

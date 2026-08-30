@@ -356,7 +356,7 @@ FCPXML 交付后端使用 `deliveryFingerprint` 识别可验证、可复用且�
 - 排除新导入身份、AfterForge resources 和 connected clips 后，输出 Project / sequence 与源目标 Project 规范化比较一致；
 - 包直接位于 `AfterForge/` 根层，只有一个 `Info.fcpxml` 和预期 MOV，不含子目录、隐藏临时文件或内部资产。
 
-DTD 与自动检查通过不等于 Final Cut Pro 必然接受。首个真实基线 `2026-08-26_V1` 必须完成实际导入，确认新 Event / Project、完整粗剪、媒体在线、alpha、无音频、六条动画可独立编辑、第 6/7 镜无占位且未被强制代理或优化。随后从 FCP 再导出并执行 round-trip 比较，验证动画、相对引用、粗略位置、纯视频属性、主故事线和总时长。FCPXML 版本、时间映射或 `deliveryProtocolVersion` 发生语义变化时重新执行 round-trip；普通 Vn 在协议未变化时只需完整自动验证、一次实际导入和可编辑性确认。
+DTD 与自动检查通过不等于 Final Cut Pro 必然接受。首个真实基线 `2026-08-26_V1` 必须完成实际导入，确认新 Event / Project、完整粗剪、媒体在线、alpha、无音频、六条动画可独立编辑、第 6/7 镜无占位且未被强制代理或优化。随后从 FCP 再导出并执行 round-trip 比较，验证动画媒体身份、粗略位置、纯视频属性、主故事线和总时长。比较器应规范化 FCP 产生的非语义变化，包括 resource ID 重排、媒体 URL 前缀改写、等价有理数表示、微秒级 `timeMap` 舍入，以及不短于 connected clip 且不超过一帧的媒体 resource 物理尾差；connected clip 时长、语义区间、音频属性与原主故事线仍是硬约束。FCPXML 版本、时间映射或 `deliveryProtocolVersion` 发生语义变化时重新执行 round-trip；普通 Vn 在协议未变化时只需完整自动验证、一次实际导入和可编辑性确认。
 
 ## V1 工作流
 

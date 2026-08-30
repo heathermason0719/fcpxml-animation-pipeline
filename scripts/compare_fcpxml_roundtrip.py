@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -15,14 +16,12 @@ try:
     from scripts.validate_fcpxml_package import (
         _global_afterforge_intervals,
         _remove_afterforge_anchors,
-        _semantic_tree,
     )
 except ModuleNotFoundError:
     from hyperframes_adapter import parse_time  # type: ignore
     from validate_fcpxml_package import (  # type: ignore
         _global_afterforge_intervals,
         _remove_afterforge_anchors,
-        _semantic_tree,
     )
 
 
@@ -73,6 +72,86 @@ def _assert_pure_video(resource: ET.Element, cue_id: str) -> None:
         raise ValueError(f"round-trip animation contains audio nodes: {cue_id}")
 
 
+def _resource_identity(resource: ET.Element) -> tuple[Any, ...]:
+    uid = resource.get("uid")
+    if uid:
+        return resource.tag, "uid", uid
+    if resource.tag == "asset":
+        media = resource.findall("media-rep")
+        basename = _media_basename(media[0].get("src")) if len(media) == 1 else None
+        return resource.tag, "media", basename, resource.get("name")
+    attributes = tuple(
+        sorted(
+            (key, _canonical_time(value))
+            for key, value in resource.attrib.items()
+            if key != "id"
+        )
+    )
+    return resource.tag, attributes
+
+
+def _resource_map(root: ET.Element) -> dict[str, tuple[Any, ...]]:
+    resources = root.find("resources")
+    if resources is None:
+        raise ValueError("round-trip FCPXML lacks resources")
+    return {
+        resource_id: _resource_identity(resource)
+        for resource in resources
+        if (resource_id := resource.get("id"))
+    }
+
+
+def _canonical_time(value: str) -> str:
+    if not value.endswith("s"):
+        return value
+    try:
+        fraction = parse_time(value)
+    except ValueError:
+        return value
+    if fraction.denominator == 1:
+        return f"{fraction.numerator}s"
+    return f"{fraction.numerator}/{fraction.denominator}s"
+
+
+def _source_story_equal(
+    delivered: ET.Element,
+    reexported: ET.Element,
+    delivered_resources: dict[str, tuple[Any, ...]],
+    reexported_resources: dict[str, tuple[Any, ...]],
+) -> bool:
+    if delivered.tag != reexported.tag or len(delivered) != len(reexported):
+        return False
+    delivered_text = delivered.text if delivered.text and delivered.text.strip() else None
+    reexported_text = reexported.text if reexported.text and reexported.text.strip() else None
+    if delivered_text != reexported_text or set(delivered.attrib) != set(reexported.attrib):
+        return False
+
+    for key in delivered.attrib:
+        left = delivered.attrib[key]
+        right = reexported.attrib[key]
+        if key in {"ref", "format"} and left in delivered_resources and right in reexported_resources:
+            if delivered_resources[left] != reexported_resources[right]:
+                return False
+            continue
+        if left.endswith("s") and right.endswith("s"):
+            try:
+                difference = abs(parse_time(left) - parse_time(right))
+            except ValueError:
+                difference = None
+            if difference is not None:
+                tolerance = Fraction(1, 1_000_000) if delivered.tag == "timept" and key in {"time", "value"} else Fraction(0)
+                if difference > tolerance:
+                    return False
+                continue
+        if left != right:
+            return False
+
+    return all(
+        _source_story_equal(left, right, delivered_resources, reexported_resources)
+        for left, right in zip(delivered, reexported)
+    )
+
+
 def compare_roundtrip(
     delivered_xml: Path,
     reexported_xml: Path,
@@ -117,8 +196,12 @@ def compare_roundtrip(
         asset = cue["deliveryAsset"]
         resource = _resource_for_file(resources, asset["fileName"])
         _assert_pure_video(resource, cue_id)
-        if resource.get("duration") is not None and parse_time(resource.get("duration")) != parse_time(asset["duration"]):
-            raise ValueError(f"round-trip animation resource duration changed: {cue_id}")
+        if resource.get("duration") is not None:
+            registered_duration = parse_time(asset["duration"])
+            physical_duration = parse_time(resource.get("duration"))
+            frame_duration = parse_time(manifest["project"]["source"]["frameDuration"])
+            if not registered_duration <= physical_duration <= registered_duration + frame_duration:
+                raise ValueError(f"round-trip animation resource duration changed: {cue_id}")
 
         anchor_name = f"AF__{cue_id}"
         anchors = [item for item in spine.iter("asset-clip") if item.get("name") == anchor_name]
@@ -139,7 +222,12 @@ def compare_roundtrip(
 
     delivered_clean = _remove_afterforge_anchors(delivered_sequence, cue_ids)
     reexported_clean = _remove_afterforge_anchors(reexported_sequence, cue_ids)
-    if _semantic_tree(delivered_clean) != _semantic_tree(reexported_clean):
+    if not _source_story_equal(
+        delivered_clean,
+        reexported_clean,
+        _resource_map(delivered_root),
+        _resource_map(reexported_root),
+    ):
         raise ValueError("round-trip source storyline changed")
 
     return {
