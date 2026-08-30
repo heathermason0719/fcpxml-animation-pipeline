@@ -33,7 +33,8 @@
         ├── compositions/
         │   ├── cues/（正式 DOM、布局与 CSS 唯一源）
         │   ├── motion/（独立运动时间线）
-        │   └── review/（自动生成 A11 projection）
+        │   ├── review/（自动生成 854×480 A11 projection）
+        │   └── delivery/（自动生成 1920×1080 单 cue render host）
         ├── approvals/a11/（批准 hero poster）
         ├── assets/
         ├── previews/*.mp4
@@ -108,14 +109,15 @@ V1 计划由以下脚本组件承担机械操作；名称表达职责，具体�
 - `init_afterforge_project.py`：一次性创建项目级 Agent 指令入口；已存在时不覆盖，且不承担 Vn 创建；
 - `scaffold_hyperframes.py`：使用仓库控制的最小模板，根据动画清单创建一个新的、可独立重渲染的 Vn HyperFrames 工程；不调用通用 `hyperframes init`，不生成或更新项目级 Agent 文件；
 - `sync_storyboard.py`：从 manifest v2 生成 `STORYBOARD.md` 和只引用 canonical cue 的 A11 review projection；
-- `layout_lock.py`：冻结并验证 A11 已批准 composition、样式、字体与 hero poster 的 SHA-256；
+- `layout_lock.py`：冻结并验证 A11 已批准 composition、样式、字体、review projection、投影规格与 hero poster 的 SHA-256；
 - `assemble_hyperframes.py`：按 manifest 中的 FCPXML 有理数时间装配正式 cue composition；
-- `validate_hyperframes_adapter.py`：检查 adapter 路径、ID、依赖、review projection、motion/layout 边界与 layout lock；
+- `sync_delivery.py`：为每条 animated cue 生成原生 delivery 尺寸的透明渲染 host；
+- `validate_hyperframes_adapter.py`：检查 adapter 路径、ID、canonical/delivery 尺寸、依赖、review projection、motion/layout 边界与 layout lock；
 - `migrate_single_source.py`：把旧 Vn 的最新 animation composition 拆分为 canonical cue 与 motion，同时保留旧目录作迁移对照；
-- `render_animations.py`：检查并渲染动画；
-- `transcode_alpha.py`：将透明动画转换为 ProRes 4444；
+- `migrate_delivery_layout.py`：把旧 854×480 canonical cue 包装为 delivery-native root，并强制重新执行等价验收；
+- `render_animations.py`：只在 layout lock 有效时按 composition 原生尺寸渲染透明 ProRes 4444；
 - `inject_fcpxml.py`：将动画引用写入新的时间线；
-- `validate_delivery.py`：检查素材路径、帧率、时长、引用关系和 XML 合法性。
+- `validate_delivery.py`：检查 ProRes 4444、alpha、尺寸、帧率与逐 cue 时长；后续 FCPXML 验证由回填组件另行承担。
 
 脚本必须把原始项目输入视为只读，并产生可单独检查的新输出。
 
@@ -226,9 +228,9 @@ Agent 默认自主完成该路由，不新增逐条用户确认。只有分叉�
 
 `STORYBOARD.md` 是 HyperFrames 适配层从草稿状态 `animation-manifest.json` 生成的人工审阅视图，不是独立权威源，也不负责精确时间。它利用 HyperFrames Studio 的关键画面联系表和逐卡反馈能力，把每条动画的稳定 cue ID、用户材料中的原镜号、视觉语法路由、文字方案、真实展示文案、信息层级、元素数量、从属关系、构图和运动意图与对应静态关键画面放在一起审阅；用户材料未提供镜号时不伪造原镜号。
 
-每条 animated cue 的真实文案、DOM、布局和 CSS 终态只写在 `compositions/cues/<cue>.html`。A11 不再另写静态 frame：`sync_storyboard.py` 生成的 `compositions/review/<cue>.html` 把对应原画 still 与该正式 cue composition 叠加，并由 `heroTime` 选择静态验收状态。A12 的正式合成入口同样直接装载该 cue composition。review、`STORYBOARD.md` 与顶层 `index.html` 都是 projection，不是可独立编辑的布局源；生成器只允许覆盖带自身 marker 的文件。
+每条 animated cue 的真实文案、DOM、布局和 CSS 终态只写在 `compositions/cues/<cue>.html`，其 root 尺寸必须与 `project.delivery` 完全一致。A11 不再另写静态 frame：`sync_storyboard.py` 生成的 854×480 `compositions/review/<cue>.html` 把对应原画 still 与该 1920×1080 正式 cue composition 按 manifest 比例叠加，并由 `heroTime` 选择静态验收状态。A12 的 854×480 合成入口同样投影该 cue；`sync_delivery.py` 则生成不缩放的 1920×1080 单 cue render host。review、delivery host、`STORYBOARD.md` 与顶层 `index.html` 都是 projection，不是可独立编辑的布局源；生成器只允许覆盖带自身 marker 的文件。
 
-运动写在 `compositions/motion/<cue>.js`。它可以控制时间、transform、opacity、clip/mask 进度等动画状态，但不得改写 `left/top/width/height/font/gap/display` 等布局属性。A11 用户通过后，`layout_lock.py` 用批准 hero poster 和 `layoutDependencies` 中 canonical HTML、CSS、字体等文件建立 SHA-256 锁；任何依赖变化都使该 cue 回到 A11，而不是在 A12 静默重新对位。`source-only` cue 只有原画 review projection，不创建正式 composition、motion 或渲染槽。完整 adapter 协议见 `references/hyperframes-single-source.md`。
+运动写在 `compositions/motion/<cue>.js`。它可以控制时间、transform、opacity、clip/mask 进度等动画状态，但不得改写 `left/top/width/height/font/gap/display` 等布局属性。A11 用户通过后，`layout_lock.py` 用批准 hero poster、`layoutDependencies` 中 canonical HTML/CSS/字体、生成的 review projection 及其尺寸规格建立 SHA-256 锁；任何依赖或投影变化都使该 cue 回到 A11，而不是在 A12 静默重新对位。`source-only` cue 只有原画 review projection，不创建正式 composition、motion、delivery host 或渲染槽。完整 adapter 协议见 `references/hyperframes-single-source.md`。
 
 内部制作仍按“先形成文字方案，再制作使用真实文案的静态关键画面”的顺序执行，但不在两步之间打断用户。只有两部分都准备好后才合并提交一次用户验收。反馈先修正草稿 manifest，再重新生成 storyboard 和受影响的静态关键画面；确认后 manifest 才标记为 `approved` 并进入完整动画制作。HyperFrames 所称 storyboard frame 是关键画面卡，不是 FCPXML 的帧级时间输入。
 
@@ -251,10 +253,12 @@ HyperFrames 是 V1 的动画渲染后端，但不是整个系统的架构中心�
 
 未来可以用 Apple Motion 模板、After Effects、Remotion、Blender 或人工制作替换渲染后端。替换时只应新增或更换渲染适配层，不应重写前端分析、`animation-manifest.json` 或 FCPXML 回填逻辑。
 
-V1 中，HyperFrames 使用同一 canonical cue composition 和独立 motion 生成两个输出层级：
+V1 中，HyperFrames 使用同一 delivery-native canonical cue composition 和独立 motion 生成两个输出层级：
 
-- 审阅层：854×480 合成 MP4，把动画叠加在对应粗剪画面上，并保留粗剪参考视频自带的原声；该文件只用于动画效果确认；
-- 交付层：用户确认后生成 1920×1080 透明动画，并转换为适合 Final Cut Pro 合成的 ProRes 4444 MOV；帧率始终跟随源 FCPXML。
+- 审阅层：把 1920×1080 canonical cue 自动投影为 854×480 合成 MP4，叠加在对应粗剪画面上并保留粗剪参考视频自带的原声；该文件只用于动画效果确认；
+- 交付层：用户确认后通过自动生成的 1920×1080 delivery host 在 composition 原生尺寸直接渲染透明 ProRes 4444 MOV；帧率始终跟随源 FCPXML，禁止 `--resolution` 和后期放大。
+
+旧 Vn 若仍以 854×480 为 canonical root，先用确定性 legacy stage 把既有布局映射进 1920×1080 root。该映射仍由浏览器在 1920×1080 capture 中绘制 CSS、文字和图形，不放大已编码视频；迁移会清除旧 lock、在 `layoutRevision` 保留修订基线，并要求用户重新确认 480p hero 与完整动画等价性。新批准锁必须从保留基线单调递增。新 Vn 不使用兼容 stage，直接按 delivery 坐标创作。
 
 源时间线分辨率不决定动画交付分辨率。当前 16:9 自媒体 V1 即使接入 4K 电影素材时间线，也不生成 4K 动画；720p 不作为统一最终规格。
 
@@ -299,11 +303,12 @@ V1 采用先审阅、后高质量渲染与回填的两阶段工作模式。
 
 ### 阶段二：渲染、回填与验证
 
-1. 根据已确认清单创建并渲染 1920×1080 HyperFrames 透明动画，帧率跟随源 FCPXML；
-2. 将透明动画转换为 ProRes 4444 MOV；
-3. 将渲染结果注册并写入新的 FCPXML；
-4. 验证 XML、素材引用、时间位置、帧率和总时长；
-5. 交付完整、可迁移的项目目录，由用户导入 Final Cut Pro 继续检查和编辑。
+1. 验证 480p 完整动画审阅已批准，canonical 尺寸等于 delivery，projection-aware layout lock 有效；
+2. 为 animated cues 生成 1920×1080 delivery host，并在 composition 原生尺寸直接渲染透明 ProRes 4444 MOV；
+3. 逐 cue 验证 codec/profile、alpha、尺寸、帧率和时长；
+4. 将渲染结果注册并写入新的 FCPXML；
+5. 验证 XML、素材引用、时间位置、帧率和总时长；
+6. 交付完整、可迁移的项目目录，由用户导入 Final Cut Pro 继续检查和编辑。
 
 ## V1 范围
 

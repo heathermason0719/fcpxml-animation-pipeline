@@ -19,7 +19,7 @@
 - 已在同一真实项目中执行一次性 AfterForge 项目初始化：既有 `AfterForge/` 与 `user-inbox/` 原样复用，只在 `AfterForge/` 根层创建缺失的项目级 `AGENTS.md` 和 `CLAUDE.md`，未创建 canonical `frame.md` 或 Vn；
 - 用户工作目录初始化已在一个真实项目根目录完成验证：首次返回 `created`，重复运行返回 `existing`，目录内未生成其他内容；
 - 入口能以 `ready`/`blocked`、blocker、warning、ambiguity 和最小问题清单表达是否具备后续分析条件；
-- 当前可靠行为已通过 38 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
+- 当前可靠行为已通过 51 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-25_V2` 执行 `--flat` intake：唯一选择 `P1-sence-01-粗剪.fcpxmld` 和 `P1-sence-01 粗剪.m4v`，识别 `P1-sence-01 脚本.docx` 为旁白证据，结果为 `ready`，无 blocker、warning 或 ambiguity；
 - intake 已新增 `materials.animation_guidance`，用于独立保留用户主动提供的动画脚本或逐镜要求；存在 SRT 时不再因旁白来源已经成立而丢弃动画脚本，脚本内时码仍不具备 FCPXML 时间权威；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-26_V1` 重新执行 `--flat` intake：唯一选择 `P1-sence-01.fcpxmld` 与 `P1-sence-01 粗剪.m4v`，同时把 `P1-sence-01 字幕.srt` 保留为旁白证据、`P1-sence-01 脚本.docx` 保留为动画指导，结果为 `ready`，无 blocker、warning 或 ambiguity；
@@ -33,7 +33,13 @@
 - 已确认 A8、A11 使用可验收性门槛：优先尽快交付用户查看，低成本自动检查只作非阻塞自检；只有 storyboard 无法打开、关键资源缺失或页面明显报错等导致用户无法验收的问题才阻塞，Agent 不代替用户完成审美验收；
 - 已确认 Vn 创建不使用通用 `hyperframes init`，改由仓库控制的确定性脚手架建立最小可重渲染工程，且不得触碰项目级 Agent 文件；
 - 已在真实项目 `/Users/xiaobaimac/Movies/trumen` 创建项目级 canonical `AfterForge/frame.md`，并通过确定性脚手架创建 `/Users/xiaobaimac/Movies/trumen/AfterForge/2026-08-26_V1`；A8 与 A11 已通过，A12 已按确认方案制作第 1–5、8 镜完整动画，第 6、7 镜按用户确认保留原画且不生成动画占位，并输出 854×480、24 fps、54.083333 秒的合成审阅 MP4；A13 已确认整体观感方向，删除声音制作，完成第 8 镜纯文字交替与水平线修正，并将第 3 镜的全宽揭示遮罩与原始 27 px 内缩问号排版解耦，避免裁切和位移；
-- 真实 `2026-08-26_V1` 已完成单一布局源迁移等价性验收：第 1、2、3、4、5、8 镜的批准 hero 截图保存在 `approvals/a11/`，六个 animated cue 均建立 revision 1 SHA-256 layout lock 并通过验证，第 6、7 镜继续为 source-only；
+- 已实现面向长期交付的双分辨率单一布局源：canonical cue 的 CSS 终态固定为项目交付尺寸，A11 storyboard 与 A12 合成预览只从同一正式 cue 生成 854×480 审阅投影，正式渲染则从自动生成的 1920×1080 delivery composition 直接输出，不使用低分辨率放大；layout lock 同时冻结 canonical cue、motion、字体、媒体、review projection 与投影规格；
+- 已实现 `sync_delivery.py`、`render_animations.py` 与 `validate_delivery.py`：可确定性生成逐 cue 正式渲染入口、执行原生分辨率透明 MOV 渲染并用 ffprobe 校验 ProRes 4444、alpha、尺寸、帧率和时长；已有交付文件默认不覆盖；
+- 真实 `2026-08-26_V1` 已从 854×480 canonical cue 迁移为 1920×1080 delivery-native canonical cue，第 1、2、3、4、5、8 镜共用一套正式布局，第 6、7 镜继续为 source-only；旧内容保留在 canonical cue 内的兼容 stage 中，motion 文件未改动；迁移会清除旧 lock 但通过 `layoutRevision` 保留修订基线；
+- V1 迁移后的 A11/A12 审阅投影、六个 delivery composition 和 854×480 全片等价审阅 MP4 已重新生成；旧审阅与新审阅的机械比较为 SSIM 0.992823、PSNR 35.489055 dB，仅用于发现明显工程漂移，不替代用户视觉验收；
+- 用户已批准迁移后的 854×480 完整动画审阅；六条 animated cue 已使用批准 hero poster 建立并验证 revision 2 layout lock，项目级 A11 状态为 approved；
+- 第 3 镜已完成原生 1920×1080 alpha 工程探针，六条正式动画随后全部在 composition 原生尺寸直接渲染到 `delivery/prores4444/`；逐条均通过 ProRes 4444、`yuva444p12le` alpha、1920×1080、24 fps 和时长校验，正式结果记录在 `delivery/render-ledger.json`；
+- Terra 早期生成的 854×480 捕获后放大产物未删除，已从正式文件名隔离到 V1 的 `delivery/quarantine/terra-upscaled-20260830/`，对应 worktree 的 Git 状态未触碰；
 - 已移除旧版 HyperFrames marketplace plugin，并在软件重启后确认源码安装的新版 HyperFrames 技能可用；
 - Git 仓库已经初始化。
 
@@ -41,13 +47,13 @@
 
 - 尚未实现参考视频内容理解或语音转写；
 - 尚未把本次人工完成的旁白对齐和初始 `animation-manifest.json` 内容生成整理为仓库内可复用的确定性流水线；HyperFrames 单一布局源装配、review projection、layout lock、adapter 验证和旧 Vn 迁移已经脚本化；
-- 尚未执行 1080p 透明 ProRes 4444 最终渲染、FCPXML 回填或 Final Cut Pro 导入验证；
+- 尚未执行 FCPXML 回填或 Final Cut Pro 导入验证；
 - 当前没有 build 或 lint 命令。
 
 ## 已知问题与阻塞
 
-当前没有已知技术阻塞。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。新单一布局源结构已经具备确定性生成和验证能力，真实 V1 的 A11 ground truth 与六个 layout lock 已成立。参考视频理解、初始 manifest 内容生成、1080p 透明转码、FCPXML 回填和 Final Cut Pro 导入仍待实现与验证。
+当前没有已知技术阻塞。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。双分辨率单一布局源、审阅投影、delivery composition、单调递增布局锁、正式渲染驱动和交付校验已经具备确定性实现；真实 V1 已完成 revision 2 批准与六条原生透明交付渲染。参考视频理解、初始 manifest 内容生成、FCPXML 回填和 Final Cut Pro 导入仍待实现与验证。
 
 ## 下一步
 
-下一项是为六条已锁定 animated cue 执行 1080p 透明渲染和 ProRes 4444 转换，随后实现并验证 FCPXML 回填与 Final Cut Pro 导入。
+下一项是设计并实现正式交付后端：把六条已验证的透明 MOV 注册到 manifest，生成新的 FCPXML，将动画按权威时间位置放到原时间线之上，并验证 XML、素材引用、帧率、时长与 Final Cut Pro 实际导入。开始回填前仍需先确定新 FCPXML 的输出命名和可迁移媒体组织方式。

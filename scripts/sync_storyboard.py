@@ -14,8 +14,11 @@ try:
         GENERATED_REVIEW_MARKER,
         cue_adapter,
         decimal_seconds,
+        decimal_number,
         ensure_parent,
         load_manifest,
+        project_dimensions,
+        projection_scale,
         project_duration,
         safe_project_path,
     )
@@ -24,14 +27,25 @@ except ModuleNotFoundError:
         GENERATED_REVIEW_MARKER,
         cue_adapter,
         decimal_seconds,
+        decimal_number,
         ensure_parent,
         load_manifest,
+        project_dimensions,
+        projection_scale,
         project_duration,
         safe_project_path,
     )
 
 
-def _review_html(cue: dict[str, Any], width: int, height: int) -> str:
+def _review_html(
+    cue: dict[str, Any],
+    preview_width: int,
+    preview_height: int,
+    delivery_width: int,
+    delivery_height: int,
+    scale_x: str,
+    scale_y: str,
+) -> str:
     adapter = cue_adapter(cue)
     cue_id = str(cue["id"])
     review_id = f"review-{cue_id.replace('_', '-')}"
@@ -41,18 +55,19 @@ def _review_html(cue: dict[str, Any], width: int, height: int) -> str:
     if cue["productionMode"] == "animation":
         composition_id = escape(adapter["compositionId"], quote=True)
         composition_src = escape(adapter["compositionSrc"], quote=True)
-        mount = f'''\n    <div id="review-overlay-{escape(cue_id.replace('_', '-'), quote=True)}" class="clip overlay" data-composition-id="{composition_id}" data-composition-src="{composition_src}" data-start="0" data-duration="{duration}" data-track-index="1" data-width="{width}" data-height="{height}"></div>'''
+        mount = f'''\n    <div id="review-overlay-{escape(cue_id.replace('_', '-'), quote=True)}" class="clip overlay" data-composition-id="{composition_id}" data-composition-src="{composition_src}" data-start="0" data-duration="{duration}" data-track-index="1" data-width="{delivery_width}" data-height="{delivery_height}"></div>'''
     return f'''<!doctype html>
 <html lang="zh-CN">
   <body>
     <template>
       <!-- {GENERATED_REVIEW_MARKER} -->
       <style>
-        #root {{ position: absolute; inset: 0; width: {width}px; height: {height}px; overflow: hidden; background: #000; }}
-        .source, .overlay {{ position: absolute; inset: 0; width: 100%; height: 100%; }}
+        #root {{ position: absolute; inset: 0; width: {preview_width}px; height: {preview_height}px; overflow: hidden; background: #000; }}
+        .source {{ position: absolute; inset: 0; width: 100%; height: 100%; }}
         .source {{ object-fit: cover; }}
+        .overlay {{ position: absolute; left: 0; top: 0; width: {delivery_width}px; height: {delivery_height}px; transform-origin: 0 0; transform: scale({scale_x}, {scale_y}); }}
       </style>
-      <div id="root" data-composition-id="{review_id}" data-width="{width}" data-height="{height}" data-duration="{duration}">
+      <div id="root" data-composition-id="{review_id}" data-width="{preview_width}" data-height="{preview_height}" data-duration="{duration}">
         <img class="source" src="{still}" alt="">{mount}
       </div>
       <script>
@@ -140,7 +155,9 @@ def _write_generated_review(path: Path, content: str) -> None:
 def sync_storyboard(version_root: Path) -> dict[str, Any]:
     root = version_root.expanduser().resolve()
     manifest = load_manifest(root)
-    preview = manifest["project"]["preview"]
+    preview_width, preview_height = project_dimensions(manifest, "preview")
+    delivery_width, delivery_height = project_dimensions(manifest, "delivery")
+    scale_x, scale_y = projection_scale(manifest)
     generated: list[str] = []
     for cue in manifest["cues"]:
         adapter = cue_adapter(cue)
@@ -148,7 +165,18 @@ def sync_storyboard(version_root: Path) -> dict[str, Any]:
         if cue.get("productionMode") == "animation":
             safe_project_path(root, adapter["compositionSrc"])
         review_path = safe_project_path(root, adapter["reviewSrc"], must_exist=False)
-        _write_generated_review(review_path, _review_html(cue, int(preview["width"]), int(preview["height"])))
+        _write_generated_review(
+            review_path,
+            _review_html(
+                cue,
+                preview_width,
+                preview_height,
+                delivery_width,
+                delivery_height,
+                decimal_number(scale_x),
+                decimal_number(scale_y),
+            ),
+        )
         generated.append(adapter["reviewSrc"])
     (root / "STORYBOARD.md").write_text(_storyboard(manifest), encoding="utf-8")
     return {"status": "synced", "storyboard": "STORYBOARD.md", "reviewFiles": generated}

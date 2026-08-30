@@ -11,9 +11,25 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from scripts.hyperframes_adapter import cue_adapter, find_cue, load_manifest, safe_project_path, save_manifest
+    from scripts.hyperframes_adapter import (
+        GENERATED_REVIEW_MARKER,
+        cue_adapter,
+        find_cue,
+        load_manifest,
+        project_dimensions,
+        safe_project_path,
+        save_manifest,
+    )
 except ModuleNotFoundError:
-    from hyperframes_adapter import cue_adapter, find_cue, load_manifest, safe_project_path, save_manifest  # type: ignore
+    from hyperframes_adapter import (  # type: ignore
+        GENERATED_REVIEW_MARKER,
+        cue_adapter,
+        find_cue,
+        load_manifest,
+        project_dimensions,
+        safe_project_path,
+        save_manifest,
+    )
 
 
 def _dependency_records(version_root: Path, adapter: dict[str, Any]) -> tuple[list[dict[str, str]], str]:
@@ -35,6 +51,27 @@ def _dependency_records(version_root: Path, adapter: dict[str, Any]) -> tuple[li
     return records, aggregate.hexdigest()
 
 
+def _projection_spec(manifest: dict[str, Any]) -> dict[str, Any]:
+    preview_width, preview_height = project_dimensions(manifest, "preview")
+    delivery_width, delivery_height = project_dimensions(manifest, "delivery")
+    return {
+        "mode": "delivery-to-preview-axis-scale",
+        "previewWidth": preview_width,
+        "previewHeight": preview_height,
+        "deliveryWidth": delivery_width,
+        "deliveryHeight": delivery_height,
+    }
+
+
+def _review_projection_record(version_root: Path, adapter: dict[str, Any]) -> dict[str, str]:
+    relative = adapter["reviewSrc"]
+    path = safe_project_path(version_root, relative)
+    content = path.read_text(encoding="utf-8")
+    if GENERATED_REVIEW_MARKER not in content:
+        raise ValueError(f"review projection is not generated: {relative}")
+    return {"path": relative, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
 def freeze_layout(version_root: Path, cue_id: str, approved_poster: Path) -> dict[str, Any]:
     root = version_root.expanduser().resolve()
     manifest = load_manifest(root)
@@ -46,7 +83,10 @@ def freeze_layout(version_root: Path, cue_id: str, approved_poster: Path) -> dic
     if not poster_source.is_file() or poster_source.is_symlink():
         raise ValueError(f"approved poster is not a regular file: {poster_source}")
     records, aggregate = _dependency_records(root, adapter)
-    revision = int((adapter.get("layoutLock") or {}).get("revision", 0)) + 1
+    review_projection = _review_projection_record(root, adapter)
+    current_lock_revision = int((adapter.get("layoutLock") or {}).get("revision", 0))
+    preserved_revision = int(adapter.get("layoutRevision", 0))
+    revision = max(current_lock_revision, preserved_revision) + 1
     suffix = poster_source.suffix.lower() or ".png"
     poster_relative = f"approvals/a11/{adapter['compositionId']}{suffix}"
     poster_target = safe_project_path(root, poster_relative, must_exist=False)
@@ -59,9 +99,12 @@ def freeze_layout(version_root: Path, cue_id: str, approved_poster: Path) -> dic
         "algorithm": "sha256",
         "files": records,
         "aggregateSha256": aggregate,
+        "reviewProjection": review_projection,
+        "projectionSpec": _projection_spec(manifest),
         "approvedPoster": poster_relative,
         "approvedPosterSha256": poster_hash,
     }
+    adapter["layoutRevision"] = revision
     cue["workflowState"] = "layout-approved"
     _approve_a11_if_complete(manifest)
     save_manifest(root, manifest)
@@ -106,9 +149,15 @@ def verify_layouts(version_root: Path) -> dict[str, Any]:
         checked.append(cue["id"])
         try:
             _, aggregate = _dependency_records(root, adapter)
+            review_projection = _review_projection_record(root, adapter)
             poster = safe_project_path(root, lock["approvedPoster"])
             poster_hash = hashlib.sha256(poster.read_bytes()).hexdigest()
-            valid = aggregate == lock.get("aggregateSha256") and poster_hash == lock.get("approvedPosterSha256")
+            valid = (
+                aggregate == lock.get("aggregateSha256")
+                and review_projection == lock.get("reviewProjection")
+                and _projection_spec(manifest) == lock.get("projectionSpec")
+                and poster_hash == lock.get("approvedPosterSha256")
+            )
         except (KeyError, OSError, ValueError) as error:
             valid = False
             details.append({"cueId": cue["id"], "error": str(error)})

@@ -20,6 +20,11 @@ except ModuleNotFoundError:
     validate_project = None
     migrate_version = None
 
+try:
+    from scripts.sync_delivery import sync_delivery
+except ModuleNotFoundError:
+    sync_delivery = None
+
 
 GENERATED_MARKER = "generated-by: fcpxml-animation-pipeline sync_storyboard"
 
@@ -132,6 +137,7 @@ class SingleSourceFixture(unittest.TestCase):
             "compositions/cues",
             "compositions/motion",
             "compositions/review",
+            "compositions/delivery",
             "assets/fonts",
             "assets/media",
             "assets/stills",
@@ -148,7 +154,7 @@ class SingleSourceFixture(unittest.TestCase):
         (root / "compositions/cues/p1s01-c01-title.html").write_text(
             """<!doctype html><html><body><template>
 <style>@import url(\"assets/styles/project-tokens.css\"); #root{position:absolute;inset:0}</style>
-<div id=\"root\" data-composition-id=\"p1s01-c01-title\" data-width=\"854\" data-height=\"480\" data-duration=\"2\"><div data-role=\"title\">标题</div></div>
+<div id=\"root\" data-composition-id=\"p1s01-c01-title\" data-width=\"1920\" data-height=\"1080\" data-duration=\"2\"><div data-role=\"title\">标题</div></div>
 <script src=\"compositions/motion/p1s01-c01-title.js\"></script>
 </template></body></html>\n""",
             encoding="utf-8",
@@ -178,6 +184,8 @@ class StoryboardSyncTests(SingleSourceFixture):
             self.assertIn(GENERATED_MARKER, animated_review)
             self.assertIn('id="review-overlay-p1s01-c01-title"', animated_review)
             self.assertIn('data-composition-src="compositions/cues/p1s01-c01-title.html"', animated_review)
+            self.assertIn('data-width="1920" data-height="1080"', animated_review)
+            self.assertIn('scale(0.444791666667, 0.444444444444)', animated_review)
             self.assertIn('src="assets/stills/cue-01.png"', animated_review)
             self.assertNotIn("data-composition-src", source_review)
             self.assertIn("- src: compositions/review/p1s01-c01-title.html", storyboard)
@@ -209,12 +217,71 @@ class AssemblyTests(SingleSourceFixture):
             self.assertEqual(result["skippedCueIds"], ["p1s01_c02_hold"])
             index = (root / "index.html").read_text(encoding="utf-8")
             self.assertIn('data-composition-src="compositions/cues/p1s01-c01-title.html"', index)
+            self.assertIn('data-width="1920" data-height="1080"', index)
+            self.assertIn('scale(0.444791666667, 0.444444444444)', index)
             self.assertNotIn("p1s01-c02-hold", index)
             self.assertIn('data-start="1"', index)
             self.assertIn('data-duration="2"', index)
 
 
+class DeliveryProjectionTests(SingleSourceFixture):
+    def test_delivery_projection_mounts_each_animation_at_native_delivery_dimensions(self) -> None:
+        self.assertIsNotNone(sync_delivery, "sync_delivery implementation is missing")
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_version(directory)
+
+            result = sync_delivery(root)
+
+            self.assertEqual(result["animatedCueIds"], ["p1s01_c01_title"])
+            self.assertEqual(result["skippedCueIds"], ["p1s01_c02_hold"])
+            delivery = (root / "compositions/delivery/p1s01-c01-title.html").read_text(encoding="utf-8")
+            self.assertIn('data-composition-id="delivery-p1s01-c01-title"', delivery)
+            self.assertIn('data-width="1920" data-height="1080"', delivery)
+            self.assertIn('id="delivery-host-p1s01-c01-title"', delivery)
+            self.assertIn('data-composition-src="compositions/cues/p1s01-c01-title.html"', delivery)
+            self.assertFalse((root / "compositions/delivery/p1s01-c02-hold.html").exists())
+
+
 class LayoutLockTests(SingleSourceFixture):
+    def test_freeze_increments_preserved_revision_after_lock_invalidation(self) -> None:
+        self.assertIsNotNone(sync_storyboard, "sync_storyboard implementation is missing")
+        self.assertIsNotNone(freeze_layout, "layout_lock implementation is missing")
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_version(directory)
+            manifest = json.loads((root / "animation-manifest.json").read_text(encoding="utf-8"))
+            adapter = manifest["cues"][0]["renderAdapters"]["hyperframes"]
+            adapter["layoutRevision"] = 1
+            write_json(root / "animation-manifest.json", manifest)
+            sync_storyboard(root)
+            poster = root / "approved.png"
+            poster.write_bytes(b"approved revision two")
+
+            result = freeze_layout(root, "p1s01_c01_title", poster)
+
+            self.assertEqual(result["revision"], 2)
+            updated = json.loads((root / "animation-manifest.json").read_text(encoding="utf-8"))
+            updated_adapter = updated["cues"][0]["renderAdapters"]["hyperframes"]
+            self.assertEqual(updated_adapter["layoutRevision"], 2)
+            self.assertEqual(updated_adapter["layoutLock"]["revision"], 2)
+
+    def test_freeze_then_verify_detects_review_projection_change(self) -> None:
+        self.assertIsNotNone(sync_storyboard, "sync_storyboard implementation is missing")
+        self.assertIsNotNone(freeze_layout, "layout_lock implementation is missing")
+        self.assertIsNotNone(verify_layouts, "layout_lock implementation is missing")
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_version(directory)
+            sync_storyboard(root)
+            poster = root / "approved.png"
+            poster.write_bytes(b"approved hero")
+
+            freeze_layout(root, "p1s01_c01_title", poster)
+            review = root / "compositions/review/p1s01-c01-title.html"
+            review.write_text(review.read_text(encoding="utf-8") + "<!-- changed -->\n", encoding="utf-8")
+            changed = verify_layouts(root)
+
+            self.assertEqual(changed["status"], "invalid")
+            self.assertEqual(changed["invalidCueIds"], ["p1s01_c01_title"])
+
     def test_freeze_then_verify_detects_layout_dependency_change(self) -> None:
         self.assertIsNotNone(freeze_layout, "layout_lock implementation is missing")
         self.assertIsNotNone(verify_layouts, "layout_lock implementation is missing")
@@ -223,6 +290,7 @@ class LayoutLockTests(SingleSourceFixture):
             manifest = json.loads((root / "animation-manifest.json").read_text(encoding="utf-8"))
             manifest["reviews"]["a11"] = {"status": "pending"}
             write_json(root / "animation-manifest.json", manifest)
+            sync_storyboard(root)
             poster = root / "approved.png"
             poster.write_bytes(b"approved hero")
 
@@ -246,6 +314,30 @@ class LayoutLockTests(SingleSourceFixture):
 
 
 class AdapterValidationTests(SingleSourceFixture):
+    def test_validation_rejects_canonical_dimensions_that_do_not_match_delivery(self) -> None:
+        self.assertIsNotNone(sync_storyboard, "sync_storyboard implementation is missing")
+        self.assertIsNotNone(assemble_hyperframes, "assemble_hyperframes implementation is missing")
+        self.assertIsNotNone(validate_project, "validator implementation is missing")
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_version(directory)
+            composition = root / "compositions/cues/p1s01-c01-title.html"
+            composition.write_text(
+                composition.read_text(encoding="utf-8")
+                .replace('data-width="1920"', 'data-width="854"')
+                .replace('data-height="1080"', 'data-height="480"'),
+                encoding="utf-8",
+            )
+            sync_storyboard(root)
+            assemble_hyperframes(root)
+
+            result = validate_project(root)
+
+            self.assertEqual(result["status"], "invalid")
+            self.assertIn(
+                "composition_dimensions_mismatch",
+                [finding["code"] for finding in result["findings"]],
+            )
+
     def test_validation_accepts_single_source_project_and_rejects_layout_motion(self) -> None:
         self.assertIsNotNone(sync_storyboard, "sync_storyboard implementation is missing")
         self.assertIsNotNone(assemble_hyperframes, "assemble_hyperframes implementation is missing")

@@ -151,3 +151,13 @@
 **主要替代方案：** 保留两套布局并做截图 diff，或从 storyboard frame 复制生成 animation composition。两者仍允许后续独立修改和累积漂移，长期依赖用户发现回归。
 
 **影响：** manifest 升级为 v2，记录 `productionMode`、`workflowState`、HyperFrames adapter 路径、`heroTime`、布局依赖与 SHA-256 layout lock。A11 批准后冻结 composition、样式、字体和批准截图；依赖变化必须重新进入 A11。生成脚本拒绝覆盖手写 review。旧 Vn 可用迁移器拆出 canonical layout 与 motion，旧 `frames/animation` 在迁移对照完成前保留。
+
+## 以 delivery-native cue 驱动 480p 审阅与 1080p 透明交付
+
+**决定：** animated cue 的唯一正式 composition root 必须等于 manifest 的 delivery 尺寸；当前横屏项目为 1920×1080。A11 静态 hero 与 A12 完整动画继续使用 854×480，但二者都是同一正式 cue 的自动生成投影。逐 cue 透明 MOV 通过自动生成的 1920×1080 delivery host 在 composition 原生尺寸渲染，不使用 HyperFrames `--resolution`，也不允许把 480p MOV 放大后冒充正式交付。
+
+**原因：** 原先虽然消除了 A11/A12 两份手写布局，但 canonical cue 仍固定为 854×480，导致 manifest 中的 1920×1080 只是声明而不是可执行契约。HyperFrames 0.8.16 的 alpha 渲染不能可靠用 `--resolution` 补齐该缺口；渲染后放大会保留布局但损失文字、边缘和材质的原生清晰度。
+
+**主要替代方案：** 继续保留 854×480 canonical 并后期放大，或分别维护 480p/1080p 两套布局。前者不能提供原生 1080p，后者重新引入 Storyboard/animation 漂移和人工返工。
+
+**影响：** validator 必须检查 canonical 尺寸与 delivery 一致；layout lock 同时覆盖 review projection 与投影规格；旧 Vn 通过确定性 legacy stage 迁移并重新接受 480p 等价审阅。新 Vn 直接按 delivery 坐标创作。只有用户通过 A12 且 lock 有效后，才允许批量渲染透明 ProRes 4444。

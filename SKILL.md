@@ -75,6 +75,10 @@ Before authoring or revising an A11 storyboard frame or an A12 animation, read `
 
 After the user approves A11, freeze the canonical cue and its declared styles/fonts with `layout_lock.py freeze` using the approved hero poster. If a later change invalidates the lock, return the affected cue to A11 review instead of silently moving dependent elements. Cues explicitly approved as source-only have no formal composition, motion file, or render slot.
 
+Every new animated canonical cue must declare the exact `project.delivery` dimensions, currently 1920×1080 for horizontal self-media projects. `sync_storyboard.py` and `assemble_hyperframes.py` generate 854×480 projections that scale the delivery-native cue; they never own editable layout. Before final rendering, run `sync_delivery.py` to generate one renderable 1920×1080 host per animated cue. Render only after the 480p full-motion review is approved and every projection-aware layout lock verifies. `render_animations.py` renders at composition resolution and must not use HyperFrames `--resolution` or a post-render resize.
+
+When an older Vn still has 854×480 canonical cues, run `migrate_delivery_layout.py`. The migration wraps the existing layout in a deterministic delivery-native stage, invalidates the old A11 locks, and requires a new 480p equivalence review. Do not freeze revision 2 locks or batch-render delivery files until the user approves that regenerated review.
+
 ## Decide Whether to Ask
 
 Use the report fields as the decision contract:

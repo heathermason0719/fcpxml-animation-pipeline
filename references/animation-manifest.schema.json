@@ -46,12 +46,33 @@
     },
     "layoutLock": {
       "type": ["object", "null"],
-      "required": ["revision", "algorithm", "files", "aggregateSha256", "approvedPoster", "approvedPosterSha256"],
+      "required": ["revision", "algorithm", "files", "aggregateSha256", "reviewProjection", "projectionSpec", "approvedPoster", "approvedPosterSha256"],
       "properties": {
         "revision": { "type": "integer", "minimum": 1 },
         "algorithm": { "const": "sha256" },
         "files": { "type": "array" },
         "aggregateSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "reviewProjection": {
+          "type": "object",
+          "required": ["path", "sha256"],
+          "properties": {
+            "path": { "type": "string", "pattern": "^compositions/review/.+\\.html$" },
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+          },
+          "additionalProperties": false
+        },
+        "projectionSpec": {
+          "type": "object",
+          "required": ["mode", "previewWidth", "previewHeight", "deliveryWidth", "deliveryHeight"],
+          "properties": {
+            "mode": { "const": "delivery-to-preview-axis-scale" },
+            "previewWidth": { "type": "integer", "minimum": 1 },
+            "previewHeight": { "type": "integer", "minimum": 1 },
+            "deliveryWidth": { "type": "integer", "minimum": 1 },
+            "deliveryHeight": { "type": "integer", "minimum": 1 }
+          },
+          "additionalProperties": false
+        },
         "approvedPoster": { "type": "string" },
         "approvedPosterSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
@@ -67,6 +88,7 @@
         "stillSrc": { "type": "string", "minLength": 1 },
         "heroTime": { "type": "number", "minimum": 0 },
         "layoutDependencies": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
+        "layoutRevision": { "type": "integer", "minimum": 0 },
         "layoutLock": { "$ref": "#/$defs/layoutLock" }
       },
       "additionalProperties": false

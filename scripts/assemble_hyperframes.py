@@ -13,8 +13,11 @@ try:
     from scripts.hyperframes_adapter import (
         GENERATED_INDEX_MARKER,
         cue_adapter,
+        decimal_number,
         decimal_seconds,
         load_manifest,
+        project_dimensions,
+        projection_scale,
         project_duration,
         safe_project_path,
     )
@@ -22,8 +25,11 @@ except ModuleNotFoundError:
     from hyperframes_adapter import (  # type: ignore
         GENERATED_INDEX_MARKER,
         cue_adapter,
+        decimal_number,
         decimal_seconds,
         load_manifest,
+        project_dimensions,
+        projection_scale,
         project_duration,
         safe_project_path,
     )
@@ -33,8 +39,9 @@ def assemble_hyperframes(version_root: Path) -> dict[str, Any]:
     root = version_root.expanduser().resolve()
     manifest = load_manifest(root)
     project = manifest["project"]
-    width = int(project["preview"]["width"])
-    height = int(project["preview"]["height"])
+    width, height = project_dimensions(manifest, "preview")
+    delivery_width, delivery_height = project_dimensions(manifest, "delivery")
+    scale_x, scale_y = (decimal_number(value) for value in projection_scale(manifest))
     duration = project_duration(manifest)
     project_adapter = project.get("renderAdapters", {}).get("hyperframes", {})
     media_src = project_adapter.get("previewMediaSrc", "assets/media/rough-cut.m4v")
@@ -52,7 +59,7 @@ def assemble_hyperframes(version_root: Path) -> dict[str, Any]:
         safe_project_path(root, adapter["compositionSrc"])
         animated.append(cue["id"])
         slots.append(
-            f'''      <div id="host-{escape(adapter['compositionId'], quote=True)}" class="clip overlay-slot" data-composition-id="{escape(adapter['compositionId'], quote=True)}" data-composition-src="{escape(adapter['compositionSrc'], quote=True)}" data-start="{decimal_seconds(cue['resolvedTimeline']['start'])}" data-duration="{decimal_seconds(cue['resolvedTimeline']['duration'])}" data-track-index="{track}" data-width="{width}" data-height="{height}"></div>'''
+            f'''      <div id="host-{escape(adapter['compositionId'], quote=True)}" class="clip overlay-slot" data-composition-id="{escape(adapter['compositionId'], quote=True)}" data-composition-src="{escape(adapter['compositionSrc'], quote=True)}" data-start="{decimal_seconds(cue['resolvedTimeline']['start'])}" data-duration="{decimal_seconds(cue['resolvedTimeline']['duration'])}" data-track-index="{track}" data-width="{delivery_width}" data-height="{delivery_height}"></div>'''
         )
     slot_text = "\n".join(slots)
     html = f'''<!doctype html>
@@ -66,9 +73,9 @@ def assemble_hyperframes(version_root: Path) -> dict[str, Any]:
       * {{ box-sizing: border-box; }}
       html, body {{ margin: 0; width: {width}px; height: {height}px; overflow: hidden; background: transparent; }}
       #root {{ position: relative; width: {width}px; height: {height}px; overflow: hidden; background: #000; }}
-      #rough-cut-video, .overlay-slot {{ position: absolute; inset: 0; width: {width}px; height: {height}px; }}
+      #rough-cut-video {{ position: absolute; inset: 0; width: {width}px; height: {height}px; }}
       #rough-cut-video {{ object-fit: cover; }}
-      .overlay-slot {{ pointer-events: none; }}
+      .overlay-slot {{ position: absolute; left: 0; top: 0; width: {delivery_width}px; height: {delivery_height}px; transform-origin: 0 0; transform: scale({scale_x}, {scale_y}); pointer-events: none; }}
     </style>
   </head>
   <body>
@@ -103,4 +110,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

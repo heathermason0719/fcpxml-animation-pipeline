@@ -10,10 +10,24 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from scripts.hyperframes_adapter import GENERATED_REVIEW_MARKER, cue_adapter, load_manifest, safe_project_path
+    from scripts.hyperframes_adapter import (
+        GENERATED_REVIEW_MARKER,
+        composition_dimensions,
+        cue_adapter,
+        load_manifest,
+        project_dimensions,
+        safe_project_path,
+    )
     from scripts.layout_lock import verify_layouts
 except ModuleNotFoundError:
-    from hyperframes_adapter import GENERATED_REVIEW_MARKER, cue_adapter, load_manifest, safe_project_path  # type: ignore
+    from hyperframes_adapter import (  # type: ignore
+        GENERATED_REVIEW_MARKER,
+        composition_dimensions,
+        cue_adapter,
+        load_manifest,
+        project_dimensions,
+        safe_project_path,
+    )
     from layout_lock import verify_layouts  # type: ignore
 
 
@@ -50,6 +64,10 @@ def validate_project(version_root: Path) -> dict[str, Any]:
     except (OSError, ValueError, json.JSONDecodeError) as error:
         return {"status": "invalid", "findings": [_finding("manifest_invalid", None, str(error))]}
     seen_ids: set[str] = set()
+    try:
+        delivery_dimensions = project_dimensions(manifest, "delivery")
+    except ValueError as error:
+        return {"status": "invalid", "findings": [_finding("manifest_invalid", None, str(error))]}
     allowed_states = {"design-draft", "layout-built", "layout-approved", "motion-built", "motion-approved", "rendered"}
     for cue in manifest["cues"]:
         cue_id = cue.get("id")
@@ -91,6 +109,20 @@ def validate_project(version_root: Path) -> dict[str, Any]:
         composition_id = adapter.get("compositionId")
         if f'data-composition-id="{composition_id}"' not in composition:
             findings.append(_finding("composition_id_mismatch", cue_id, "composition id does not match manifest", adapter["compositionSrc"]))
+        try:
+            actual_dimensions = composition_dimensions(composition)
+        except ValueError as error:
+            findings.append(_finding("composition_dimensions_invalid", cue_id, str(error), adapter["compositionSrc"]))
+        else:
+            if actual_dimensions != delivery_dimensions:
+                findings.append(
+                    _finding(
+                        "composition_dimensions_mismatch",
+                        cue_id,
+                        f"canonical composition dimensions {actual_dimensions[0]}x{actual_dimensions[1]} do not match delivery {delivery_dimensions[0]}x{delivery_dimensions[1]}",
+                        adapter["compositionSrc"],
+                    )
+                )
         if f'window.__timelines["{composition_id}"]' not in motion and f"window.__timelines['{composition_id}']" not in motion:
             findings.append(_finding("timeline_id_mismatch", cue_id, "motion timeline key does not match composition id", adapter["motionSrc"]))
         if adapter["motionSrc"] not in composition:
@@ -129,4 +161,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

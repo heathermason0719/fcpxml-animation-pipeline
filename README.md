@@ -13,9 +13,11 @@ python3 scripts/scaffold_hyperframes.py "/absolute/project/workspace" "YYYY-MM-D
 python3 scripts/sync_storyboard.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/layout_lock.py verify "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/assemble_hyperframes.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
+python3 scripts/sync_delivery.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/validate_hyperframes_adapter.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
+python3 scripts/render_animations.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 ```
 
-前五条命令维持原有项目入口与 Vn 创建边界。后四条从 manifest v2 生成 A11 review projection、验证 A11 layout lock、装配正式预览并检查 adapter 契约。每条动画的正式 DOM/CSS 只存在于 `compositions/cues/`，运动位于 `compositions/motion/`；`compositions/review/`、`STORYBOARD.md` 和 `index.html` 均为生成视图。当前仍不会自动完成内容理解、1080p 透明转码或 FCPXML 回填。
+前五条命令维持原有项目入口与 Vn 创建边界。后续命令从 manifest v2 生成 A11/A12 的 854×480 review projection、验证 projection-aware layout lock、生成逐 cue 的 1920×1080 delivery host，并在用户批准后原生渲染透明 ProRes 4444。每条动画的正式 DOM/CSS 只存在于 `compositions/cues/`，运动位于 `compositions/motion/`；`compositions/review/`、`compositions/delivery/`、`STORYBOARD.md` 和 `index.html` 均为生成视图。当前仍不会自动完成初始内容理解或 FCPXML 回填。
 
 项目目标与边界见 `docs/PROJECT.md`，架构基线见 `docs/ARCHITECTURE.md`，当前状态见 `docs/CURRENT.md`。

@@ -8,6 +8,7 @@ import os
 import tempfile
 from decimal import Decimal, localcontext
 from fractions import Fraction
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,28 @@ MANIFEST_NAME = "animation-manifest.json"
 SCHEMA_VERSION = "2.0"
 GENERATED_REVIEW_MARKER = "generated-by: fcpxml-animation-pipeline sync_storyboard"
 GENERATED_INDEX_MARKER = "generated-by: fcpxml-animation-pipeline assemble_hyperframes"
+GENERATED_DELIVERY_MARKER = "generated-by: fcpxml-animation-pipeline sync_delivery"
+
+
+class _CompositionRootParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.dimensions: tuple[int, int] | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if self.dimensions is not None:
+            return
+        values = dict(attrs)
+        if "data-composition-id" not in values:
+            return
+        try:
+            width = int(values["data-width"] or "")
+            height = int(values["data-height"] or "")
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError("composition root must declare integer data-width and data-height") from error
+        if width <= 0 or height <= 0:
+            raise ValueError("composition root dimensions must be positive")
+        self.dimensions = (width, height)
 
 
 def load_manifest(version_root: Path) -> dict[str, Any]:
@@ -31,6 +54,42 @@ def load_manifest(version_root: Path) -> dict[str, Any]:
     if not isinstance(payload.get("project"), dict) or not isinstance(payload.get("cues"), list):
         raise ValueError("animation manifest must contain project and cues")
     return payload
+
+
+def project_dimensions(manifest: dict[str, Any], kind: str) -> tuple[int, int]:
+    try:
+        dimensions = manifest["project"][kind]
+        width = int(dimensions["width"])
+        height = int(dimensions["height"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(f"project.{kind} must declare integer width and height") from error
+    if width <= 0 or height <= 0:
+        raise ValueError(f"project.{kind} dimensions must be positive")
+    return width, height
+
+
+def composition_dimensions(html: str) -> tuple[int, int]:
+    parser = _CompositionRootParser()
+    parser.feed(html)
+    if parser.dimensions is None:
+        raise ValueError("composition HTML lacks a data-composition-id root")
+    return parser.dimensions
+
+
+def projection_scale(manifest: dict[str, Any]) -> tuple[Decimal, Decimal]:
+    preview_width, preview_height = project_dimensions(manifest, "preview")
+    delivery_width, delivery_height = project_dimensions(manifest, "delivery")
+    return Decimal(preview_width) / Decimal(delivery_width), Decimal(preview_height) / Decimal(delivery_height)
+
+
+def decimal_number(value: Decimal, places: int = 12) -> str:
+    rendered = f"{value:.{places}f}".rstrip("0").rstrip(".")
+    return rendered or "0"
+
+
+def delivery_projection_src(adapter: dict[str, Any]) -> str:
+    basename = Path(adapter["compositionSrc"]).name
+    return f"compositions/delivery/{basename}"
 
 
 def save_manifest(version_root: Path, manifest: dict[str, Any]) -> None:
@@ -106,4 +165,3 @@ def ensure_parent(path: Path) -> None:
 
 def project_duration(manifest: dict[str, Any]) -> str:
     return decimal_seconds(manifest["project"]["source"]["duration"])
-
