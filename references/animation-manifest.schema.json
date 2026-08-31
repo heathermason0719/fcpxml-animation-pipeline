@@ -59,6 +59,20 @@
       },
       "additionalProperties": false
     },
+    "guidanceReview": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "enum": ["ready", "agent-normalized", "needs-material", "needs-clarification", "out-of-scope", "unaligned"]
+        },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    },
     "layoutLock": {
       "type": ["object", "null"],
       "required": ["revision", "algorithm", "files", "aggregateSha256", "reviewProjection", "projectionSpec", "approvedPoster", "approvedPosterSha256"],
@@ -125,6 +139,7 @@
         "id": { "type": "string", "minLength": 1 },
         "productionMode": { "enum": ["animation", "source-only"] },
         "workflowState": { "enum": ["design-draft", "layout-built", "layout-approved", "motion-built", "motion-approved", "rendered"] },
+        "guidanceReview": { "$ref": "#/$defs/guidanceReview" },
         "deliveryAsset": { "$ref": "#/$defs/deliveryAsset" },
         "resolvedTimeline": {
           "type": "object",

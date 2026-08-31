@@ -39,6 +39,10 @@ FCPXML/FCPXMLD 和低码粗剪参考视频各自必须能够唯一确定。目�
 
 同一文件可以承担多个证据角色。例如没有独立 SRT 时，一份包含对应旁白原句的动画脚本可以通过唯一通用文档兜底同时出现在 `narration_sources` 与 `animation_guidance`；存在独立 SRT 时，SRT 负责旁白对齐，动画脚本只保留为创作约束。动画脚本中的帧率、帧号或时间码不替代 FCPXML/FCPXMLD 的时间权威。
 
+入口阶段只负责发现和保留 `animation_guidance`，不审核其中每条要求是否可执行。内容审核属于后续 A7：Agent 对照参考视频实际口播与原画、FCPXML 时间线、AfterForge 范围和当前制作后端，判断要求是可直接使用、可自主规范化、需要额外素材、需要澄清、超出范围，还是无法可靠对齐。审核结论写入现有草稿 manifest 的 cue 级 `guidanceReview`，不创建独立报告，也不反向改变 intake 的 `ready` / `blocked` 结果；脚本缺失始终不构成入口 blocker。
+
+Skill 自带的 `assets/animation-script-template.docx` 只是可按需提供的填写便利。用户填好并自行放入当前投放版本后，它与其他动画脚本一样进入 `materials.animation_guidance`；如果用户修改回填副本的文件名，Agent 应要求名称保留 `animation-script` 或“动画脚本”关键词，以便现有 intake 确定性识别。Skill 不自动向 `user-inbox/` 写入模板，也不因用户使用自由格式脚本或完全不提供脚本而降低入口状态。
+
 ## 时间线空缺
 
 - `explicit`：FCPXML spine 中已有的 `<gap>`；

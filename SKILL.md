@@ -45,6 +45,12 @@ This version implements one-time AfterForge project instructions, project intake
 7. Read `references/project-intake.md` when interpreting the JSON report, diagnosing a blocker, or explaining a text-classification ambiguity.
 8. Treat every discovered input as read-only. The only permitted project mutations in this phase are creating the top-level `AfterForge/` and `user-inbox/` directories and initializing the two project-level Agent instruction files described above. Never write inside `user-inbox/`.
 
+## Offer the Optional Animation Script Template
+
+The Skill bundles `assets/animation-script-template.docx` as an optional user-facing form. Offer or copy this existing asset only when the user asks for a template or asks how to structure animation guidance. Copy it to a destination the user has approved; never regenerate it ad hoc, modify the bundled source during project work, place it automatically in every project, or write it into `user-inbox/` on the user's behalf.
+
+The user may fill the copy and place it in the selected `user-inbox/YYYY-MM-DD_Vn/`. Intake then preserves it as `materials.animation_guidance`, and A7 audits its feasibility. If the user renames the filled copy, require the filename to retain either `animation-script` or `动画脚本` so current intake can classify it deterministically. The template is a convenience rather than a schema requirement: continue to accept free-form animation briefs and proceed without any script when the existing project evidence is sufficient.
+
 ## Create an Approved Vn Scaffold
 
 After the user has approved the project's canonical `AfterForge/frame.md` and identified the target `YYYY-MM-DD_Vn`, create that version with:
@@ -54,6 +60,21 @@ python3 <skill-directory>/scripts/scaffold_hyperframes.py "/absolute/project/wor
 ```
 
 The command creates only a previously absent `AfterForge/YYYY-MM-DD_Vn/`. It copies the current canonical `frame.md` and project fonts as version snapshots, fixes the HyperFrames CLI version in the local package scripts, and creates the minimum independently checkable project structure. If canonical `frame.md` is missing or the target already exists, stop on the returned `blocked` result. Never call generic `hyperframes init` as a substitute, merge into an existing Vn, generate or update project-level `AGENTS.md` or `CLAUDE.md`, or write inside `user-inbox/`.
+
+## Audit Supplied Animation Guidance at A7
+
+When intake reports one or more files in `materials.animation_guidance`, read their actual content during A7 before proposing the A8 visual direction or designing any cue. Intake only discovers and preserves these optional files; it does not prove that their instructions are executable. When no animation guidance was supplied, omit this audit and continue autonomously. Never turn the absence of a script into an intake blocker.
+
+Compare each supplied instruction with the reference video's spoken narration and source image, the FCPXML timeline authority, the current AfterForge scope, and the implemented production backend. Classify each affected cue with one `guidanceReview.status`:
+
+- `ready`: directly usable;
+- `agent-normalized`: the intent is clear and can be normalized without changing scope;
+- `needs-material`: execution requires specific user-owned image or video assets;
+- `needs-clarification`: an ambiguity would materially change the design direction;
+- `out-of-scope`: the request depends on excluded work such as sound production, recutting the source timeline, or independently editable source clips;
+- `unaligned`: the instruction cannot be reliably matched to the narration or FCPXML timeline evidence.
+
+Record concise evidence and any safe normalization in `guidanceReview.notes` on the existing draft-manifest cue. Do not create a separate audit report or approval state. `ready` and `agent-normalized` continue without a question. For `needs-material`, record the exact asset need at A7 but request and copy the asset only after the Vn exists and the affected cue enters concrete design; store the copied asset inside that Vn and declare it as a layout dependency. Ask about `needs-clarification`, `out-of-scope`, or `unaligned` only when the unresolved issue prevents the affected cue or the project-level A8 direction from continuing reliably. Unaffected cues continue, and all resolved results remain visible through the existing A11 storyboard review rather than a new user gate.
 
 ## Route Animation Design Before Choosing Form
 
@@ -122,7 +143,7 @@ Use the report fields as the decision contract:
 | Low-bitrate rough-cut reference video | Required. Use it to understand selected shots and adjacent visual context without scanning the full source film. |
 | Narration SRT, timeline captions, transcript, or manuscript | Alternative evidence sources. Reuse whichever existing source is sufficient; never demand duplicate forms. |
 | Marker, timeline text, notes, or design ideas | Optional constraints. Discover and preserve them when present. Their absence is not missing information. |
-| Animation brief or shot-by-shot design | Never a default intake requirement. When supplied, preserve it in `materials.animation_guidance` even when an SRT already exists; its timecodes never override FCPXML. |
+| Animation brief or shot-by-shot design | Never a default intake requirement. When supplied, preserve it in `materials.animation_guidance` even when an SRT already exists; its timecodes never override FCPXML. Intake does not validate its feasibility; A7 performs that cue-level audit. |
 
 If no narration text is found but the selected reference video can provide narration audio for later transcription, keep intake ready and report the limitation instead of asking preemptively for duplicate text.
 

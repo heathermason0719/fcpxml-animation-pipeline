@@ -162,6 +162,16 @@
 
 **影响：** `references/visual-grammar.md` 承担跨项目判断规则，`frame.md` 仍只保存本视频确认后的整体视觉包装。Agent 默认自主路由；只有分叉会显著改变任务范围、违反已确认约束或产生难以逆转的后果时才额外请求确认。Storyboard 继续是 manifest 的审阅视图，不成为第二权威源。
 
+## 在 A7 审核可选动画脚本的可执行性
+
+**决定：** intake 继续只发现并保留用户主动提供的动画脚本或逐镜要求，不判断内容质量，也不把脚本列为必要输入。存在 `materials.animation_guidance` 时，Agent 在 A7 对照参考视频实际口播与原画、FCPXML 时间线、AfterForge 范围和当前制作后端逐条审核，并在现有草稿 manifest 的 cue 级 `guidanceReview` 中记录 `ready`、`agent-normalized`、`needs-material`、`needs-clarification`、`out-of-scope` 或 `unaligned` 及简短依据。没有脚本时字段缺省，由 Agent 自主形成候选动画。
+
+**原因：** 文件名识别只能证明脚本存在，不能证明其语义能对齐旁白、要求处于产品范围内或当前后端具备实现条件。若直到具体设计或动画实施后才发现这些问题，会造成方向返工；若把内容审核塞进入口，又会把可选创作材料错误升级为 intake blocker。A7 位于视觉方向和具体设计之前，既能尽早发现真实约束，也保持入口契约稳定。
+
+**主要替代方案：** 在 intake 阶段审核脚本、为脚本单独增加一次用户验收，或推迟到 A11 才暴露。第一种混淆机械发现与语义判断，第二种增加不必要往返，第三种把素材缺失、范围冲突和对齐失败推迟到已经投入设计之后。
+
+**影响：** 审核不创建平行报告或第二权威，不改变 intake 的 `ready` / `blocked`，也不进入 A11 layout lock。Skill 在 `assets/animation-script-template.docx` 保存一份可按需提供的八列回填模板，但不自动复制到项目或 `user-inbox/`，不拒绝自由格式脚本，也不要求用户必须填写。可直接使用和可自主规范化的 cue 不询问用户；需要素材时先记录精确需求，待 Vn 建立且该 cue 进入具体设计后再索取并保存到 Vn；只有问题会改变 A8 方向、违反范围或阻止受影响 cue 可靠继续时才单独询问。其余结果随现有 A11 storyboard 一并暴露。
+
 ## 将 Storyboard 作为合并验收视图而非第二权威源
 
 **决定：** 保留 storyboard 阶段，但 `STORYBOARD.md` 只作为 HyperFrames 适配层从草稿 `animation-manifest.json` 生成的用户审阅视图。系统内部先完成逐条文字方案，再制作使用真实文案的静态关键画面；两部分准备完成后合并为一次用户验收，不在内部步骤之间增加一次确认。用户反馈先修正草稿 manifest，再重新生成 storyboard 和受影响的关键画面；确认后 manifest 才进入 `approved` 状态。

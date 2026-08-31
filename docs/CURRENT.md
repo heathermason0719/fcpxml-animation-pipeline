@@ -19,9 +19,11 @@
 - 已在同一真实项目中执行一次性 AfterForge 项目初始化：既有 `AfterForge/` 与 `user-inbox/` 原样复用，只在 `AfterForge/` 根层创建缺失的项目级 `AGENTS.md` 和 `CLAUDE.md`，未创建 canonical `frame.md` 或 Vn；
 - 用户工作目录初始化已在一个真实项目根目录完成验证：首次返回 `created`，重复运行返回 `existing`，目录内未生成其他内容；
 - 入口能以 `ready`/`blocked`、blocker、warning、ambiguity 和最小问题清单表达是否具备后续分析条件；
-- 当前可靠行为已通过 69 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
+- 当前可靠行为已通过 71 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-25_V2` 执行 `--flat` intake：唯一选择 `P1-sence-01-粗剪.fcpxmld` 和 `P1-sence-01 粗剪.m4v`，识别 `P1-sence-01 脚本.docx` 为旁白证据，结果为 `ready`，无 blocker、warning 或 ambiguity；
 - intake 已新增 `materials.animation_guidance`，用于独立保留用户主动提供的动画脚本或逐镜要求；存在 SRT 时不再因旁白来源已经成立而丢弃动画脚本，脚本内时码仍不具备 FCPXML 时间权威；
+- 已冻结 A7 动画脚本可执行性审核：intake 仍只发现并保留可选脚本，A7 才对照口播、原画、FCPXML、产品范围和当前后端给相关 cue 写入可选 `guidanceReview`；审核不新增独立报告或用户验收，不改变 intake 状态，只有真实方向分叉或受影响 cue 无法可靠继续时才询问；
+- 已将八列、三行空白、横向单页的 `assets/animation-script-template.docx` 纳入 Skill 资产：只在用户索取时向其批准位置提供副本，用户自行回填并投放；文件名可被现有 intake 识别，模板缺失、结构漂移和声音字段回归由自动测试覆盖；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-26_V1` 重新执行 `--flat` intake：唯一选择 `P1-sence-01.fcpxmld` 与 `P1-sence-01 粗剪.m4v`，同时把 `P1-sence-01 字幕.srt` 保留为旁白证据、`P1-sence-01 脚本.docx` 保留为动画指导，结果为 `ready`，无 blocker、warning 或 ambiguity；
 - 已确认首个真实项目的生产规格：FCPXML 负责时间位置、帧率和时间基准；参考视频实际口播负责旁白措辞；用户脚本和 SRT 作为允许存在错别字的语义与对齐证据；开发审阅使用保留粗剪原声的 480p 合成预览，最终透明动画使用 1080p ProRes 4444 MOV；AfterForge 不再生成、设计、混合、交付或回填音效与音乐；
 - 已冻结 V2 作为第一镜试制输入，并在 `/Users/xiaobaimac/Movies/trumen/AfterForge/2026-08-25_V2-first-scene-review` 完成一次性真实交付：包含语义对齐后的 `animation-manifest.json`、六段 HyperFrames 动画、18 条独立 48 kHz/24-bit PCM WAV 和一条 854×480、24 fps、54.083333 秒的合成审阅 MP4；
@@ -59,4 +61,4 @@
 
 ## 下一步
 
-本轮正式回填开发与真实 V1 端到端验证已经收口。下一步先由用户审查当前仓库 diff 并决定 commit / push；后续功能开发可转向尚未脚本化的参考视频内容理解与初始 manifest 内容生成，或使用新的 Vn 重跑一次完整生产流程验证复用性。
+本轮正式回填开发与真实 V1 端到端验证已经收口；可选动画脚本模板及 A7 可执行性审核规则也已落入 Skill、manifest schema 与权威工作流。下一步由用户审查当前仓库 diff 并决定 commit / push；后续功能开发可转向尚未脚本化的参考视频内容理解与初始 manifest 内容生成，或使用新的 Vn 重跑一次完整生产流程验证复用性。

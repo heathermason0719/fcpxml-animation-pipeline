@@ -17,7 +17,7 @@
 │       ├── 必要：rough-cut.fcpxml / .fcpxmld
 │       ├── 必要：低码粗剪参考视频
 │       ├── 可替代旁白证据：SRT、时间线字幕、转写稿或已有文字稿
-│       └── 可选设计约束：Marker、时间线文字、notes
+│       └── 可选设计约束：动画脚本、Marker、时间线文字、notes
 └── AfterForge/（Skill 维护，唯一默认写入区；显示名可替换）
     ├── AGENTS.md（项目级 Agent 规则，只在项目初始化时创建）
     ├── CLAUDE.md（项目级 Claude 入口，只在项目初始化时创建）
@@ -56,6 +56,7 @@
 
 - 理解口播内容及其表达目的；
 - 结合字幕和粗略动画要求细化画面表现；
+- 在 A7 审核用户主动提供的动画脚本是否能与口播、原画、FCPXML 时间线、当前范围和制作后端可靠衔接；
 - 判断哪些位置保留电影原片，哪些位置使用文字动画、图形演示或其他视觉辅助；
 - 统一动画节奏、信息层级和视觉风格；
 - 在信息不足或无法可靠对齐时生成明确的人工确认项；
@@ -179,6 +180,10 @@ V1 计划由以下脚本组件承担机械操作；名称表达职责，具体�
         "endPhrase": null,
         "blankMeans": "whole-narration-segment"
       },
+      "guidanceReview": {
+        "status": "agent-normalized",
+        "notes": ["保留表达目的，时间位置改由 FCPXML 对齐"]
+      },
       "resolvedTimeline": {
         "start": "38s",
         "duration": "24/5s",
@@ -216,12 +221,15 @@ V1 计划由以下脚本组件承担机械操作；名称表达职责，具体�
 - 每个动画提示的稳定标识、用户原始旁白锚点和可选触发词句；
 - 系统依据参考口播和 FCPXML 解析出的精确时间位置与时长；
 - 对应口播、字幕范围、用户原始要求及其证据来源；
+- 用户主动提供动画脚本时，每条相关 cue 的可执行性审核状态与简短依据；
 - 每条动画的主次信息功能、与原画的主次关系、参考视觉语言及简短判断理由；
 - 动画类型、视觉意图、展示文字和层级；
 - 人工确认状态；
 - 渲染结果及其可回填引用。
 
 正式渲染通过后，每条 `animated` cue 注册一个渲染后端无关的 `deliveryAsset`，至少保存稳定文件名、SHA-256、宽高、源帧率、实际有理数时长、codec 和 alpha 状态。manifest 不保存正式包的绝对路径；`source-only` cue 不得拥有 `deliveryAsset`。具体 schema 字段在后端实施时落地，但这项职责与权威边界已经冻结。
+
+`guidanceReview` 是可选的 cue 级内部审核记录，只在用户主动提供动画脚本或逐镜要求时出现。`status` 使用 `ready`、`agent-normalized`、`needs-material`、`needs-clarification`、`out-of-scope` 或 `unaligned`，`notes` 保存判断依据和不改变范围的规范化说明。它不建立第二份审核报告，不参与 intake 的 `ready` / `blocked` 判定，也不进入 A11 layout lock；未提供脚本时该字段缺省。需要素材时，A7 先记录具体需求，待 Vn 已建立且相关 cue 进入具体设计后再向用户索取，并把用户在窗口提交的文件复制到该 Vn 的素材目录、纳入对应 layout dependencies，不长期引用聊天临时路径。
 
 用户脚本中的旁白词句是语义锚点，不是精确时间输入。开始或结束触发词句留空时，默认使用整段对应旁白范围。所有写入 FCPXML 的时间最终必须转换为符合源项目时间基准的精确有理数表示；SRT 时间、文档时间码和未经校验的浮点秒数不得直接回写。
 
@@ -366,14 +374,14 @@ V1 采用先审阅、后高质量渲染与回填的两阶段工作模式。
 
 1. 在用户提供的实际项目根目录创建或识别 `AfterForge/` 和 `user-inbox/`；
 2. 紧接上一步、不中断用户地检查 AfterForge 视频项目是否已经初始化；未初始化时一次性创建根层 `AGENTS.md` 和 `CLAUDE.md`，已存在时不更新。步骤 1、2 保留各自编号和内部职责，但作为一次连续后台动作执行；
-3. 由用户创建并明确当前使用的 `user-inbox/YYYY-MM-DD_Vn/`；
+3. 由用户创建并明确当前使用的 `user-inbox/YYYY-MM-DD_Vn/`；用户需要规范填写动画要求时，Skill 可从 `assets/animation-script-template.docx` 向用户批准的位置提供副本，再由用户填写并自行放入该版本目录。模板不自动复制进项目，也不是进入下一步的条件；
 4. 从该扁平版本目录发现 FCPXML/FCPXMLD、低码参考视频、已有旁白证据和可选设计约束；
 5. 判断必要输入是否存在且可唯一确定，缺失时只索取真正阻塞的材料；
 6. 解析项目规格、时间线、素材引用、显式/隐式空缺和文字证据；
-7. 依据参考视频实际口播校正明显文字错误，将旁白原句和可选触发词句对齐到 FCPXML 时间线；对每条候选动画先判断主次信息功能和与原画的主次关系，没有主观动画提示时由 Skill 自主完成；
+7. 依据参考视频实际口播校正明显文字错误，将旁白原句和可选触发词句对齐到 FCPXML 时间线；存在 `materials.animation_guidance` 时逐条审核其是否可直接使用、可自主规范化、需要额外素材、需要澄清、超出范围或无法可靠对齐，并把 cue 级 `guidanceReview` 写入草稿 manifest；随后判断每条候选动画的主次信息功能和与原画的主次关系，没有主观动画提示时由 Skill 自主完成。该审核不新增用户验收轮次，只有未解决问题会改变 A8 方向或阻止受影响 cue 可靠继续时才单独询问；
 8. 根据本视频的实际功能与原画关系统计，向用户提出适合当前视频的整体视觉包装与运动气质候选，并在产物可正常查看时尽快提交 A8 验收；确认后创建或更新项目级 canonical `AfterForge/frame.md`，并把统一运动气质写入草稿 `animation-manifest.json`；
 9. 使用确定性版本脚手架创建新的 Vn HyperFrames 工程，复制 canonical `frame.md` 为本版快照并记录 SHA-256；不得调用通用 `hyperframes init` 或触碰项目级 Agent 文件；
-10. 在已确认的项目视觉规范内为每条动画选择主要及可选辅助参考语言，完成 `designRoute`；随后内部细化逐条文字方案，并直接在正式 `compositions/cues/` 完成真实文案、DOM、布局和 CSS 终态；
+10. 在已确认的项目视觉规范内为每条动画选择主要及可选辅助参考语言，完成 `designRoute`；对标记为 `needs-material` 的 cue，此时才索取已在 A7 明确的具体素材并复制进当前 Vn；随后内部细化逐条文字方案，并直接在正式 `compositions/cues/` 完成真实文案、DOM、布局和 CSS 终态；
 11. 从 manifest 和正式 cue composition 自动生成 `STORYBOARD.md` 与 review projection，将视觉语法路由、文字方案与 hero frame 合并为一次用户验收；产物可正常查看时尽快提交 A11，确认后用批准 poster 冻结 layout dependencies；
 12. 只在独立 `compositions/motion/` 中实现运动，并由 manifest 自动装配正式合成预览；不得复制或重写 A11 已批准布局；
 13. 根据已确认方案制作完整动画，输出时间线分析、逐句对齐结果、动画清单和保留粗剪原声的 854×480 合成审阅 MP4；
@@ -402,7 +410,9 @@ V1 采用先审阅、后高质量渲染与回填的两阶段工作模式。
 - 必要输入：FCPXML/FCPXMLD 与对应低码粗剪参考视频；
 - 可替代旁白证据：旁白 SRT、时间线字幕、转写稿或已有文字稿；已有一种足够时不要求重复格式，也不要求用户人工校正自动转写错别字；
 - 可选设计约束：Marker、时间线文字、notes 或其他已有材料；animation brief 不作为默认要求；
+- 可选脚本模板：只在用户需要时从 Skill 资产提供副本，用户自行回填和投放；自由格式脚本和完全不提供脚本都继续受支持；
 - 创意判断：逐条遵循“功能 → 与原画关系 → 可参考视觉语言”，路由写入 manifest 并在 storyboard 中验收，不建立额外权威源；
+- 脚本审核：用户主动提供动画脚本时在 A7 做 cue 级可执行性判断，结论写入现有 manifest，不把可选脚本升级为 intake 硬要求或独立验收阶段；
 - 视觉场景：以 16:9 横屏口播类视频为首要目标；
 - 渲染：HyperFrames；
 - 审阅：854×480 合成 MP4，只用于确认构图、节奏和动画效果；视频保留粗剪参考视频自带的原声；
@@ -426,6 +436,7 @@ fcpxml-animation-pipeline/
 ├── scripts/
 ├── references/
 ├── assets/
+│   └── animation-script-template.docx
 └── docs/
     ├── PROJECT.md
     ├── CURRENT.md
