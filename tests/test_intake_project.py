@@ -130,6 +130,50 @@ class WorkspaceDiscoveryTests(unittest.TestCase):
             self.assertEqual(len(report["candidates"]["fcpxml"]), 1)
             self.assertEqual(len(report["candidates"]["reference_videos"]), 1)
 
+    def test_animation_source_clips_do_not_compete_with_reference_video(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            files = create_ready_workspace(workspace)
+            source_clips = [
+                workspace / "c03-01-照镜子-动画素材.mp4",
+                workspace / "c03-02-出门-animation-source.mov",
+            ]
+            for path in source_clips:
+                path.write_bytes(b"independent animation source clip")
+
+            report = analyze_workspace(workspace, recursive=False)
+
+            self.assertEqual(report["status"], "ready")
+            self.assertEqual(report["selected"]["reference_video"], str(files["video"].resolve()))
+            self.assertEqual(
+                report["candidates"]["reference_videos"],
+                [str(files["video"].resolve())],
+            )
+            self.assertEqual(
+                report["materials"]["animation_source_clips"],
+                [str(path.resolve()) for path in source_clips],
+            )
+
+    def test_numbered_source_clips_are_discovered_without_material_keyword(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            files = create_ready_workspace(workspace)
+            source_clips = [
+                workspace / "01-照镜子.mov",
+                workspace / "02-出门.mov",
+            ]
+            for path in source_clips:
+                path.write_bytes(b"numbered animation source clip")
+
+            report = analyze_workspace(workspace, recursive=False)
+
+            self.assertEqual(report["status"], "ready")
+            self.assertEqual(report["selected"]["reference_video"], str(files["video"].resolve()))
+            self.assertEqual(
+                report["materials"]["animation_source_clips"],
+                [str(path.resolve()) for path in source_clips],
+            )
+
     def test_discovers_existing_materials_and_is_ready_without_animation_brief(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)

@@ -24,7 +24,7 @@ python3 scripts/intake_project.py --flat "/absolute/project/workspace/user-inbox
 | `status` | `ready` 或 `blocked`。 |
 | `selected` | 唯一选中的 FCPXML/FCPXMLD 与低码参考视频。 |
 | `candidates` | 扫描发现的必要输入候选，用于解释自动选择或歧义。 |
-| `materials` | 已发现的旁白/转写来源、动画脚本/逐镜要求和设计 notes。 |
+| `materials` | 已发现的旁白/转写来源、动画脚本/逐镜要求、独立动画原片和设计 notes。 |
 | `timeline` | 项目规格、精确时间、空缺、文字和 Marker 证据。 |
 | `ambiguities` | 不能可靠分类的具体时间线文字及原因；不等于入口阻塞。 |
 | `warnings` | 可以继续但后续需要注意的限制。 |
@@ -36,6 +36,12 @@ python3 scripts/intake_project.py --flat "/absolute/project/workspace/user-inbox
 FCPXML/FCPXMLD 和低码粗剪参考视频各自必须能够唯一确定。目录中只有一个候选时直接使用；存在多个候选时，根据文件名和目录中的 `rough`、`proxy`、`preview`、`reference`、`粗剪`、`参考`、`低码` 等信号排序。最高分只有一个时自动选择；同等可信的最高分候选不得猜测，必须产生 `ambiguous_*` blocker。
 
 旁白材料、动画脚本和设计材料不是必要输入候选，不参与入口阻塞。一个已存在的 SRT、时间线 caption、转写稿或文稿只要足以支撑后续对应关系，就不再索取其他旁白格式；但用户已经提供的动画脚本仍必须保留在 `materials.animation_guidance`，不能因为 SRT 已存在而从报告中丢失。
+
+为避免逐镜独立原片与必需的低码粗剪参考视频竞争候选身份，此类文件名使用 `01-`、`02-` 等一至三位数字顺序前缀，或保留 `animation-source`、`animation_source`、`source-clip`、`source_clip`、“动画素材”或“原片素材”之一。intake 把匹配的视频单独列入 `materials.animation_source_clips`，不再列入 `candidates.reference_videos`；带数字前缀但同时包含粗剪关键词的文件仍保留参考候选身份。该字段是可选材料清单，不改变全局 `ready` / `blocked` 状态。
+
+需要在动画内重新编排两段或以上原片的 cue，A7 默认要求每个语义片段独立导出、按预期进入顺序编号并留足目标动作前后余量。标准接受规格是 1920×1080 H.264、匹配 FCPXML 的恒定帧率、Rec.709 SDR，前后各至少约 0.5 秒可用余量，不预烘焙裁切、调速、边框或动画；音频可省略。ProRes 或 4K 只在大幅放大裁切、抠像、重度影像处理或近全画幅重用时按需要求。
+
+素材身份、编号顺序与可用内容以用户最新明确说明和实际文件的名称、顺序、可检查画面为权威。动画脚本列出的素材类型默认只作规划参考；实际文件与用户说明一致但与脚本举例不同时，A7 记录 `agent-normalized` 并继续，不要求用户为迎合脚本重新导出。只有用户说明、文件名、顺序或实际内容彼此冲突时才询问。该权威关系不改变脚本对逐镜风格、运动或表达目的的明确要求。
 
 同一文件可以承担多个证据角色。例如没有独立 SRT 时，一份包含对应旁白原句的动画脚本可以通过唯一通用文档兜底同时出现在 `narration_sources` 与 `animation_guidance`；存在独立 SRT 时，SRT 负责旁白对齐，动画脚本只保留为创作约束。动画脚本中的帧率、帧号或时间码不替代 FCPXML/FCPXMLD 的时间权威。
 

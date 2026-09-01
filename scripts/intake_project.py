@@ -42,6 +42,14 @@ ANIMATION_GUIDANCE_KEYWORDS = (
     "动画脚本",
     "脚本",
 )
+ANIMATION_SOURCE_CLIP_KEYWORDS = (
+    "animation-source",
+    "animation_source",
+    "source-clip",
+    "source_clip",
+    "动画素材",
+    "原片素材",
+)
 SUBTITLE_NAME_KEYWORDS = ("caption", "subtitle", "subtitles", "cc", "字幕", "旁白")
 DESIGN_NAME_KEYWORDS = ("animation", "anim", "design", "motion", "note", "动画", "设计", "动效", "备注", "想法")
 
@@ -130,6 +138,17 @@ def _is_animation_guidance(path: Path) -> bool:
     return any(keyword in name for keyword in ANIMATION_GUIDANCE_KEYWORDS)
 
 
+def _is_animation_source_clip(path: Path) -> bool:
+    if path.suffix.lower() not in VIDEO_SUFFIXES:
+        return False
+    name = path.stem.lower()
+    if any(keyword in name for keyword in ANIMATION_SOURCE_CLIP_KEYWORDS):
+        return True
+    return bool(re.match(r"^\d{1,3}(?:[-_. ]|$)", name)) and not any(
+        keyword in name for keyword in ROUGH_KEYWORDS
+    )
+
+
 def scan_workspace(workspace: Path, recursive: bool = True) -> dict[str, list[Path]]:
     paths = _walk_workspace(workspace, recursive=recursive)
     fcpxml = [
@@ -137,7 +156,16 @@ def scan_workspace(workspace: Path, recursive: bool = True) -> dict[str, list[Pa
         for path in paths
         if path.suffix.lower() in {".fcpxml", ".fcpxmld"}
     ]
-    videos = [path for path in paths if path.is_file() and path.suffix.lower() in VIDEO_SUFFIXES]
+    animation_source_clips = [
+        path for path in paths if path.is_file() and _is_animation_source_clip(path)
+    ]
+    videos = [
+        path
+        for path in paths
+        if path.is_file()
+        and path.suffix.lower() in VIDEO_SUFFIXES
+        and path not in animation_source_clips
+    ]
     design_notes = [
         path
         for path in paths
@@ -172,6 +200,7 @@ def scan_workspace(workspace: Path, recursive: bool = True) -> dict[str, list[Pa
         "narration_sources": sorted(narration_sources),
         "design_notes": sorted(design_notes),
         "animation_guidance": sorted(animation_guidance),
+        "animation_source_clips": sorted(animation_source_clips),
     }
 
 
@@ -449,6 +478,7 @@ def analyze_workspace(workspace: Path, recursive: bool = True) -> dict[str, Any]
                 "narration_sources": [],
                 "design_notes": [],
                 "animation_guidance": [],
+                "animation_source_clips": [],
             },
             "timeline": None,
             "ambiguities": [],
@@ -512,6 +542,9 @@ def analyze_workspace(workspace: Path, recursive: bool = True) -> dict[str, Any]
             "design_notes": [str(path) for path in discovery["design_notes"]],
             "animation_guidance": [
                 str(path) for path in discovery["animation_guidance"]
+            ],
+            "animation_source_clips": [
+                str(path) for path in discovery["animation_source_clips"]
             ],
         },
         "timeline": timeline,

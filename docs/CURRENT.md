@@ -23,6 +23,10 @@
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-25_V2` 执行 `--flat` intake：唯一选择 `P1-sence-01-粗剪.fcpxmld` 和 `P1-sence-01 粗剪.m4v`，识别 `P1-sence-01 脚本.docx` 为旁白证据，结果为 `ready`，无 blocker、warning 或 ambiguity；
 - intake 已新增 `materials.animation_guidance`，用于独立保留用户主动提供的动画脚本或逐镜要求；存在 SRT 时不再因旁白来源已经成立而丢弃动画脚本，脚本内时码仍不具备 FCPXML 时间权威；
 - 已冻结 A7 动画脚本可执行性审核：intake 仍只发现并保留可选脚本，A7 才对照口播、原画、FCPXML、产品范围和当前后端给相关 cue 写入可选 `guidanceReview`；审核不新增独立报告或用户验收，不改变 intake 状态，只有真实方向分叉或受影响 cue 无法可靠继续时才询问；
+- 已冻结多原片重编 cue 的素材门槛：动画需要内部重放、重排、裁切、遮罩或多画面合成两段或以上原片时，A7 默认要求用户提供独立带余量片段，不从粗剪猜测取段和顺序；标准接受 1920×1080 H.264、匹配项目的恒定帧率和 Rec.709 SDR，最终透明交付仍为 1920×1080 ProRes 4444；
+- 已冻结独立原片的权威关系：素材身份、顺序与可用内容以用户最新明确说明和实际投放文件的名称、编号顺序、可检查画面为权威，脚本素材类型默认只作参考；实际素材与用户说明一致时的类型差异记为 `agent-normalized`，只在各权威证据彼此冲突时询问；该规则不改变脚本对逐镜风格、运动或表达目的的明确要求；
+- intake 已新增 `materials.animation_source_clips`：文件名使用 `01-` 等顺序前缀，或含 `animation-source`、`source-clip`、“动画素材”、“原片素材”的视频与低码粗剪参考视频确定性分流，不会制造 `ambiguous_reference_video`；带顺序前缀但包含粗剪关键词的文件仍是参考候选，该材料类型本身不改变全局 intake 状态；
+- 已冻结逐镜风格优先级：项目级 `frame.md` 与视频级运动气质作为默认；用户脚本对某一镜明确指定的视觉或运动风格，在该 cue 及明确属性范围内优先，未指定部分继续继承项目默认，覆盖证据写入 `guidanceReview.notes` 并进入 `designRoute` 与 A11；
 - 已将八列、三行空白、横向单页的 `assets/animation-script-template.docx` 纳入 Skill 资产：只在用户索取时向其批准位置提供副本，用户自行回填并投放；文件名可被现有 intake 识别，模板缺失、结构漂移和声音字段回归由自动测试覆盖；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-26_V1` 重新执行 `--flat` intake：唯一选择 `P1-sence-01.fcpxmld` 与 `P1-sence-01 粗剪.m4v`，同时把 `P1-sence-01 字幕.srt` 保留为旁白证据、`P1-sence-01 脚本.docx` 保留为动画指导，结果为 `ready`，无 blocker、warning 或 ambiguity；
 - 已确认首个真实项目的生产规格：FCPXML 负责时间位置、帧率和时间基准；参考视频实际口播负责旁白措辞；用户脚本和 SRT 作为允许存在错别字的语义与对齐证据；开发审阅使用保留粗剪原声的 480p 合成预览，最终透明动画使用 1080p ProRes 4444 MOV；AfterForge 不再生成、设计、混合、交付或回填音效与音乐；
