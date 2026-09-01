@@ -10,7 +10,7 @@
 - `scripts/init_user_workspace.py` 已能在项目根目录幂等创建或识别用户工作目录，默认显示名为 `AfterForge`，同时保持内部 ID `fcpxml-animation-pipeline`；
 - `scripts/init_user_inbox.py` 已能幂等创建或识别用户维护、Skill 只读的 `user-inbox/`，且不会创建或修改任何版本目录；
 - `scripts/init_afterforge_project.py` 已能在既有 AfterForge 工作目录中一次性初始化项目级 `AGENTS.md` 和 `CLAUDE.md`：只补缺失文件、逐字节保留既有文件，并且不创建或更新 canonical `frame.md`、任何 Vn 或版本资产；
-- `scripts/scaffold_hyperframes.py` 已能在项目级 canonical `frame.md` 存在且目标 Vn 尚不存在时，原子创建隔离的 HyperFrames 版本工程：复制 `frame.md` 与项目字体快照，固定 HyperFrames CLI 版本，生成最小可检查结构；不调用通用 `hyperframes init`，不生成或更新项目级 `AGENTS.md`、`CLAUDE.md`，目标已存在或前置条件缺失时阻塞且不修改既有内容；
+- `scripts/scaffold_hyperframes.py` 已能在项目级 canonical `frame.md` 存在且目标 Vn 尚不存在时，原子创建隔离的 HyperFrames 版本工程：版本标记接受大写 `V` 或小写 `v` 并原样保留，发现仅大小写不同的既有版本时阻塞；复制 `frame.md` 与项目字体快照，固定 HyperFrames CLI 版本，生成最小可检查结构；不调用通用 `hyperframes init`，不生成或更新项目级 `AGENTS.md`、`CLAUDE.md`，目标已存在或前置条件缺失时阻塞且不修改既有内容；
 - 已实现 HyperFrames 单一布局源 adapter：manifest v2 驱动 `compositions/cues/` 唯一正式布局、独立 `compositions/motion/`、自动生成的 `compositions/review/`、`STORYBOARD.md` 与正式合成 `index.html`；`layout_lock.py` 可冻结并验证 A11 布局依赖，adapter validator 可阻止路径/ID/依赖/布局运动分叉；
 - 已实现 legacy Vn 迁移器：从既有最新 animation composition 提取 canonical cue 与 inline GSAP motion，迁移前完整预检，异常时恢复 manifest/storyboard/index，并保留旧 `compositions/frames/`、`compositions/animation/` 原文件用于对照；
 - 项目入口步骤 A1、A2 保留独立编号和内部职责，但面向用户连续执行，中间不单独汇报或等待确认；
@@ -19,7 +19,7 @@
 - 已在同一真实项目中执行一次性 AfterForge 项目初始化：既有 `AfterForge/` 与 `user-inbox/` 原样复用，只在 `AfterForge/` 根层创建缺失的项目级 `AGENTS.md` 和 `CLAUDE.md`，未创建 canonical `frame.md` 或 Vn；
 - 用户工作目录初始化已在一个真实项目根目录完成验证：首次返回 `created`，重复运行返回 `existing`，目录内未生成其他内容；
 - 入口能以 `ready`/`blocked`、blocker、warning、ambiguity 和最小问题清单表达是否具备后续分析条件；
-- 当前可靠行为已通过 71 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
+- 当前可靠行为已通过 75 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-25_V2` 执行 `--flat` intake：唯一选择 `P1-sence-01-粗剪.fcpxmld` 和 `P1-sence-01 粗剪.m4v`，识别 `P1-sence-01 脚本.docx` 为旁白证据，结果为 `ready`，无 blocker、warning 或 ambiguity；
 - intake 已新增 `materials.animation_guidance`，用于独立保留用户主动提供的动画脚本或逐镜要求；存在 SRT 时不再因旁白来源已经成立而丢弃动画脚本，脚本内时码仍不具备 FCPXML 时间权威；
 - 已冻结 A7 动画脚本可执行性审核：intake 仍只发现并保留可选脚本，A7 才对照口播、原画、FCPXML、产品范围和当前后端给相关 cue 写入可选 `guidanceReview`；审核不新增独立报告或用户验收，不改变 intake 状态，只有真实方向分叉或受影响 cue 无法可靠继续时才询问；
@@ -57,12 +57,13 @@
 
 - 尚未实现参考视频内容理解或语音转写；
 - 尚未把本次人工完成的旁白对齐和初始 `animation-manifest.json` 内容生成整理为仓库内可复用的确定性流水线；HyperFrames 单一布局源装配、review projection、layout lock、adapter 验证和旧 Vn 迁移已经脚本化；
+- 已确认将审核拆为 Storyboard 静态样式、480p Demo 运动和原生渲染显式授权三个硬门，设计契约记录于 `docs/superpowers/plans/2026-09-02-review-gates-design.md`；统一 Storyboard 评论页、逐镜/逐静帧持久化 comment、Demo 时间码/时间段 comment、审核失效传播及 renderer 授权门尚未实现；
 - 当前没有 build 或 lint 命令。
 
 ## 已知问题与阻塞
 
-当前没有已知技术阻塞。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。双分辨率单一布局源、审阅投影、delivery composition、单调递增布局锁、正式渲染驱动、媒体注册、FCPXML 注入、扁平包发布、自动交付验证和协议级 round-trip 已经具备确定性实现；真实 V1 已完成 revision 2 批准、六条原生透明交付渲染、正式 `.fcpxmld`、FCP 实际导入与再导出验证。参考视频理解和初始 manifest 内容生成仍待实现。
+当前没有已知技术阻塞。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。双分辨率单一布局源、审阅投影、delivery composition、单调递增布局锁、正式渲染驱动、媒体注册、FCPXML 注入、扁平包发布、自动交付验证和协议级 round-trip 已经具备确定性实现；真实 V1 已完成 revision 2 批准、六条原生透明交付渲染、正式 `.fcpxmld`、FCP 实际导入与再导出验证。参考视频理解和初始 manifest 内容生成仍待实现。新确认的三段审核契约尚未实现：当前 `render_animations.py` 仍只检查 adapter 与 layout lock，不能证明 480p Demo 已通过或用户已单独授权，因此在门禁补齐前不得据此自动进入新的原生渲染。
 
 ## 下一步
 
-本轮正式回填开发与真实 V1 端到端验证已经收口；可选动画脚本模板及 A7 可执行性审核规则也已落入 Skill、manifest schema 与权威工作流。下一步由用户审查当前仓库 diff 并决定 commit / push；后续功能开发可转向尚未脚本化的参考视频内容理解与初始 manifest 内容生成，或使用新的 Vn 重跑一次完整生产流程验证复用性。
+下一步由用户先审查并本地 commit 当前文档与既有 V/v 兼容改动。获得继续实现的授权后，按 TDD 依次补齐 Storyboard 持久化评论页、480p Demo 时间码评论与审批、失效传播和原生渲染授权硬门，再同步 `SKILL.md`、README、manifest schema、adapter reference 与验证命令。实现完成前，当前 invocation 停留在 480p Demo 审核范围，不启动原生通道视频渲染。

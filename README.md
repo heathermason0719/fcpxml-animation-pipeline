@@ -20,6 +20,8 @@ python3 scripts/register_delivery_assets.py "/absolute/project/workspace/AfterFo
 python3 scripts/build_delivery_package.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 ```
 
+上述 `YYYY-MM-DD_Vn` 是命令示例；版本标记同时接受大写 `V` 和小写 `v`。脚手架原样保留用户选定的拼写，并在发现仅大小写不同的既有版本时阻塞，避免跨文件系统产生版本身份碰撞。
+
 前五条命令维持原有项目入口与 Vn 创建边界。后续命令从 manifest v2 生成 A11/A12 的 854×480 review projection、验证 projection-aware layout lock、生成逐 cue 的 1920×1080 delivery host，并在用户批准后原生渲染透明 ProRes 4444。`register_delivery_assets.py` 重新探测实际 MOV 并把稳定媒体属性注册进主 manifest；`build_delivery_package.py` 使用源 FCPXML、有理数时间、唯一 `deliveryProtocolVersion` 和已注册资产构建、DTD 校验并原子发布根层扁平包，相同 fingerprint 只在完整校验通过后复用。
 
 每条动画的正式 DOM/CSS 只存在于 `compositions/cues/`，运动位于 `compositions/motion/`；`compositions/review/`、`compositions/delivery/`、`STORYBOARD.md` 和 `index.html` 均为生成视图。交付包不会直接修改 Final Cut Pro Library；首次导入后，可将 FCP 再导出的 XML 交给 `compare_fcpxml_roundtrip.py` 与原交付 XML 做语义回归。当前仍不会自动完成初始内容理解或语音转写。

@@ -35,7 +35,7 @@ This version implements one-time AfterForge project instructions, project intake
    ```
 
    This command owns only `<display-name>/AGENTS.md` and `<display-name>/CLAUDE.md`. It creates a missing file but preserves every existing file byte-for-byte. It must not create or update canonical `frame.md`, any Vn directory, manifest, storyboard, composition, or media asset. If it returns `blocked`, report its concrete error and stop.
-5. Use the exact `user-inbox/YYYY-MM-DD_Vn/` directory identified by the user as the intake source. Version directories are flat: read materials from that directory itself, not from generated subdirectories. If the user has not identified a version, ask which existing version to use; do not choose the latest or invent V1.
+5. Use the exact `user-inbox/YYYY-MM-DD_Vn/` or `user-inbox/YYYY-MM-DD_vn/` directory identified by the user as the intake source. Uppercase `V` and lowercase `v` are both valid; preserve the selected spelling exactly for the entire invocation. Version directories are flat: read materials from that directory itself, not from generated subdirectories. If the user has not identified a version, ask which existing version to use; do not choose the latest or invent V1.
 6. Run the read-only project intake against that version directory:
 
    ```bash
@@ -53,13 +53,13 @@ The user may fill the copy and place it in the selected `user-inbox/YYYY-MM-DD_V
 
 ## Create an Approved Vn Scaffold
 
-After the user has approved the project's canonical `AfterForge/frame.md` and identified the target `YYYY-MM-DD_Vn`, create that version with:
+After the user has approved the project's canonical `AfterForge/frame.md` and identified the target `YYYY-MM-DD_Vn` or `YYYY-MM-DD_vn`, create that version with its spelling unchanged:
 
 ```bash
 python3 <skill-directory>/scripts/scaffold_hyperframes.py "/absolute/project/workspace" "YYYY-MM-DD_Vn"
 ```
 
-The command creates only a previously absent `AfterForge/YYYY-MM-DD_Vn/`. It copies the current canonical `frame.md` and project fonts as version snapshots, fixes the HyperFrames CLI version in the local package scripts, and creates the minimum independently checkable project structure. If canonical `frame.md` is missing or the target already exists, stop on the returned `blocked` result. Never call generic `hyperframes init` as a substitute, merge into an existing Vn, generate or update project-level `AGENTS.md` or `CLAUDE.md`, or write inside `user-inbox/`.
+The command creates only a previously absent `AfterForge/YYYY-MM-DD_Vn/` or `AfterForge/YYYY-MM-DD_vn/`. It accepts either case, preserves the selected spelling in the directory and metadata, and blocks rather than creating or merging when an existing entry differs only by `V`/`v`. It copies the current canonical `frame.md` and project fonts as version snapshots, fixes the HyperFrames CLI version in the local package scripts, and creates the minimum independently checkable project structure. If canonical `frame.md` is missing or the target already exists, stop on the returned `blocked` result. Never call generic `hyperframes init` as a substitute, merge into an existing Vn, generate or update project-level `AGENTS.md` or `CLAUDE.md`, or write inside `user-inbox/`.
 
 ## Audit Supplied Animation Guidance at A7
 

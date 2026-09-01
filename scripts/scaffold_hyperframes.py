@@ -18,7 +18,7 @@ from typing import Any
 SKILL_ID = "fcpxml-animation-pipeline"
 DEFAULT_DISPLAY_NAME = "AfterForge"
 DEFAULT_HYPERFRAMES_VERSION = "0.8.16"
-VERSION_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}_V[1-9]\d*$")
+VERSION_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}_[Vv][1-9]\d*$")
 
 
 def _sha256(path: Path) -> str:
@@ -137,7 +137,7 @@ def scaffold_hyperframes_version(
             version,
             target,
             "blocked",
-            {"code": "invalid_version_name", "message": "版本名称必须使用 YYYY-MM-DD_Vn。"},
+            {"code": "invalid_version_name", "message": "版本名称必须使用 YYYY-MM-DD_Vn 或 YYYY-MM-DD_vn。"},
         )
     if not root.is_dir():
         return _report(
@@ -166,6 +166,26 @@ def scaffold_hyperframes_version(
             target,
             "blocked",
             {"code": "canonical_frame_missing", "message": "缺少可复制的项目级 canonical frame.md。"},
+        )
+    case_collision = next(
+        (
+            path
+            for path in afterforge.iterdir()
+            if path.name != version and path.name.casefold() == version.casefold()
+        ),
+        None,
+    )
+    if case_collision is not None:
+        return _report(
+            root,
+            display_name,
+            version,
+            target,
+            "blocked",
+            {
+                "code": "version_case_collision",
+                "message": f"已存在仅大小写不同的版本 {case_collision.name}，未创建或合并目标 Vn。",
+            },
         )
     if target.exists() or target.is_symlink():
         return _report(
@@ -255,7 +275,7 @@ def scaffold_hyperframes_version(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="创建隔离且可重渲染的 HyperFrames Vn 工程。")
     parser.add_argument("project_root", type=Path, help="实际项目工作区根目录")
-    parser.add_argument("version", help="用户已经选定的 YYYY-MM-DD_Vn")
+    parser.add_argument("version", help="用户已经选定的 YYYY-MM-DD_Vn 或 YYYY-MM-DD_vn")
     parser.add_argument(
         "--display-name",
         default=DEFAULT_DISPLAY_NAME,

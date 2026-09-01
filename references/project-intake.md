@@ -2,7 +2,7 @@
 
 ## 用途
 
-`scripts/intake_project.py` 对用户指定的投放版本目录执行只读扫描，并把已发现材料、时间线证据、就绪状态和必要问题输出为 JSON。该目录通常是实际项目根目录下的 `user-inbox/YYYY-MM-DD_Vn/`，由用户创建、选择和维护。入口报告用于决定能否开始后续内容分析，不是最终 `animation-manifest.json`。
+`scripts/intake_project.py` 对用户指定的投放版本目录执行只读扫描，并把已发现材料、时间线证据、就绪状态和必要问题输出为 JSON。该目录通常是实际项目根目录下的 `user-inbox/YYYY-MM-DD_Vn/` 或 `user-inbox/YYYY-MM-DD_vn/`，由用户创建、选择和维护；选定的大小写在后续版本工程中原样保留。入口报告用于决定能否开始后续内容分析，不是最终 `animation-manifest.json`。
 
 ## 命令与退出码
 

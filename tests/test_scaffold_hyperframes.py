@@ -116,6 +116,38 @@ class HyperFramesScaffoldTests(unittest.TestCase):
             self.assertEqual(result["error"]["code"], "version_exists")
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep\n")
 
+    def test_lowercase_version_is_created_and_preserved_exactly(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project_root, afterforge = self.make_project(directory)
+
+            result = scaffold(project_root, "2026-08-26_v1")
+
+            target = afterforge / "2026-08-26_v1"
+            self.assertEqual(result["status"], "created")
+            self.assertEqual(result["version"], "2026-08-26_v1")
+            self.assertEqual(Path(result["path"]), target.resolve())
+            meta = json.loads((target / "meta.json").read_text(encoding="utf-8"))
+            self.assertEqual(meta["version"], "2026-08-26_v1")
+            self.assertEqual(meta["name"], f"{project_root.name}-2026-08-26_v1")
+
+    def test_case_only_version_collision_blocks_without_modification(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project_root, afterforge = self.make_project(directory)
+            existing = afterforge / "2026-08-26_V1"
+            existing.mkdir()
+            sentinel = existing / "keep.txt"
+            sentinel.write_text("keep\n", encoding="utf-8")
+
+            result = scaffold(project_root, "2026-08-26_v1")
+
+            self.assertEqual(result["status"], "blocked")
+            self.assertEqual(result["error"]["code"], "version_case_collision")
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep\n")
+            self.assertEqual(
+                [path.name for path in afterforge.iterdir() if path.name.casefold() == "2026-08-26_v1"],
+                ["2026-08-26_V1"],
+            )
+
     def test_missing_canonical_frame_blocks_before_creating_version(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             project_root, afterforge = self.make_project(directory)
