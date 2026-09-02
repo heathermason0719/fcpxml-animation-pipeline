@@ -19,7 +19,12 @@ def digest(path: Path) -> str:
 def scaffold(project_root: Path, version: str = "2026-08-26_V1") -> dict:
     if scaffold_hyperframes_version is None:
         raise AssertionError("scaffold_hyperframes implementation is missing")
-    return scaffold_hyperframes_version(project_root, version, "0.8.14")
+    return scaffold_hyperframes_version(
+        project_root,
+        version,
+        "0.8.14",
+        compatibility_checker=lambda _root, _version: None,
+    )
 
 
 class HyperFramesScaffoldTests(unittest.TestCase):
@@ -92,7 +97,11 @@ class HyperFramesScaffoldTests(unittest.TestCase):
             )
             meta = json.loads((target / "meta.json").read_text(encoding="utf-8"))
             self.assertEqual(meta["version"], "2026-08-26_V1")
-            self.assertEqual(meta["hyperframesVersion"], "0.8.14")
+            self.assertNotIn("hyperframesVersion", meta)
+            self.assertEqual(
+                meta["toolchain"]["hyperframes"],
+                {"createdWithVersion": "0.8.14", "migrations": []},
+            )
             self.assertEqual(meta["visualSpec"]["canonical"], "../frame.md")
             self.assertEqual(meta["visualSpec"]["snapshot"], "frame.md")
             self.assertEqual(meta["visualSpec"]["snapshotSha256"], digest(target / "frame.md"))
@@ -100,6 +109,62 @@ class HyperFramesScaffoldTests(unittest.TestCase):
             self.assertEqual(
                 package["scripts"]["check"],
                 "npm exec --yes --package=hyperframes@0.8.14 -- hyperframes check",
+            )
+
+    def test_default_creation_resolves_once_and_checks_staging_before_publish(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project_root, afterforge = self.make_project(directory)
+            resolver_calls: list[str | None] = []
+            checked: list[tuple[Path, str]] = []
+
+            def resolve(value: str | None) -> str:
+                resolver_calls.append(value)
+                return "0.8.26"
+
+            def check(root: Path, version: str) -> None:
+                from scripts.hyperframes_runtime import read_runtime_pin
+
+                self.assertNotEqual(root, afterforge / "2026-08-26_V1")
+                self.assertEqual(read_runtime_pin(root), "0.8.26")
+                checked.append((root, version))
+
+            result = scaffold_hyperframes_version(
+                project_root,
+                "2026-08-26_V1",
+                version_resolver=resolve,
+                compatibility_checker=check,
+            )
+
+            target = afterforge / "2026-08-26_V1"
+            self.assertEqual(result["status"], "created")
+            self.assertEqual(resolver_calls, [None])
+            self.assertEqual(len(checked), 1)
+            self.assertEqual(checked[0][1], "0.8.26")
+            package = json.loads((target / "package.json").read_text(encoding="utf-8"))
+            meta = json.loads((target / "meta.json").read_text(encoding="utf-8"))
+            self.assertIn("hyperframes@0.8.26", package["scripts"]["render"])
+            self.assertEqual(meta["toolchain"]["hyperframes"]["createdWithVersion"], "0.8.26")
+
+    def test_compatibility_failure_leaves_no_target_version(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            project_root, afterforge = self.make_project(directory)
+
+            def fail_check(_root: Path, _version: str) -> None:
+                raise ValueError("compatibility check failed")
+
+            result = scaffold_hyperframes_version(
+                project_root,
+                "2026-08-26_V1",
+                "0.8.26",
+                compatibility_checker=fail_check,
+            )
+
+            self.assertEqual(result["status"], "blocked")
+            self.assertEqual(result["error"]["code"], "version_create_failed")
+            self.assertFalse((afterforge / "2026-08-26_V1").exists())
+            self.assertEqual(
+                [path.name for path in afterforge.iterdir() if path.name.startswith(".scaffold-")],
+                [],
             )
 
     def test_existing_version_blocks_without_modification(self) -> None:

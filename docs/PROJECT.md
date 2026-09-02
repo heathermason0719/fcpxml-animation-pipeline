@@ -67,6 +67,7 @@
 - 用户侧工作目录显示名不得驱动仓库名、Skill ID、数据字段或内部索引迁移。
 - `AfterForge/` 是 Skill 唯一默认写入区；`user-inbox/` 及版本内容始终视为用户只读输入。
 - AfterForge 项目初始化与 Vn 版本创建必须解耦；创建 Vn 不得重新生成或自动更新项目级 `AGENTS.md`、`CLAUDE.md` 或 canonical `frame.md`。
+- 新 Vn 只在创建时确定并精确固定 HyperFrames runtime；已进入制作的 Vn 不随官方 latest 自动漂移，版本变化必须是用户授权、可观察且能传播审核 evidence 失效的显式迁移。
 
 ## 主要目标成立的条件
 

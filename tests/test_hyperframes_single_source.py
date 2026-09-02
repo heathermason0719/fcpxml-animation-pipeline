@@ -165,6 +165,34 @@ class SingleSourceFixture(unittest.TestCase):
             "window.__timelines[\"p1s01-c01-title\"] = gsap.timeline({ paused: true });\n",
             encoding="utf-8",
         )
+        write_json(
+            root / "package.json",
+            {
+                "private": True,
+                "scripts": {
+                    name: f"npm exec --yes --package=hyperframes@0.8.26 -- hyperframes {command}"
+                    for name, command in {
+                        "dev": "preview",
+                        "check": "check",
+                        "render": "render",
+                        "publish": "publish",
+                    }.items()
+                },
+            },
+        )
+        write_json(
+            root / "meta.json",
+            {
+                "id": "test-2026-08-26-v1",
+                "version": "2026-08-26_V1",
+                "toolchain": {
+                    "hyperframes": {
+                        "createdWithVersion": "0.8.26",
+                        "migrations": [],
+                    }
+                },
+            },
+        )
         write_json(root / "animation-manifest.json", manifest_fixture())
         return root
 
@@ -281,6 +309,7 @@ class LayoutLockTests(SingleSourceFixture):
                 ],
             )
             self.assertEqual(len(lock["reviewFrameSetSha256"]), 64)
+            self.assertEqual(lock["runtimeVersion"], "0.8.26")
             self.assertEqual(verify_layouts(root)["status"], "valid")
 
             (root / lock["reviewFrames"][1]["path"]).write_bytes(b"changed cinema")
@@ -288,6 +317,25 @@ class LayoutLockTests(SingleSourceFixture):
 
             self.assertEqual(changed["status"], "invalid")
             self.assertEqual(changed["invalidCueIds"], ["p1s01_c01_title"])
+
+    def test_runtime_pin_change_invalidates_layout_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_version(directory)
+            sync_storyboard(root)
+            poster = root / "approved.png"
+            poster.write_bytes(b"approved under 0.8.26")
+            freeze_layout(root, "p1s01_c01_title", poster)
+            package = root / "package.json"
+            package.write_text(
+                package.read_text(encoding="utf-8").replace("hyperframes@0.8.26", "hyperframes@0.8.27"),
+                encoding="utf-8",
+            )
+
+            changed = verify_layouts(root)
+
+            self.assertEqual(changed["status"], "invalid")
+            self.assertEqual(changed["invalidCueIds"], ["p1s01_c01_title"])
+            self.assertEqual(changed["details"][0]["error"], "runtime pin changed from 0.8.26 to 0.8.27")
 
     def test_freeze_increments_preserved_revision_after_lock_invalidation(self) -> None:
         self.assertIsNotNone(sync_storyboard, "sync_storyboard implementation is missing")

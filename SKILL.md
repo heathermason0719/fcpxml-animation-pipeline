@@ -65,7 +65,19 @@ After the user has approved the project's canonical `AfterForge/frame.md` and id
 python3 <skill-directory>/scripts/scaffold_hyperframes.py "/absolute/project/workspace" "YYYY-MM-DD_Vn"
 ```
 
-The command creates only a previously absent `AfterForge/YYYY-MM-DD_Vn/` or `AfterForge/YYYY-MM-DD_vn/`. It accepts either case, preserves the selected spelling in the directory and metadata, and blocks rather than creating or merging when an existing entry differs only by `V`/`v`. It copies the current canonical `frame.md` and project fonts as version snapshots, fixes the HyperFrames CLI version in the local package scripts, and creates the minimum independently checkable project structure. If canonical `frame.md` is missing or the target already exists, stop on the returned `blocked` result. Never call generic `hyperframes init` as a substitute, merge into an existing Vn, generate or update project-level `AGENTS.md` or `CLAUDE.md`, or write inside `user-inbox/`.
+The command creates only a previously absent `AfterForge/YYYY-MM-DD_Vn/` or `AfterForge/YYYY-MM-DD_vn/`. It accepts either case, preserves the selected spelling in the directory and metadata, and blocks rather than creating or merging when an existing entry differs only by `V`/`v`. It copies the current canonical `frame.md` and project fonts as version snapshots, resolves the official current HyperFrames version once unless an exact version was explicitly supplied, pins that exact version in every managed local package script, records it as immutable creation provenance, and runs a compatibility check before publishing the staged Vn. Resolution or checking failure blocks without leaving a target Vn; it never falls back to a stale repository default. If canonical `frame.md` is missing or the target already exists, stop on the returned `blocked` result. Never call generic `hyperframes init` as a substitute, merge into an existing Vn, generate or update project-level `AGENTS.md` or `CLAUDE.md`, or write inside `user-inbox/`.
+
+## Keep Existing Vn Runtime Pins Stable
+
+When resuming an existing AfterForge Vn, treat its exact, uniform `package.json` HyperFrames pin as the sole current runtime authority. Do not probe npm latest as part of ordinary resume and do not apply the generic `hyperframes upgrade --project` behavior automatically. A newer official release is not permission to alter a Vn already in production.
+
+Change an existing pin only after the user explicitly authorizes that runtime migration, and use the repository migration command with an exact target version:
+
+```bash
+python3 <skill-directory>/scripts/migrate_hyperframes_runtime.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn" "X.Y.Z"
+```
+
+The migration must name the compatibility checks it actually ran and report review evidence as preserved, rebound, or invalidated. It must not collapse those facts into a generic `validated` state. Runtime changes participate in A11 layout locks and A12/downstream input fingerprints, so ordinary upgrades reopen affected review stages. Use `--rebind-current-a11` only when existing evidence proves the current A11 frames and approvals were already produced under the unchanged target pin; never use it to preserve evidence across an actual version change.
 
 ## Audit Supplied Animation Guidance at A7
 

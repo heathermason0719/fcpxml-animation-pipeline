@@ -10,10 +10,12 @@ from typing import Any
 
 try:
     from scripts.hyperframes_adapter import cue_adapter, load_manifest, safe_project_path
+    from scripts.hyperframes_runtime import read_runtime_pin
     from scripts.layout_lock import verify_layouts
     from scripts.workflow_stages import assess_stage_evidence, load_stage_contract
 except ModuleNotFoundError:  # pragma: no cover - direct script execution
     from hyperframes_adapter import cue_adapter, load_manifest, safe_project_path  # type: ignore
+    from hyperframes_runtime import read_runtime_pin  # type: ignore
     from layout_lock import verify_layouts  # type: ignore
     from workflow_stages import assess_stage_evidence, load_stage_contract  # type: ignore
 
@@ -47,6 +49,7 @@ def current_input_fingerprint(root: Path, manifest: dict[str, Any]) -> str:
             }
         )
     payload = {
+        "hyperframesRuntimeVersion": read_runtime_pin(root),
         "preview": manifest["project"]["preview"],
         "delivery": manifest["project"]["delivery"],
         "cues": records,
@@ -316,6 +319,7 @@ def _a11_evidence_status(root: Path, manifest: dict[str, Any], evidence: Any) ->
         )
         if (
             approval.get("status") != "approved"
+            or approval.get("runtimeVersion") != lock.get("runtimeVersion")
             or approval.get("layoutRevision") != lock.get("revision")
             or approval.get("layoutAggregateSha256") != lock.get("aggregateSha256")
             or approval.get("approvedPosterSha256") != lock.get("approvedPosterSha256")

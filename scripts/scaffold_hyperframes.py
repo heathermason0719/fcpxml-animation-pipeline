@@ -9,15 +9,20 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+try:
+    from scripts.hyperframes_runtime import resolve_creation_version, run_with_isolated_npm_cache
+except ModuleNotFoundError:  # pragma: no cover - direct script execution
+    from hyperframes_runtime import resolve_creation_version, run_with_isolated_npm_cache  # type: ignore
 
 
 SKILL_ID = "fcpxml-animation-pipeline"
 DEFAULT_DISPLAY_NAME = "AfterForge"
-DEFAULT_HYPERFRAMES_VERSION = "0.8.16"
 VERSION_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}_[Vv][1-9]\d*$")
 
 
@@ -110,11 +115,21 @@ def _index_html() -> str:
 """
 
 
+def _check_scaffold_compatibility(version_root: Path, _version: str) -> None:
+    run_with_isolated_npm_cache(
+        ["npm", "run", "check"],
+        cwd=version_root,
+    )
+
+
 def scaffold_hyperframes_version(
     project_root: Path,
     version: str,
-    hyperframes_version: str = DEFAULT_HYPERFRAMES_VERSION,
+    hyperframes_version: str | None = None,
     display_name: str = DEFAULT_DISPLAY_NAME,
+    *,
+    version_resolver: Callable[[str | None], str] = resolve_creation_version,
+    compatibility_checker: Callable[[Path, str], None] = _check_scaffold_compatibility,
 ) -> dict[str, Any]:
     """Create a new Vn without touching canonical project-level files."""
     root = project_root.expanduser().resolve()
@@ -209,6 +224,7 @@ def scaffold_hyperframes_version(
         )
 
     try:
+        resolved_hyperframes_version = version_resolver(hyperframes_version)
         with tempfile.TemporaryDirectory(prefix=f".scaffold-{version}-", dir=afterforge) as staging_name:
             staging = Path(staging_name)
             compositions = staging / "compositions"
@@ -231,7 +247,7 @@ def scaffold_hyperframes_version(
                 (assets / "fonts").mkdir()
 
             (staging / "package.json").write_text(
-                _package_json(root.name, version, hyperframes_version), encoding="utf-8"
+                _package_json(root.name, version, resolved_hyperframes_version), encoding="utf-8"
             )
             (staging / "hyperframes.json").write_text(_hyperframes_json(), encoding="utf-8")
             (staging / "index.html").write_text(_index_html(), encoding="utf-8")
@@ -239,7 +255,12 @@ def scaffold_hyperframes_version(
                 "id": f"{root.name}-{version}".lower().replace("_", "-"),
                 "name": f"{root.name}-{version}",
                 "version": version,
-                "hyperframesVersion": hyperframes_version,
+                "toolchain": {
+                    "hyperframes": {
+                        "createdWithVersion": resolved_hyperframes_version,
+                        "migrations": [],
+                    }
+                },
                 "visualSpec": {
                     "canonical": "../frame.md",
                     "snapshot": "frame.md",
@@ -249,6 +270,7 @@ def scaffold_hyperframes_version(
             (staging / "meta.json").write_text(
                 json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
             )
+            compatibility_checker(staging, resolved_hyperframes_version)
             staging.rename(target)
     except FileExistsError:
         return _report(
@@ -259,7 +281,7 @@ def scaffold_hyperframes_version(
             "blocked",
             {"code": "version_create_race", "message": "创建时目标 Vn 被其他对象占用。"},
         )
-    except OSError as error:
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
         return _report(
             root,
             display_name,
@@ -283,8 +305,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--hyperframes-version",
-        default=DEFAULT_HYPERFRAMES_VERSION,
-        help=f"固定的 HyperFrames CLI 版本（默认：{DEFAULT_HYPERFRAMES_VERSION}）",
+        default=None,
+        help="精确的 HyperFrames CLI 版本；省略时在创建时解析官方当前版本并固定。",
     )
     return parser
 

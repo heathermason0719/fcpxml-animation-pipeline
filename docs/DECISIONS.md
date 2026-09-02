@@ -222,6 +222,16 @@
 
 **影响：** 一次性项目初始化器只负责缺失的根层项目入口，存在即保留；版本脚手架只写入全新的 Vn 目录，目标存在即阻塞，并固定 HyperFrames 版本、项目配置、frame 快照、compositions 和本地素材。HyperFrames skills 更新属于机器环境维护，不由项目或 Vn 创建隐式触发。Vn 的独立重渲染不依赖 `AGENTS.md` 或 `CLAUDE.md`。
 
+## 将 HyperFrames runtime 固定为 Vn 资产并显式迁移
+
+**决定：** 新 Vn 在创建时解析官方当前 HyperFrames 版本，或采用调用方显式提供的精确版本；临时脚手架通过兼容性检查后，把结果固定到所有 managed `package.json` scripts。该统一精确 pin 是当前 runtime 的唯一 machine authority。`meta.json` 只保存不可变 `createdWithVersion` 与显式迁移历史，不再维护第二份 current version。已有 Vn 的普通恢复不探测或采用 latest，只有用户授权的 `migrate_hyperframes_runtime.py` 可以改变 pin。
+
+**原因：** 仓库硬编码默认值会随着上游发布腐烂，而每次恢复自动追 latest 又会让同一 Vn 的渲染环境在制作中漂移。真正执行命令的是 `package.json`；让 `meta.json` 同时充当当前版本权威会形成两个必须人工同步的数据源。创建时一次解析、随后精确冻结，可以同时避免陈旧默认值和制作中无声变化。
+
+**主要替代方案：** 在仓库 registry 维护人工批准版本，或让通用 HyperFrames upgrade 在每次恢复时自动更新。前者仍需要持续人工追版本且容易变成新的陈旧常量；后者破坏旧 Vn 的可重复重渲染和审核证据边界。
+
+**影响：** 迁移事件必须列出真实执行的兼容性检查，并分别说明审核 evidence 的 preserved、rebound 与 invalidated 结果，不能用单一 `validated` 状态模糊表达。runtime pin 进入 A11 layout lock、逐 cue approval 以及 A12 下游输入指纹；实际版本变化默认重开 A11 并向下失效。只有目标 pin 没有变化、且有证据证明现有 A11 产物本来就在该 runtime 下生成时，才允许确定性重绑而不要求用户重复审核。
+
 ## A11 与 A12 共享唯一正式 cue composition
 
 **决定：** 每条 animated cue 只维护一份 `compositions/cues/<cue>.html`，其中真实文案、DOM、布局和 CSS 终态是 ground truth。运动单独位于 `compositions/motion/<cue>.js`，不得改写会触发布局分叉的尺寸、定位、字体或流式布局属性。A11 的 `compositions/review/` 和 `STORYBOARD.md` 由 manifest 自动生成，把原画 still 与该正式 cue composition 组合为 hero frame；A12 的 `index.html` 也直接装入同一 composition。`source-only` cue 不创建 composition、motion 或渲染槽。

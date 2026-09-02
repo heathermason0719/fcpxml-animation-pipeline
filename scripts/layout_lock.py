@@ -21,6 +21,7 @@ try:
         safe_project_path,
         save_manifest,
     )
+    from scripts.hyperframes_runtime import read_runtime_pin
 except ModuleNotFoundError:
     from hyperframes_adapter import (  # type: ignore
         GENERATED_REVIEW_MARKER,
@@ -31,6 +32,7 @@ except ModuleNotFoundError:
         safe_project_path,
         save_manifest,
     )
+    from hyperframes_runtime import read_runtime_pin  # type: ignore
 
 
 def _dependency_records(version_root: Path, adapter: dict[str, Any]) -> tuple[list[dict[str, str]], str]:
@@ -162,6 +164,7 @@ def freeze_layout(
     poster_hash = review_frames[0]["sha256"]
     adapter["layoutLock"] = {
         "revision": revision,
+        "runtimeVersion": read_runtime_pin(root),
         "algorithm": "sha256",
         "files": records,
         "aggregateSha256": aggregate,
@@ -216,6 +219,12 @@ def verify_layouts(version_root: Path) -> dict[str, Any]:
             continue
         checked.append(cue["id"])
         try:
+            runtime_version = read_runtime_pin(root)
+            locked_runtime_version = lock.get("runtimeVersion")
+            if locked_runtime_version != runtime_version:
+                raise ValueError(
+                    f"runtime pin changed from {locked_runtime_version or '<unbound>'} to {runtime_version}"
+                )
             _, aggregate = _dependency_records(root, adapter)
             review_projection = _review_projection_record(root, adapter)
             poster = safe_project_path(root, lock["approvedPoster"])

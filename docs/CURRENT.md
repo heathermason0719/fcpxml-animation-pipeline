@@ -10,8 +10,8 @@
 - `scripts/init_user_workspace.py` 已能在项目根目录幂等创建或识别用户工作目录，默认显示名为 `AfterForge`，同时保持内部 ID `fcpxml-animation-pipeline`；
 - `scripts/init_user_inbox.py` 已能幂等创建或识别用户维护、Skill 只读的 `user-inbox/`，且不会创建或修改任何版本目录；
 - `scripts/init_afterforge_project.py` 已能在既有 AfterForge 工作目录中一次性初始化项目级 `AGENTS.md` 和 `CLAUDE.md`：只补缺失文件、逐字节保留既有文件，并且不创建或更新 canonical `frame.md`、任何 Vn 或版本资产；
-- `scripts/scaffold_hyperframes.py` 已能在项目级 canonical `frame.md` 存在且目标 Vn 尚不存在时，原子创建隔离的 HyperFrames 版本工程：版本标记接受大写 `V` 或小写 `v` 并原样保留，发现仅大小写不同的既有版本时阻塞；复制 `frame.md` 与项目字体快照，固定 HyperFrames CLI 版本，生成最小可检查结构；不调用通用 `hyperframes init`，不生成或更新项目级 `AGENTS.md`、`CLAUDE.md`，目标已存在或前置条件缺失时阻塞且不修改既有内容；
-- 已实现 HyperFrames 单一布局源 adapter：manifest v2 驱动 `compositions/cues/` 唯一正式布局、独立 `compositions/motion/`、自动生成的 `compositions/review/`、`STORYBOARD.md` 与正式合成 `index.html`；`layout_lock.py` 可冻结并验证 A11 布局依赖，adapter validator 可阻止路径/ID/依赖/布局运动分叉；
+- `scripts/scaffold_hyperframes.py` 已能在项目级 canonical `frame.md` 存在且目标 Vn 尚不存在时，原子创建隔离的 HyperFrames 版本工程：版本标记接受大写 `V` 或小写 `v` 并原样保留，发现仅大小写不同的既有版本时阻塞；创建时使用一次性隔离 npm cache 解析官方当前 HyperFrames 版本或接受显式精确版本，在临时目录通过兼容性检查后固定进 managed package scripts 并记录不可变创建来源；不依赖仓库硬编码默认值，不调用通用 `hyperframes init`，不生成或更新项目级 `AGENTS.md`、`CLAUDE.md`，目标已存在或前置条件缺失时阻塞且不修改既有内容；
+- 已实现 HyperFrames 单一布局源 adapter：manifest v2 驱动 `compositions/cues/` 唯一正式布局、独立 `compositions/motion/`、自动生成的 `compositions/review/`、`STORYBOARD.md` 与正式合成 `index.html`；`layout_lock.py` 可冻结并验证 A11 布局依赖及产生审核帧的精确 runtime pin，adapter validator 可阻止路径/ID/依赖/布局运动或 runtime 分叉；
 - 已实现 legacy Vn 迁移器：从既有最新 animation composition 提取 canonical cue 与 inline GSAP motion，迁移前完整预检，异常时恢复 manifest/storyboard/index，并保留旧 `compositions/frames/`、`compositions/animation/` 原文件用于对照；
 - 项目入口步骤 A1、A2 保留独立编号和内部职责，但面向用户连续执行，中间不单独汇报或等待确认；
 - `user-inbox/` 初始化已在一个真实项目根目录完成验证：首次返回 `created`，重复运行返回 `existing`，目录保持为空且既有 `AfterForge/` 未改变；
@@ -19,7 +19,7 @@
 - 已在同一真实项目中执行一次性 AfterForge 项目初始化：既有 `AfterForge/` 与 `user-inbox/` 原样复用，只在 `AfterForge/` 根层创建缺失的项目级 `AGENTS.md` 和 `CLAUDE.md`，未创建 canonical `frame.md` 或 Vn；
 - 用户工作目录初始化已在一个真实项目根目录完成验证：首次返回 `created`，重复运行返回 `existing`，目录内未生成其他内容；
 - 入口能以 `ready`/`blocked`、blocker、warning、ambiguity 和最小问题清单表达是否具备后续分析条件；
-- 当前可靠行为已通过 121 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
+- 当前可靠行为已通过 135 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-25_V2` 执行 `--flat` intake：唯一选择 `P1-sence-01-粗剪.fcpxmld` 和 `P1-sence-01 粗剪.m4v`，识别 `P1-sence-01 脚本.docx` 为旁白证据，结果为 `ready`，无 blocker、warning 或 ambiguity；
 - intake 已新增 `materials.animation_guidance`，用于独立保留用户主动提供的动画脚本或逐镜要求；存在 SRT 时不再因旁白来源已经成立而丢弃动画脚本，脚本内时码仍不具备 FCPXML 时间权威；
 - 已冻结 A7 动画脚本可执行性审核：intake 仍只发现并保留可选脚本，A7 才对照口播、原画、FCPXML、产品范围和当前后端给相关 cue 写入可选 `guidanceReview`；审核不新增独立报告或用户验收，不改变 intake 状态，只有真实方向分叉或受影响 cue 无法可靠继续时才询问；
@@ -54,6 +54,7 @@
 - 已实现绑定单个 Vn 的仓库级 Review：A11 cue 卡按对应旁白、锁定的主审帧/必要辅助帧、cue 级 `finalAnimationDescription`、逐帧 comment 与批准操作组织，不展示设计讨论历史；A11 出图前若用户措辞或已确认约束仍有会实质改变最终呈现的合理解释分叉，Agent 必须先用一个聚焦问题澄清，不能把低成本返工或后续 comment 当作自行选义的理由，澄清过程不写入最终动画说明；comment 保存后明确提示成功，只撤销批准证据并保留被评论的静帧，实际受审文件变化才由哈希校验判定 layout lock 失效；缺少最终动画说明、任一审核帧哈希失效或仍有开放 comment 时拒绝批准，批量批准仍保存逐 cue evidence；A13 从播放器自动绑定时间与 cue，可选持续范围，一条 comment 由用户选择 `static`、`motion` 或二者影响范围；静态范围重开受影响 A11 并向下失效，motion-only 保留有效 A11，Demo 页面上下文不被强制切走；同时保留视频级批准、独立 A14 原生渲染授权、D5 FCP 导入验收和 manifest SHA 并发保护；
 - 已确认 Review shell 与项目级 canonical `frame.md`、Vn `frame.md` 快照解耦：项目视觉规范只影响被审核的动画内容；当前 shell 暂时冻结为仓库级 Review UI 基线，后续 UI/UX 调整必须显式进行，不随项目视觉规范变化；
 - 已实现显式 legacy Vn 合同迁移：原样保留旧 `reviews`，不把旧 approval 升格为新合同批准；可核验且输入未变的旧 480p Demo 可作为 A12 artifact evidence 保留；
+- 已实现 HyperFrames runtime 最小治理：`package.json` 统一精确 pin 是 Vn 当前运行版本唯一权威，`meta.json` 分离不可变创建版本和显式迁移历史；普通恢复不再探测或采用 latest，`migrate_hyperframes_runtime.py` 才能迁移既有 Vn，并逐项记录兼容性检查与审核 evidence 的 preserved、rebound、invalidated 结果；runtime pin 已进入 A11 lock、cue approval 与 A12 下游输入指纹；
 - 已将原生 renderer、资产注册器、FCPXMLD builder 和 round-trip registrar 接入 D-stage 哈希链：A11/A13/A14 或输入不匹配时在启动 renderer 前阻断，后续 D2–D6 不以产物文件单独存在判断完成；
 - 首次 round-trip 证实 FCP 会重排 resource ID、改写媒体路径前缀与等价有理数，并可能产生微秒以下 `timeMap` 规范化和不超过一帧的 MOV resource 物理尾差；比较器已在不放宽 connected clip 时长、语义位置、音频属性或主故事线约束的前提下规范化这些非语义差异；
 - 已移除旧版 HyperFrames marketplace plugin，并在软件重启后确认源码安装的新版 HyperFrames 技能可用；
@@ -63,13 +64,13 @@
 
 - 尚未实现参考视频内容理解或语音转写；
 - 尚未把本次人工完成的旁白对齐和初始 `animation-manifest.json` 内容生成整理为仓库内可复用的确定性流水线；HyperFrames 单一布局源装配、review projection、layout lock、adapter 验证和旧 Vn 迁移已经脚本化；
-- 新 Stage Contract、Review 与 D-stage evidence chain 尚未在当前真实 `2026-09-01_v1` 完整走完 A11→D6；该 Vn 已完成显式迁移并补齐五条 `finalAnimationDescription`，五个镜头共七张审核帧当前锁定有效，已保存七条开放 A11 comment，其中一条仅用于写入冒烟测试；resolver 保持阻塞在 A11；D-stage 最终边界仍待本次真实闭环证据复盘；
+- 新 Stage Contract、Review 与 D-stage evidence chain 尚未在当前真实 `2026-09-01_v1` 完整走完 A11→D6；该 Vn runtime 保持精确 pin `0.8.26`，`meta.json` 已将创建版本 `0.8.16` 与当前 runtime 语义拆分，`HF-M0001` 核对迁移分别记录 package pin、HyperFrames check、adapter validation，五个 A11 cue evidence 已重绑至 0.8.26，旧 A12 artifact evidence 已明确失效；五个镜头共七张审核帧锁定有效，十条 A11 comment 已全部由用户接受；resolver 已确认 A1–A11 完成并阻塞在 A12；D-stage 最终边界仍待本次真实闭环证据复盘；
 - 当前没有 build 或 lint 命令。
 
 ## 已知问题与阻塞
 
-当前没有已知技术阻塞。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。新三段审核契约和 D2–D6 evidence chain 已通过合成测试；真实 `2026-09-01_v1` 已迁移并正在进行 A11 comment 处理，尚待重新完成 A11/A13/A14 与 Delivery，因而当前仍不能把这次架构升级描述为已通过真实 invocation 验证。
+当前没有已知技术阻塞。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。新三段审核契约和 D2–D6 evidence chain 已通过合成测试；真实 `2026-09-01_v1` 已迁移并完成 A11 Storyboard 静态审核，尚待完成 A12 Demo 构建、A13 运动审核、A14 原生渲染授权与 Delivery，因而当前仍不能把这次架构升级描述为已通过真实 invocation 验证。
 
 ## 下一步
 
-下一步继续在当前真实 `2026-09-01_v1` 处理 A11 的开放 comment，重新生成并审核受影响静帧；A11 重新完成后进入 A12/A13，用户另行完成 A14 授权，再按 resolver 继续 D2 原生渲染、D3 注册、D4 发布、D5 FCP 导入验收和需要的 D6 round-trip。闭环后依据实际 evidence 复盘 D-stage 边界，再完成最终验证。
+下一步在当前真实 `2026-09-01_v1` 从已批准且锁定有效的 A11 composition 构建 854×480 Demo，进入 A13 运动审核；用户另行完成 A14 授权后，再按 resolver 继续 D2 原生渲染、D3 注册、D4 发布、D5 FCP 导入验收和需要的 D6 round-trip。闭环后依据实际 evidence 复盘 D-stage 边界，再完成最终验证。

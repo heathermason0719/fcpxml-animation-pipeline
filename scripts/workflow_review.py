@@ -213,6 +213,7 @@ def approve_storyboard(
         comment_revision = max((int(comment.get("revision", 0)) for comment in cue_comments), default=0)
         approvals[cue["id"]] = {
             "status": "approved",
+            "runtimeVersion": lock["runtimeVersion"],
             "layoutRevision": lock["revision"],
             "layoutAggregateSha256": lock["aggregateSha256"],
             "approvedPosterSha256": lock["approvedPosterSha256"],
@@ -230,6 +231,7 @@ def approve_storyboard(
             isinstance(lock, dict)
             and isinstance(approval, dict)
             and approval.get("status") == "approved"
+            and approval.get("runtimeVersion") == lock.get("runtimeVersion")
             and approval.get("layoutRevision") == lock.get("revision")
             and approval.get("layoutAggregateSha256") == lock.get("aggregateSha256")
             and approval.get("approvedPosterSha256") == lock.get("approvedPosterSha256")

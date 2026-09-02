@@ -86,7 +86,7 @@ Skill 首先接收用户的实际项目工作区路径，依次创建或识别 `
 
 上述目录初始化只负责建立 `AfterForge/` 门牌和读写边界。后续的一次性 AfterForge 视频项目初始化是独立步骤，只在项目尚未初始化时于根层创建项目级 `AGENTS.md` 和 `CLAUDE.md`；两者已存在时必须原样保留，不得因创建新 Vn、普通制作、HyperFrames CLI 或 skills 升级而重写。`CLAUDE.md` 创建后不进入日常同步维护，只有未来实际使用 Claude Code 且用户明确要求时，才依据届时规则更新。
 
-Vn 版本创建与项目初始化完全解耦。Vn 由仓库控制的确定性 HyperFrames 适配脚手架创建，不以每版执行通用 `hyperframes init` 为前提。版本标记接受大写 `V` 或小写 `v`；输入拼写作为本轮版本身份原样保存，脚手架发现仅大小写不同的既有条目时必须阻塞，不得创建、合并或隐式规范化。版本脚手架只写入新 Vn 目录，目标已存在时阻塞，不得触碰 AfterForge 根层的 `AGENTS.md`、`CLAUDE.md` 或 canonical `frame.md`。HyperFrames skills 的安装或升级属于机器环境维护，也不得绑定到项目初始化或 Vn 创建。
+Vn 版本创建与项目初始化完全解耦。Vn 由仓库控制的确定性 HyperFrames 适配脚手架创建，不以每版执行通用 `hyperframes init` 为前提。版本标记接受大写 `V` 或小写 `v`；输入拼写作为本轮版本身份原样保存，脚手架发现仅大小写不同的既有条目时必须阻塞，不得创建、合并或隐式规范化。版本脚手架只写入新 Vn 目录，目标已存在时阻塞，不得触碰 AfterForge 根层的 `AGENTS.md`、`CLAUDE.md` 或 canonical `frame.md`。脚手架在创建瞬间解析官方当前 HyperFrames 版本，或接受调用方显式给出的精确版本，并在临时 Vn 通过兼容性检查后把该精确版本固定进所有 managed package scripts；解析或检查失败时不发布目标，也不回退到仓库硬编码默认值。HyperFrames skills 的安装或升级仍属于机器环境维护，不由项目初始化或 Vn 创建隐式触发。
 
 `user-inbox/` 初始化器遵守以下边界：
 
@@ -261,6 +261,10 @@ Agent 默认自主完成该路由，不新增逐条用户确认。分叉会显�
 每个视频项目都在 `AfterForge/frame.md` 建立一份项目级 canonical visual spec。它是该视频整体视觉包装审美的长期规范，不是跨项目通用皮肤，也不只记录颜色和字体。它至少约束艺术方向、画面构成原则、信息层级、图形语言、背景与前景关系、形状和组件处理、材质与纹理、影像处理、色彩、字体、间距以及明确的视觉禁区。
 
 创建新 Vn 时，`scaffold_hyperframes.py` 把当时的 canonical `frame.md` 复制到 Vn HyperFrames 工程根层，作为该版本的构建快照，并在本版 `animation-manifest.json` 中记录 canonical 相对路径、快照相对路径和 SHA-256。Vn 进入制作后，后续 canonical 更新不得静默改变旧版快照；检查和重渲染旧 Vn 时必须使用其本地快照。HyperFrames 使用快照实现本版视觉一致性；更换渲染后端时，应依据 manifest 与该快照生成等价适配规范。
+
+同一个 Vn 的 HyperFrames runtime 也遵循快照式生命周期。`package.json` 中四个 managed scripts 的统一精确 pin 是当前 runtime 的唯一 machine authority；`meta.json.toolchain.hyperframes.createdWithVersion` 只保存不可变创建来源，`migrations` 保存后来显式发生的版本事件，不再复制一个可独立漂移的 current version。普通 invocation 恢复只验证并使用既有 pin，不探测或采用 npm latest。只有用户明确授权时，`migrate_hyperframes_runtime.py` 才能迁移到另一个精确版本；事件必须逐项记录实际运行的兼容性检查，并分别列出 preserved、rebound、invalidated 的审核 evidence，不能以含义不明的 `validated` 总状态代替。
+
+HyperFrames runtime 是审核输入的一部分。A11 layout lock 与逐 cue approval 绑定生成它们的 runtime pin，A12 及下游 `inputFingerprint` 也包含该 pin。实际版本变化默认使 A11 及其下游 evidence 失效；只有版本未变化且现有产物可以被证明确由当前 pin 生成的历史核对，才允许把未绑定的 A11 evidence 重新绑定而不要求用户重复审核。
 
 除视觉包装外，每个视频还必须在正式动画实施前冻结统一的运动气质。该约束记录在 `animation-manifest.json` 的视频级 `creativeDirection.motionDirection` 中，至少表达运动性格、整体节奏、速度与重量感、缓动倾向、元素入场与退场逻辑、转场原则、停顿方式和明确禁止的动效倾向。逐条动画可以根据内容变化强弱，但不得无理由偏离该视频已经确认的运动气质。
 

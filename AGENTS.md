@@ -37,6 +37,7 @@
 - 不直接修改 Final Cut Pro 资源库，也不把普通开发任务解释为导入、发布或安装授权。
 - 处理 FCPXML 时间值时必须保留项目帧率和有理数时间基准，不能使用未经校验的浮点近似回写。
 - 媒体、渲染产物、临时文件、凭据和本地环境配置不得进入版本控制。
+- 已进入制作的 Vn 必须保持自身精确 HyperFrames runtime pin；普通恢复不得自动探测或采用 latest，版本变化只能通过用户明确授权的迁移命令执行并传播审核 evidence 失效。
 - 发现文档与代码、配置、Git 状态或验证结果冲突时，以可复现证据为准，并仅在任务授权范围内修正文档。
 
 ## Git 操作边界
@@ -69,6 +70,7 @@ python3 scripts/sync_delivery.py "/absolute/project/workspace/AfterForge/YYYY-MM
 python3 scripts/validate_hyperframes_adapter.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/migrate_delivery_layout.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/migrate_workflow_stage_contract.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
+python3 scripts/migrate_hyperframes_runtime.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn" "X.Y.Z"
 python3 scripts/workflow_status.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/serve_workflow_review.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/render_animations.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
@@ -79,7 +81,7 @@ python3 scripts/compare_fcpxml_roundtrip.py "/absolute/project/workspace/AfterFo
 python3 scripts/sync_workflow_stage_contract.py --check
 ```
 
-前三条初始化命令会在各自严格边界内创建缺失目录或文件；`intake_project.py` 是只读检查。命令示例中的版本名使用大写 `V`，但 `scaffold_hyperframes.py` 同时接受小写 `v`，并原样保留用户选定的拼写；若发现仅大小写不同的既有版本则阻塞。脚手架只在 canonical `frame.md` 已存在且目标 Vn 不存在时创建隔离版本工程，阻塞时不得留下半成品或修改项目级文件。Stage Contract 迁移显式作用于单个 legacy Vn，保留旧审核记录但不继承用户批准；resolver 从证据推导上下文、阻塞点、下一可执行阶段和完成集合，不维护 `currentStage`。单 Vn Review 负责 A11/A13 comment、批准和 A14 授权。原生渲染、注册、包发布、FCP 验收与 round-trip 依次形成 D2–D6 证据链；详细布局协议见 `references/hyperframes-single-source.md`，FCPXML 交付协议见 `docs/ARCHITECTURE.md`。
+前三条初始化命令会在各自严格边界内创建缺失目录或文件；`intake_project.py` 是只读检查。命令示例中的版本名使用大写 `V`，但 `scaffold_hyperframes.py` 同时接受小写 `v`，并原样保留用户选定的拼写；若发现仅大小写不同的既有版本则阻塞。脚手架只在 canonical `frame.md` 已存在且目标 Vn 不存在时创建隔离版本工程，在创建瞬间解析或接受一个精确 HyperFrames 版本、于临时目录检查后 pin，失败时不得留下半成品或修改项目级文件。已有 Vn 不随 latest 自动漂移；`migrate_hyperframes_runtime.py` 是唯一正式版本迁移入口，并记录具体兼容性检查与审核 evidence disposition。Stage Contract 迁移显式作用于单个 legacy Vn，保留旧审核记录但不继承用户批准；resolver 从证据推导上下文、阻塞点、下一可执行阶段和完成集合，不维护 `currentStage`。单 Vn Review 负责 A11/A13 comment、批准和 A14 授权。原生渲染、注册、包发布、FCP 验收与 round-trip 依次形成 D2–D6 证据链；详细布局协议见 `references/hyperframes-single-source.md`，FCPXML 交付协议见 `docs/ARCHITECTURE.md`。
 
 引入新的验证命令时，必须同时更新本节和 `docs/CURRENT.md`。
 

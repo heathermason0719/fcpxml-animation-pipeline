@@ -13,6 +13,13 @@ from scripts.sync_storyboard import sync_storyboard
 
 
 class WorkflowStatusTests(SingleSourceFixture):
+    def replace_runtime_pin(self, root: Path, old: str, new: str) -> None:
+        package = root / "package.json"
+        package.write_text(
+            package.read_text(encoding="utf-8").replace(f"hyperframes@{old}", f"hyperframes@{new}"),
+            encoding="utf-8",
+        )
+
     def make_locked_version(self, directory: str) -> Path:
         root = self.make_version(directory)
         sync_storyboard(root)
@@ -40,6 +47,7 @@ class WorkflowStatusTests(SingleSourceFixture):
             "cueApprovals": {
                 cue["id"]: {
                     "status": "approved",
+                    "runtimeVersion": lock["runtimeVersion"],
                     "layoutRevision": lock["revision"],
                     "layoutAggregateSha256": lock["aggregateSha256"],
                     "approvedPosterSha256": lock["approvedPosterSha256"],
@@ -146,6 +154,39 @@ class WorkflowStatusTests(SingleSourceFixture):
             self.assertEqual(status["blockingStage"], "A11")
             self.assertNotIn("A11", status["completedStages"])
             self.assertEqual(status["evidence"]["A11"], "layout-lock-invalid")
+
+    def test_runtime_pin_change_after_a11_approval_reopens_a11(self) -> None:
+        from scripts.workflow_status import resolve_stage_status
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_locked_version(directory)
+            self.approve_a11(root)
+            self.replace_runtime_pin(root, "0.8.26", "0.8.27")
+
+            status = resolve_stage_status(root)
+
+            self.assertEqual(status["blockingStage"], "A11")
+            self.assertEqual(status["evidence"]["A11"], "layout-lock-invalid")
+
+    def test_runtime_pin_change_reopens_a12_after_a11_evidence_is_rebound(self) -> None:
+        from scripts.workflow_status import resolve_stage_status
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_locked_version(directory)
+            self.approve_a11(root)
+            self.register_a12(root)
+            self.replace_runtime_pin(root, "0.8.26", "0.8.27")
+            manifest = json.loads((root / "animation-manifest.json").read_text(encoding="utf-8"))
+            cue = manifest["cues"][0]
+            cue["renderAdapters"]["hyperframes"]["layoutLock"]["runtimeVersion"] = "0.8.27"
+            manifest["workflow"]["stageEvidence"]["A11"]["cueApprovals"][cue["id"]]["runtimeVersion"] = "0.8.27"
+            write_json(root / "animation-manifest.json", manifest)
+
+            status = resolve_stage_status(root)
+
+            self.assertEqual(status["blockingStage"], "A12")
+            self.assertEqual(status["evidence"]["A11"], "current")
+            self.assertEqual(status["evidence"]["A12"], "input-fingerprint-mismatch")
 
     def test_current_demo_bound_to_live_inputs_advances_to_a13(self) -> None:
         from scripts.workflow_status import resolve_stage_status
