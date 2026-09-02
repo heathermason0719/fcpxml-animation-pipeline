@@ -19,7 +19,7 @@
 - 已在同一真实项目中执行一次性 AfterForge 项目初始化：既有 `AfterForge/` 与 `user-inbox/` 原样复用，只在 `AfterForge/` 根层创建缺失的项目级 `AGENTS.md` 和 `CLAUDE.md`，未创建 canonical `frame.md` 或 Vn；
 - 用户工作目录初始化已在一个真实项目根目录完成验证：首次返回 `created`，重复运行返回 `existing`，目录内未生成其他内容；
 - 入口能以 `ready`/`blocked`、blocker、warning、ambiguity 和最小问题清单表达是否具备后续分析条件；
-- 当前可靠行为已通过 75 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
+- 当前可靠行为已通过 121 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-25_V2` 执行 `--flat` intake：唯一选择 `P1-sence-01-粗剪.fcpxmld` 和 `P1-sence-01 粗剪.m4v`，识别 `P1-sence-01 脚本.docx` 为旁白证据，结果为 `ready`，无 blocker、warning 或 ambiguity；
 - intake 已新增 `materials.animation_guidance`，用于独立保留用户主动提供的动画脚本或逐镜要求；存在 SRT 时不再因旁白来源已经成立而丢弃动画脚本，脚本内时码仍不具备 FCPXML 时间权威；
 - 已冻结 A7 动画脚本可执行性审核：intake 仍只发现并保留可选脚本，A7 才对照口播、原画、FCPXML、产品范围和当前后端给相关 cue 写入可选 `guidanceReview`；审核不新增独立报告或用户验收，不改变 intake 状态，只有真实方向分叉或受影响 cue 无法可靠继续时才询问；
@@ -49,6 +49,12 @@
 - 已实现正式 FCPXML 交付后端：`register_delivery_assets.py` 只在重新探测实际 MOV 后向主 manifest 注册稳定 `deliveryAsset`；`fcpxml_timing.py`、`inject_fcpxml.py`、`build_delivery_package.py`、`validate_fcpxml_package.py` 与 `compare_fcpxml_roundtrip.py` 分别承担有理数时间/lane、Project 克隆与 connected clips 注入、唯一协议版本指纹与原子发布、完整工程验证和 FCP 再导出语义比较；render ledger 仍只作注册证据，不成为包构建输入；
 - 真实 `2026-08-26_V1` 已将第 1、2、3、4、5、8 镜共六条已验证透明 MOV 注册进 manifest，第 6、7 镜保持 `source-only` 且无占位；已在项目级 `AfterForge/` 根层发布 `AfterForge__2026-08-26_V1__d-2c692941c719d02a48374ebc2ceaba53c973428e5376da465cd0567724e708f8.fcpxmld`，包内只有 `Info.fcpxml` 与六条 MOV，通过源哈希、A11 lock、媒体哈希、时间/lane、引用、源 sequence 不变性、FCPXML 1.14 DTD 和第二次同指纹完整复用验证；
 - 用户已将上述正式包实际导入 Final Cut Pro，确认时间线与导出视频均无问题；FCP 再导出的 `round-trip-AfterForge__2026-08-26_V1__00-片头.fcpxmld` 已通过语义 round-trip，六条动画身份、connected clip 精确时长与粗略位置、纯视频属性、source-only 状态、主故事线和总时长均保持有效，`deliveryProtocolVersion = 1` 的首个真实 FCP 交付基线完整成立；
+- 已实现版本化 Workflow Stage Contract：`references/workflow-stage-contract.json` 是 A1–A14 与 D1–D6 的唯一 machine canonical，Markdown 完整表由脚本确定性生成；旧 contract version 不因版本旧而自动失效，resolver 只使用当前语义兼容 evidence；
+- 已实现不保存 `currentStage` 的 `workflow_status.py`：从 layout lock、Demo/输入哈希、comment、用户批准、A14 授权、render ledger、deliveryAsset、FCPXMLD、FCP 验收和 round-trip evidence 推导活动上下文、阻塞点、下一阶段与完成集合；
+- 已实现绑定单个 Vn 的仓库级 Review：A11 cue 卡按对应旁白、锁定的主审帧/必要辅助帧、cue 级 `finalAnimationDescription`、逐帧 comment 与批准操作组织，不展示设计讨论历史；A11 出图前若用户措辞或已确认约束仍有会实质改变最终呈现的合理解释分叉，Agent 必须先用一个聚焦问题澄清，不能把低成本返工或后续 comment 当作自行选义的理由，澄清过程不写入最终动画说明；comment 保存后明确提示成功，只撤销批准证据并保留被评论的静帧，实际受审文件变化才由哈希校验判定 layout lock 失效；缺少最终动画说明、任一审核帧哈希失效或仍有开放 comment 时拒绝批准，批量批准仍保存逐 cue evidence；A13 从播放器自动绑定时间与 cue，可选持续范围，一条 comment 由用户选择 `static`、`motion` 或二者影响范围；静态范围重开受影响 A11 并向下失效，motion-only 保留有效 A11，Demo 页面上下文不被强制切走；同时保留视频级批准、独立 A14 原生渲染授权、D5 FCP 导入验收和 manifest SHA 并发保护；
+- 已确认 Review shell 与项目级 canonical `frame.md`、Vn `frame.md` 快照解耦：项目视觉规范只影响被审核的动画内容；当前 shell 暂时冻结为仓库级 Review UI 基线，后续 UI/UX 调整必须显式进行，不随项目视觉规范变化；
+- 已实现显式 legacy Vn 合同迁移：原样保留旧 `reviews`，不把旧 approval 升格为新合同批准；可核验且输入未变的旧 480p Demo 可作为 A12 artifact evidence 保留；
+- 已将原生 renderer、资产注册器、FCPXMLD builder 和 round-trip registrar 接入 D-stage 哈希链：A11/A13/A14 或输入不匹配时在启动 renderer 前阻断，后续 D2–D6 不以产物文件单独存在判断完成；
 - 首次 round-trip 证实 FCP 会重排 resource ID、改写媒体路径前缀与等价有理数，并可能产生微秒以下 `timeMap` 规范化和不超过一帧的 MOV resource 物理尾差；比较器已在不放宽 connected clip 时长、语义位置、音频属性或主故事线约束的前提下规范化这些非语义差异；
 - 已移除旧版 HyperFrames marketplace plugin，并在软件重启后确认源码安装的新版 HyperFrames 技能可用；
 - Git 仓库已经初始化。
@@ -57,13 +63,13 @@
 
 - 尚未实现参考视频内容理解或语音转写；
 - 尚未把本次人工完成的旁白对齐和初始 `animation-manifest.json` 内容生成整理为仓库内可复用的确定性流水线；HyperFrames 单一布局源装配、review projection、layout lock、adapter 验证和旧 Vn 迁移已经脚本化；
-- 已确认将审核拆为 Storyboard 静态样式、480p Demo 运动和原生渲染显式授权三个硬门，设计契约记录于 `docs/superpowers/plans/2026-09-02-review-gates-design.md`；统一 Storyboard 评论页、逐镜/逐静帧持久化 comment、Demo 时间码/时间段 comment、审核失效传播及 renderer 授权门尚未实现；
+- 新 Stage Contract、Review 与 D-stage evidence chain 尚未在当前真实 `2026-09-01_v1` 完整走完 A11→D6；该 Vn 已完成显式迁移并补齐五条 `finalAnimationDescription`，五个镜头共七张审核帧当前锁定有效，已保存七条开放 A11 comment，其中一条仅用于写入冒烟测试；resolver 保持阻塞在 A11；D-stage 最终边界仍待本次真实闭环证据复盘；
 - 当前没有 build 或 lint 命令。
 
 ## 已知问题与阻塞
 
-当前没有已知技术阻塞。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。双分辨率单一布局源、审阅投影、delivery composition、单调递增布局锁、正式渲染驱动、媒体注册、FCPXML 注入、扁平包发布、自动交付验证和协议级 round-trip 已经具备确定性实现；真实 V1 已完成 revision 2 批准、六条原生透明交付渲染、正式 `.fcpxmld`、FCP 实际导入与再导出验证。参考视频理解和初始 manifest 内容生成仍待实现。新确认的三段审核契约尚未实现：当前 `render_animations.py` 仍只检查 adapter 与 layout lock，不能证明 480p Demo 已通过或用户已单独授权，因此在门禁补齐前不得据此自动进入新的原生渲染。
+当前没有已知技术阻塞。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。新三段审核契约和 D2–D6 evidence chain 已通过合成测试；真实 `2026-09-01_v1` 已迁移并正在进行 A11 comment 处理，尚待重新完成 A11/A13/A14 与 Delivery，因而当前仍不能把这次架构升级描述为已通过真实 invocation 验证。
 
 ## 下一步
 
-下一步由用户先审查并本地 commit 当前文档与既有 V/v 兼容改动。获得继续实现的授权后，按 TDD 依次补齐 Storyboard 持久化评论页、480p Demo 时间码评论与审批、失效传播和原生渲染授权硬门，再同步 `SKILL.md`、README、manifest schema、adapter reference 与验证命令。实现完成前，当前 invocation 停留在 480p Demo 审核范围，不启动原生通道视频渲染。
+下一步继续在当前真实 `2026-09-01_v1` 处理 A11 的开放 comment，重新生成并审核受影响静帧；A11 重新完成后进入 A12/A13，用户另行完成 A14 授权，再按 resolver 继续 D2 原生渲染、D3 注册、D4 发布、D5 FCP 导入验收和需要的 D6 round-trip。闭环后依据实际 evidence 复盘 D-stage 边界，再完成最终验证。

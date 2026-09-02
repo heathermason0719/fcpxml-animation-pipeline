@@ -15,15 +15,17 @@ from typing import Any, Sequence
 from xml.etree import ElementTree as ET
 
 try:
-    from scripts.hyperframes_adapter import load_manifest
+    from scripts.hyperframes_adapter import load_manifest, save_manifest
     from scripts.inject_fcpxml import build_delivery_fcpxml
     from scripts.layout_lock import verify_layouts
     from scripts.validate_fcpxml_package import sha256_file, validate_delivery_package
+    from scripts.workflow_status import resolve_stage_status
 except ModuleNotFoundError:
-    from hyperframes_adapter import load_manifest  # type: ignore
+    from hyperframes_adapter import load_manifest, save_manifest  # type: ignore
     from inject_fcpxml import build_delivery_fcpxml  # type: ignore
     from layout_lock import verify_layouts  # type: ignore
     from validate_fcpxml_package import sha256_file, validate_delivery_package  # type: ignore
+    from workflow_status import resolve_stage_status  # type: ignore
 
 
 DELIVERY_PROTOCOL_VERSION = "1"
@@ -105,14 +107,32 @@ def _animated_cues(manifest: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _verify_a11(version_root: Path, manifest: dict[str, Any], animated: list[dict[str, Any]]) -> None:
     expected = {cue["id"] for cue in animated}
-    review = manifest.get("reviews", {}).get("a11", {})
-    if review.get("status") != "approved" or set(review.get("approvedCueIds", [])) != expected:
-        raise ValueError("A11 approval does not cover every animated cue")
     if any(not cue.get("renderAdapters", {}).get("hyperframes", {}).get("layoutLock") for cue in animated):
         raise ValueError("every animated cue must have an A11 layout lock")
     verification = verify_layouts(version_root)
     if verification.get("status") != "valid" or set(verification.get("checkedCueIds", [])) != expected:
         raise ValueError(f"A11 layout locks are invalid or incomplete: {verification}")
+
+
+def _record_d4(
+    root: Path,
+    package: Path,
+    fingerprint: str,
+    publication_status: str,
+) -> None:
+    manifest = load_manifest(root)
+    workflow = manifest["workflow"]
+    workflow.setdefault("stageEvidence", {})["D4"] = {
+        "stageId": "D4",
+        "contractVersion": workflow["stageContractVersion"],
+        "semanticVersion": 1,
+        "status": "published",
+        "publicationStatus": publication_status,
+        "packageName": package.name,
+        "deliveryFingerprint": fingerprint,
+        "infoFcpxmlSha256": sha256_file(package / "Info.fcpxml"),
+    }
+    save_manifest(root, manifest)
 
 
 def _resolve_canonical_movies(
@@ -174,6 +194,12 @@ def build_delivery_package(
     dtd_path: Path | None = None,
 ) -> dict[str, Any]:
     root = Path(version_root).expanduser().resolve()
+    stage_status = resolve_stage_status(root)
+    if stage_status.get("nextEligibleStage") not in {"D4", "D5"}:
+        raise ValueError(
+            "delivery package build requires current D3 registration evidence; "
+            f"blocked at {stage_status.get('blockingStage')}"
+        )
     manifest = load_manifest(root)
     animated = _animated_cues(manifest)
     _verify_a11(root, manifest, animated)
@@ -205,12 +231,14 @@ def build_delivery_package(
             )
         except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
             raise ValueError(f"existing delivery package is invalid: {error}") from error
-        return {
+        result = {
             **validation,
             "status": "reused",
             "deliveryFingerprint": fingerprint,
             "deliveryProtocolVersion": DELIVERY_PROTOCOL_VERSION,
         }
+        _record_d4(root, target, fingerprint, "reused")
+        return result
 
     temporary = Path(
         tempfile.mkdtemp(
@@ -237,7 +265,7 @@ def build_delivery_package(
             shutil.rmtree(temporary)
         raise
 
-    return {
+    result = {
         "status": "published",
         "packagePath": str(target),
         "deliveryFingerprint": fingerprint,
@@ -248,6 +276,8 @@ def build_delivery_package(
         ),
         "materialization": methods,
     }
+    _record_d4(root, target, fingerprint, "published")
+    return result
 
 
 def main() -> int:

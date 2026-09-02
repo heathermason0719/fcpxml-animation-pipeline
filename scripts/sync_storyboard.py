@@ -130,6 +130,7 @@ def _storyboard(manifest: dict[str, Any]) -> str:
                 f"- poster: {adapter.get('heroTime', 0.1)}s",
                 f"- scene: {cue.get('composition', '')}",
                 f"- voiceover: {_yaml_string(cue.get('narrationAnchor', ''))}",
+                f"- final_animation: {_yaml_string(cue.get('finalAnimationDescription', ''))}",
                 f"- function: {functions.get('primary', '')}",
                 f"- source_relation: {relation.get('primary', '')}",
                 f"- reference_language: {languages.get('primary') or '无'}",

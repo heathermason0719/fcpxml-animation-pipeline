@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -26,6 +27,7 @@ try:
     from scripts.sync_delivery import sync_delivery
     from scripts.validate_delivery import DeliveryExpectation, probe_delivery, validate_probe
     from scripts.validate_hyperframes_adapter import validate_project
+    from scripts.workflow_status import current_input_fingerprint, resolve_stage_status
 except ModuleNotFoundError:
     from hyperframes_adapter import (  # type: ignore
         cue_adapter,
@@ -39,6 +41,7 @@ except ModuleNotFoundError:
     from sync_delivery import sync_delivery  # type: ignore
     from validate_delivery import DeliveryExpectation, probe_delivery, validate_probe  # type: ignore
     from validate_hyperframes_adapter import validate_project  # type: ignore
+    from workflow_status import current_input_fingerprint, resolve_stage_status  # type: ignore
 
 
 @dataclass(frozen=True)
@@ -123,7 +126,18 @@ def build_render_command(version_root: Path, job: RenderJob, temporary_output: P
     ]
 
 
-def _assert_final_render_ready(root: Path, selected: Sequence[RenderJob]) -> None:
+def _canonical_sha256(payload: dict[str, Any]) -> str:
+    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _assert_final_render_ready(root: Path, selected: Sequence[RenderJob]) -> dict[str, str]:
+    stage_status = resolve_stage_status(root)
+    if stage_status.get("nextEligibleStage") != "D2":
+        raise ValueError(
+            "native rendering requires current A13 approval and independent A14 authorization; "
+            f"blocked at {stage_status.get('blockingStage')}"
+        )
     adapter_result = validate_project(root)
     if adapter_result["status"] != "valid":
         raise ValueError(f"HyperFrames adapter is invalid: {adapter_result['findings']}")
@@ -135,6 +149,11 @@ def _assert_final_render_ready(root: Path, selected: Sequence[RenderJob]) -> Non
     missing = [job.cue_id for job in selected if not cue_adapter(cues[job.cue_id]).get("layoutLock")]
     if missing:
         raise ValueError(f"final rendering requires approved layout locks: {', '.join(missing)}")
+    a14 = manifest["workflow"]["stageEvidence"]["A14"]
+    return {
+        "authorizationFingerprint": _canonical_sha256(a14),
+        "inputFingerprint": current_input_fingerprint(root, manifest),
+    }
 
 
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
@@ -169,7 +188,7 @@ def render_animations(
         if unknown:
             raise ValueError(f"unknown or source-only cue ids: {', '.join(unknown)}")
         jobs = [job for job in jobs if job.cue_id in requested]
-    _assert_final_render_ready(root, jobs)
+    gate = _assert_final_render_ready(root, jobs)
     partial_root = root / "delivery/.partial"
     output_root = root / "delivery/prores4444"
     partial_root.mkdir(parents=True, exist_ok=True)
@@ -192,11 +211,20 @@ def render_animations(
             {
                 "cueId": job.cue_id,
                 "output": str(final_output.relative_to(root)),
+                "sha256": hashlib.sha256(final_output.read_bytes()).hexdigest(),
                 "job": {**asdict(job), "fps": _fraction_text(job.fps), "duration": _fraction_text(job.duration)},
                 "probe": probe,
             }
         )
-    ledger = {"status": "rendered", "items": rendered}
+    manifest = load_manifest(root)
+    ledger = {
+        "stageId": "D2",
+        "contractVersion": manifest["workflow"]["stageContractVersion"],
+        "semanticVersion": 1,
+        "status": "rendered",
+        **gate,
+        "items": rendered,
+    }
     _write_json_atomic(root / "delivery/render-ledger.json", ledger)
     return ledger
 

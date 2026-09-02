@@ -12,6 +12,8 @@ from xml.etree import ElementTree as ET
 
 from scripts.layout_lock import freeze_layout
 from scripts.sync_storyboard import sync_storyboard
+from scripts.workflow_review import approve_demo, approve_storyboard, authorize_native_render, register_demo
+from scripts.workflow_status import current_input_fingerprint, evidence_fingerprint
 from tests.test_hyperframes_single_source import SingleSourceFixture, manifest_fixture, write_json
 
 try:
@@ -55,9 +57,10 @@ except ModuleNotFoundError:
     validate_delivery_package = None
 
 try:
-    from scripts.compare_fcpxml_roundtrip import compare_roundtrip
+    from scripts.compare_fcpxml_roundtrip import compare_roundtrip, register_roundtrip
 except ModuleNotFoundError:
     compare_roundtrip = None
+    register_roundtrip = None
 
 
 def valid_asset_probe(*, audio_streams: int = 0) -> dict[str, object]:
@@ -80,17 +83,36 @@ class DeliveryAssetRegistrationTests(SingleSourceFixture):
         poster = root / "approved.png"
         poster.write_bytes(b"approved")
         freeze_layout(root, "p1s01_c01_title", poster)
+        manifest_path = root / "animation-manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["workflow"] = {"stageContractVersion": "1.0.0", "stageEvidence": {}}
+        write_json(manifest_path, manifest)
+        approve_storyboard(root, actor="user")
+        preview = root / "previews/demo.mp4"
+        preview.parent.mkdir(parents=True, exist_ok=True)
+        preview.write_bytes(b"approved demo")
+        register_demo(root, "previews/demo.mp4")
+        approve_demo(root, actor="user")
+        authorize_native_render(root, actor="user")
         movie = root / "delivery/prores4444/p1s01-c01-title.mov"
         movie.parent.mkdir(parents=True, exist_ok=True)
         movie.write_bytes(b"transparent-prores")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        a14 = manifest["workflow"]["stageEvidence"]["A14"]
         write_json(
             root / "delivery/render-ledger.json",
             {
+                "stageId": "D2",
+                "contractVersion": "1.0.0",
+                "semanticVersion": 1,
                 "status": "rendered",
+                "authorizationFingerprint": evidence_fingerprint(a14),
+                "inputFingerprint": current_input_fingerprint(root, manifest),
                 "items": [
                     {
                         "cueId": "p1s01_c01_title",
                         "output": "delivery/prores4444/p1s01-c01-title.mov",
+                        "sha256": hashlib.sha256(movie.read_bytes()).hexdigest(),
                         "job": {
                             "width": 1920,
                             "height": 1080,
@@ -130,6 +152,10 @@ class DeliveryAssetRegistrationTests(SingleSourceFixture):
                 },
             )
             self.assertNotIn("deliveryAsset", source_only)
+            self.assertEqual(
+                manifest["workflow"]["stageEvidence"]["D3"]["status"],
+                "registered",
+            )
 
     def test_registration_is_byte_idempotent(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -442,6 +468,41 @@ class DeliveryPackageTests(unittest.TestCase):
             poster = root / f"{cue_id}.png"
             poster.write_bytes(f"approved-{cue_id}".encode("utf-8"))
             freeze_layout(root, cue_id, poster)
+        manifest_path = root / "animation-manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["workflow"] = {"stageContractVersion": "1.0.0", "stageEvidence": {}}
+        write_json(manifest_path, manifest)
+        approve_storyboard(root, actor="user")
+        preview = root / "previews/demo.mp4"
+        preview.parent.mkdir(parents=True, exist_ok=True)
+        preview.write_bytes(b"approved package demo")
+        register_demo(root, "previews/demo.mp4")
+        approve_demo(root, actor="user")
+        authorize_native_render(root, actor="user")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        a14 = manifest["workflow"]["stageEvidence"]["A14"]
+        write_json(
+            root / "delivery/render-ledger.json",
+            {
+                "stageId": "D2",
+                "contractVersion": "1.0.0",
+                "semanticVersion": 1,
+                "status": "rendered",
+                "authorizationFingerprint": evidence_fingerprint(a14),
+                "inputFingerprint": current_input_fingerprint(root, manifest),
+                "items": [
+                    {
+                        "cueId": cue_id,
+                        "output": str(path.relative_to(root)),
+                        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                        "job": {"width": 1920, "height": 1080, "fps": "24", "duration": "2"},
+                        "probe": valid_asset_probe(),
+                    }
+                    for cue_id, path in movie_paths.items()
+                ],
+            },
+        )
+        register_delivery_assets(root, prober=lambda _: valid_asset_probe())
         return root, source, movie_paths
 
     def test_fingerprint_is_canonical_and_protocol_sensitive(self) -> None:
@@ -500,6 +561,25 @@ class DeliveryPackageTests(unittest.TestCase):
             self.assertEqual((package / "AF__p1s01-c01-title.mov").read_bytes(), movie_paths["p1s01_c01_title"].read_bytes())
             self.assertIn(b'src="./AF__p1s01-c01-title.mov"', (package / "Info.fcpxml").read_bytes())
             manifest = json.loads((root / "animation-manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["workflow"]["stageEvidence"]["D4"]["status"], "published")
+            self.assertEqual(
+                manifest["workflow"]["stageEvidence"]["D4"]["deliveryFingerprint"],
+                first["deliveryFingerprint"],
+            )
+            from scripts.workflow_status import resolve_stage_status
+
+            stage_status = resolve_stage_status(root)
+            self.assertEqual(stage_status["blockingStage"], "D5")
+            self.assertIn("D4", stage_status["completedStages"])
+            from scripts.workflow_review import record_fcp_acceptance
+
+            with self.assertRaisesRegex(ValueError, "only the user"):
+                record_fcp_acceptance(root, actor="agent")
+            acceptance = record_fcp_acceptance(root, actor="user")
+            self.assertEqual(acceptance["status"], "accepted")
+            stage_status = resolve_stage_status(root)
+            self.assertEqual(stage_status["blockingStage"], "D6")
+            self.assertIn("D5", stage_status["completedStages"])
             validation = validate_delivery_package(package, source, manifest)
             self.assertEqual(validation["status"], "valid")
             self.assertEqual(validation["animatedCueIds"], ["p1s01_c01_title", "p1s01_c02_card"])
@@ -555,11 +635,30 @@ class RoundTripTests(unittest.TestCase):
         package_fixture = DeliveryPackageTests()
         root, _, _ = package_fixture.make_package_version(directory)
         result = build_delivery_package(root)
+        from scripts.workflow_review import record_fcp_acceptance
+
+        record_fcp_acceptance(root, actor="user")
         delivered = Path(result["packagePath"]) / "Info.fcpxml"
         reexported = Path(directory) / "reexported.fcpxml"
         reexported.write_bytes(delivered.read_bytes())
         manifest = json.loads((root / "animation-manifest.json").read_text(encoding="utf-8"))
         return delivered, reexported, manifest
+
+    def test_registers_verified_roundtrip_and_completes_required_delivery_lifecycle(self) -> None:
+        self.assertIsNotNone(register_roundtrip, "round-trip registration is missing")
+        with tempfile.TemporaryDirectory() as directory:
+            delivered, reexported, _ = self.make_roundtrip_fixture(directory)
+            root = delivered.parent.parent / "2026-08-26_V1"
+
+            evidence = register_roundtrip(root, reexported)
+
+            from scripts.workflow_status import resolve_stage_status
+
+            status = resolve_stage_status(root)
+            self.assertEqual(evidence["status"], "valid")
+            self.assertIsNone(status["blockingStage"])
+            self.assertIsNone(status["nextEligibleStage"])
+            self.assertIn("D6", status["completedStages"])
 
     def test_accepts_fcp_identity_formatting_and_absolute_prefix_normalization(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

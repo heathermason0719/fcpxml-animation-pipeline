@@ -1,0 +1,180 @@
+{
+  "schemaVersion": "1.0",
+  "contractVersion": "1.0.0",
+  "defaultStageSemanticVersion": 1,
+  "namespaces": {
+    "A": {
+      "name": "Analysis, Creative Review & Authorization",
+      "displayNameZh": "分析、创意审核与授权",
+      "stability": "stable"
+    },
+    "D": {
+      "name": "Delivery Lifecycle",
+      "displayNameZh": "工程交付生命周期",
+      "stability": "evidence-evolving"
+    }
+  },
+  "stages": [
+    {
+      "id": "A1",
+      "name": "Workspace Boundary Initialization",
+      "displayNameZh": "工作区边界初始化",
+      "responsibility": "创建或识别 AfterForge 与 user-inbox 边界。",
+      "userMeaning": "与 A2 连续执行，不形成单独停点。",
+      "userAction": "none"
+    },
+    {
+      "id": "A2",
+      "name": "AfterForge Project Initialization",
+      "displayNameZh": "AfterForge 项目初始化",
+      "responsibility": "检查并按需初始化项目级 Agent 入口文件。",
+      "userMeaning": "不触碰 Vn、用户输入或视觉规范。",
+      "userAction": "none"
+    },
+    {
+      "id": "A3",
+      "name": "Invocation Target Selection",
+      "displayNameZh": "Invocation 目标选择",
+      "responsibility": "绑定本轮正式 invocation 使用的既有 user-inbox Vn。",
+      "userMeaning": "用户明确指定版本，Agent 不猜最新版本。",
+      "userAction": "selection"
+    },
+    {
+      "id": "A4",
+      "name": "Input Discovery",
+      "displayNameZh": "输入发现",
+      "responsibility": "只读发现时间线、参考视频、旁白证据与可选创作材料。",
+      "userMeaning": "复用已有材料，不要求重复提供。",
+      "userAction": "none"
+    },
+    {
+      "id": "A5",
+      "name": "Intake Readiness",
+      "displayNameZh": "入口就绪判断",
+      "responsibility": "判断必要输入是否存在且可以唯一确定。",
+      "userMeaning": "只询问真正阻塞继续的问题。",
+      "userAction": "conditional-input"
+    },
+    {
+      "id": "A6",
+      "name": "Timeline & Evidence Analysis",
+      "displayNameZh": "时间线与证据分析",
+      "responsibility": "解析规格、时间线、素材引用、空缺和文字证据。",
+      "userMeaning": "形成后续动画判断的事实基础。",
+      "userAction": "none"
+    },
+    {
+      "id": "A7",
+      "name": "Animation Guidance & Cue Feasibility Audit",
+      "displayNameZh": "动画指导与 Cue 可执行性审核",
+      "responsibility": "对齐口播与时间线，审核可选脚本、素材需求、逐镜风格覆盖及 cue 可执行性。",
+      "userMeaning": "遇到会改变镜头含义或无法可靠执行的模糊项时由用户澄清。",
+      "userAction": "conditional-clarification"
+    },
+    {
+      "id": "A8",
+      "name": "Visual Direction Review",
+      "displayNameZh": "视觉方向审核",
+      "responsibility": "确认项目视觉包装与本视频统一运动气质。",
+      "userMeaning": "用户批准本视频后续设计采用的整体方向。",
+      "userAction": "review-approval"
+    },
+    {
+      "id": "A9",
+      "name": "Vn Production Scaffold",
+      "displayNameZh": "Vn 制作脚手架",
+      "responsibility": "创建隔离 Vn 并冻结当时的 frame.md 与字体快照。",
+      "userMeaning": "建立可独立检查和重渲染的版本工程。",
+      "userAction": "none"
+    },
+    {
+      "id": "A10",
+      "name": "Cue Design & Static Build",
+      "displayNameZh": "Cue 设计与静态构建",
+      "responsibility": "完成设计路由、素材落位和 canonical cue 静态终态。",
+      "userMeaning": "准备进入正式 Storyboard 的真实静态设计。",
+      "userAction": "none"
+    },
+    {
+      "id": "A11",
+      "name": "Storyboard Static Review",
+      "displayNameZh": "Storyboard 静态审核",
+      "responsibility": "逐 cue 收集静态 comment，并记录与当前布局证据绑定的用户批准。",
+      "userMeaning": "用户审核排版、文字、素材、构图、比例、颜色和材质；可一次批准所有合格 cue。",
+      "userAction": "review-approval"
+    },
+    {
+      "id": "A12",
+      "name": "Motion Build & Demo Generation",
+      "displayNameZh": "运动构建与 Demo 生成",
+      "responsibility": "在已批准布局上实现 motion，并生成绑定输入的 480p Demo。",
+      "userMeaning": "本阶段只形成动画小样，不代表用户已批准运动。",
+      "userAction": "none"
+    },
+    {
+      "id": "A13",
+      "name": "Demo Motion Review",
+      "displayNameZh": "Demo 运动审核",
+      "responsibility": "收集按播放器时间点或可选时间段定位、可同时声明静态与运动影响范围的 comment，并记录当前完整 Demo 的视频级批准。",
+      "userMeaning": "用户在同一 Review 上下文完整表达意见，并亲自选择静态、运动或二者影响范围。",
+      "userAction": "review-approval"
+    },
+    {
+      "id": "A14",
+      "name": "Native Render Authorization",
+      "displayNameZh": "原生渲染授权",
+      "responsibility": "记录与当前 A11、A13、layout lock 和输入哈希绑定的独立原生渲染授权。",
+      "userMeaning": "Demo 通过后，用户另行明确授权原生 ProRes 4444 渲染。",
+      "userAction": "authorization"
+    },
+    {
+      "id": "D1",
+      "name": "Delivery Readiness Verification",
+      "displayNameZh": "交付就绪验证",
+      "responsibility": "验证 A11、A13、A14、layout lock、依赖与输入哈希均有效。",
+      "userMeaning": "确认当前获批状态可以进入正式交付。",
+      "userAction": "none"
+    },
+    {
+      "id": "D2",
+      "name": "Native Render & Validation",
+      "displayNameZh": "原生渲染与验证",
+      "responsibility": "原生渲染 ProRes 4444，并在正式发布 MOV 前验证 codec、alpha、尺寸、帧率和时长。",
+      "userMeaning": "生成通过工程校验的正式透明动画素材。",
+      "userAction": "none"
+    },
+    {
+      "id": "D3",
+      "name": "Delivery Asset Registration",
+      "displayNameZh": "交付资产注册",
+      "responsibility": "重新探测实际 MOV，并将稳定媒体事实注册为 deliveryAsset。",
+      "userMeaning": "把已验证素材登记为 FCPXMLD 构建输入。",
+      "userAction": "none"
+    },
+    {
+      "id": "D4",
+      "name": "FCPXMLD Build, Validation & Publication",
+      "displayNameZh": "FCPXMLD 构建、验证与发布",
+      "responsibility": "完成 fingerprint、Project 克隆、connected clip 注入、完整验证和非覆盖式原子发布。",
+      "userMeaning": "形成可导入 Final Cut Pro 的新交付包。",
+      "userAction": "none"
+    },
+    {
+      "id": "D5",
+      "name": "Final Cut Pro Import Acceptance",
+      "displayNameZh": "Final Cut Pro 导入验收",
+      "responsibility": "记录用户对实际 FCP 导入、媒体在线、alpha、可编辑性和时间线结果的验收。",
+      "userMeaning": "用户亲自在 Final Cut Pro 中确认交付结果。",
+      "userAction": "acceptance"
+    },
+    {
+      "id": "D6",
+      "name": "Round-trip Verification",
+      "displayNameZh": "Round-trip 回归验证",
+      "responsibility": "在首次 V1 或交付协议语义变化时比较 FCP 再导出结果。",
+      "userMeaning": "必要时提供 FCP 再导出文件，验证交付语义可往返保持。",
+      "userAction": "conditional-artifact",
+      "applicability": "required-for-first-v1-or-delivery-protocol-change"
+    }
+  ]
+}

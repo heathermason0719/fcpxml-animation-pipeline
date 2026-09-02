@@ -2,16 +2,21 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from pathlib import Path
 from fractions import Fraction
 
+from scripts.layout_lock import freeze_layout
+from scripts.sync_storyboard import sync_storyboard
+from scripts.workflow_review import approve_demo, approve_storyboard, authorize_native_render, register_demo
 from tests.test_hyperframes_single_source import SingleSourceFixture
 
 try:
-    from scripts.render_animations import build_render_command, build_render_jobs
+    from scripts.render_animations import build_render_command, build_render_jobs, render_animations
     from scripts.validate_delivery import DeliveryExpectation, validate_probe
 except ModuleNotFoundError:
     build_render_command = None
     build_render_jobs = None
+    render_animations = None
     DeliveryExpectation = None
     validate_probe = None
 
@@ -38,6 +43,70 @@ class RenderPlanningTests(SingleSourceFixture):
             self.assertIn("mov", command)
             self.assertNotIn("--resolution", command)
             self.assertFalse(any("scale=" in part for part in command))
+
+    def make_locked_version(self, directory: str) -> Path:
+        root = self.make_version(directory)
+        sync_storyboard(root)
+        poster = root / "approved.png"
+        poster.write_bytes(b"approved")
+        freeze_layout(root, "p1s01_c01_title", poster)
+        return root
+
+    def authorize(self, root: Path) -> None:
+        import json
+
+        manifest_path = root / "animation-manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["workflow"] = {"stageContractVersion": "1.0.0", "stageEvidence": {}}
+        manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        approve_storyboard(root, actor="user")
+        preview = root / "previews/demo.mp4"
+        preview.parent.mkdir(parents=True, exist_ok=True)
+        preview.write_bytes(b"demo")
+        register_demo(root, "previews/demo.mp4")
+        approve_demo(root, actor="user")
+        authorize_native_render(root, actor="user")
+
+    def test_native_render_blocks_before_writes_without_a14_authorization(self) -> None:
+        self.assertIsNotNone(render_animations, "render backend is missing")
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_locked_version(directory)
+
+            with self.assertRaisesRegex(ValueError, "A14|authorization"):
+                render_animations(root, runner=lambda *args, **kwargs: None)
+
+            self.assertFalse((root / "delivery").exists())
+
+    def test_authorized_render_ledger_binds_current_authorization_and_inputs(self) -> None:
+        self.assertIsNotNone(render_animations, "render backend is missing")
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_locked_version(directory)
+            self.authorize(root)
+
+            def runner(command, **kwargs):
+                output = Path(command[command.index("--output") + 1])
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(b"native transparent movie")
+                return None
+
+            probe = {
+                "codec_name": "prores",
+                "profile": "4444",
+                "width": 1920,
+                "height": 1080,
+                "pix_fmt": "yuva444p12le",
+                "r_frame_rate": "24/1",
+                "duration": "2.000000",
+            }
+
+            ledger = render_animations(root, runner=runner, prober=lambda _: probe)
+
+            self.assertEqual(ledger["stageId"], "D2")
+            self.assertEqual(ledger["contractVersion"], "1.0.0")
+            self.assertEqual(ledger["semanticVersion"], 1)
+            self.assertEqual(len(ledger["authorizationFingerprint"]), 64)
+            self.assertEqual(len(ledger["inputFingerprint"]), 64)
+            self.assertEqual(len(ledger["items"][0]["sha256"]), 64)
 
 
 class DeliveryValidationTests(unittest.TestCase):

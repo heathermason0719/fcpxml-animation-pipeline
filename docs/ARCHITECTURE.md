@@ -6,6 +6,12 @@
 
 本文档不记录开发进度；当前实现状态以 `docs/CURRENT.md` 为准。
 
+## Workflow 生命周期与 Stage Contract
+
+完整 invocation 由连续的 A-stage（分析、创意审核与授权）和 D-stage（工程交付）组成；A14 的用户授权完成后，D1 重新验证当前输入和全部门禁，D2 才能启动正式渲染。Stage ID、正式名称、稳定职责和版本兼容关系只由 `references/workflow-stage-contract.json` 定义；`references/workflow-stage-contract.md` 是确定性生成的人类视图，本文不复制完整阶段表。
+
+单个 Vn 的 manifest 只保存 `stageContractVersion` 和实例 evidence。`workflow_status.py` 根据实际锁、文件哈希、comment、用户批准、授权、render ledger、注册资产和发布包推导 `activeContext`、`blockingStage`、`nextEligibleStage` 与 `completedStages`，不保存需要各工具同步的 `currentStage`。旧 contract version 的合法 evidence 保留为历史事实；只有被 registry 明确声明语义兼容时才能用于当前判断，未知、损坏或当前语义不兼容的 evidence 不可作为当前完成依据。
+
 ## 总体架构
 
 项目采用“Codex Skill + 确定性脚本工具链”的结构。Skill 负责需要理解语义、上下文和创作意图的判断；脚本负责必须稳定、可重复、可校验的机械操作。二者通过 `animation-manifest.json` 解耦。
@@ -120,7 +126,10 @@ V1 计划由以下脚本组件承担机械操作；名称表达职责，具体�
 - `validate_hyperframes_adapter.py`：检查 adapter 路径、ID、canonical/delivery 尺寸、依赖、review projection、motion/layout 边界与 layout lock；
 - `migrate_single_source.py`：把旧 Vn 的最新 animation composition 拆分为 canonical cue 与 motion，同时保留旧目录作迁移对照；
 - `migrate_delivery_layout.py`：把旧 854×480 canonical cue 包装为 delivery-native root，并强制重新执行等价验收；
-- `render_animations.py`：当前只在 layout lock 有效时按 composition 原生尺寸渲染透明 ProRes 4444；三段审核设计落地后还必须验证静态审核、Demo 运动审核和用户显式授权；
+- `migrate_workflow_stage_contract.py`：把一个 legacy Vn 显式绑定到当前合同，保留旧 reviews，但不继承旧用户批准；
+- `workflow_status.py`：从当前 evidence 推导阶段状态与失效结果；
+- `serve_workflow_review.py`：启动绑定单个 Vn 的本地 Review，受控写入 A11/A13 comment、用户批准、A14 授权和 D5 验收；
+- `render_animations.py`：只有 resolver 证明 A11–A14 与 D1 当前有效时，才按 composition 原生尺寸渲染透明 ProRes 4444；
 - `validate_delivery.py`：检查 ProRes 4444、alpha、尺寸、帧率与逐 cue 时长；
 - `register_delivery_assets.py`：重新探测 ledger 对应的实际 MOV，只把验证通过的稳定 `deliveryAsset` 注册进 manifest；
 - `fcpxml_timing.py`：负责宿主定位、有理数时间、`offset` / `start`、lane 分配和 `timeMap` 边界；
@@ -247,7 +256,7 @@ V1 计划由以下脚本组件承担机械操作；名称表达职责，具体�
 
 每条 cue 以 `designRoute` 保存实际判断：一个主功能及可选次要功能、一个主原画关系及可选辅助关系、一个主要参考语言及可选辅助语言，以及简短理由。功能与参考语言使用开放词汇；Agent 可以在现有索引不足时扩展，但不得为了匹配枚举而错误归类。A、B 两种原画关系允许混合，但必须确定主关系，不能用“混合”回避构图判断。“照顾、避让、保留原画可见性”本身不构成 B；只有原画承担不可替代的信息或叙事功能时才计入 B。混合态必须通过双删除测试：分别假设删除包装和删除原画，只有两层各自都承担不可由另一层替代的信息或叙事功能时，才记录主辅混合关系。
 
-Agent 默认自主完成该路由，不新增逐条用户确认。只有分叉会显著改变任务范围、违反已经确认的约束或产生难以逆转的后果时才单独请求确认；普通设计分歧和可低成本返工的选择统一在既有 A11 storyboard 验收中暴露。
+Agent 默认自主完成该路由，不新增逐条用户确认。分叉会显著改变任务范围、违反已经确认的约束或产生难以逆转的后果时，必须单独请求确认。用户措辞或累积的已确认约束仍支持两种以上合理解释，且不同解释会实质改变最终构图、必须出现的内容、运动方式或特殊约束时，这不是普通设计分歧：Agent 必须在选择方案和生成 A11 审核帧前停下，只提出一个能够消除该分叉的聚焦问题。返工成本低、A11 可以继续 comment 或已经投入制作时间都不能把这类解释权转给 Agent；澄清后直接继续，不新增批准门。结果已经明确而只剩 DOM/CSS、缓动参数等技术实现细节时仍由 Agent 自主决定；其余普通审美差异在既有 A11 storyboard 验收中暴露。
 
 每个视频项目都在 `AfterForge/frame.md` 建立一份项目级 canonical visual spec。它是该视频整体视觉包装审美的长期规范，不是跨项目通用皮肤，也不只记录颜色和字体。它至少约束艺术方向、画面构成原则、信息层级、图形语言、背景与前景关系、形状和组件处理、材质与纹理、影像处理、色彩、字体、间距以及明确的视觉禁区。
 
@@ -255,15 +264,17 @@ Agent 默认自主完成该路由，不新增逐条用户确认。只有分叉�
 
 除视觉包装外，每个视频还必须在正式动画实施前冻结统一的运动气质。该约束记录在 `animation-manifest.json` 的视频级 `creativeDirection.motionDirection` 中，至少表达运动性格、整体节奏、速度与重量感、缓动倾向、元素入场与退场逻辑、转场原则、停顿方式和明确禁止的动效倾向。逐条动画可以根据内容变化强弱，但不得无理由偏离该视频已经确认的运动气质。
 
-Storyboard 审核页是 HyperFrames 适配层从草稿状态 `animation-manifest.json` 生成的人工审阅视图，不是独立权威源，也不负责精确时间。它把每条动画的稳定 cue ID、用户材料中的原镜号、视觉语法路由、文字方案、真实展示文案、信息层级、元素数量、从属关系、构图和对应静态关键画面放在一起审阅；用户材料未提供镜号时不伪造原镜号。页面提供逐镜、逐静帧 comment 与“通过/需修改”状态，并将记录持久化到当前 Vn 的结构化审核状态，而不是只留在浏览器临时状态或聊天历史中。候选联系表只作方案比较材料，不能替代正式审核页。
+Storyboard 审核页是 HyperFrames 适配层从草稿状态 `animation-manifest.json` 生成的人工审阅视图，不是独立权威源，也不负责精确时间。每张 cue 卡按对应旁白、主审帧与必要辅助帧、`finalAnimationDescription`、逐帧 comment 与批准操作排列；用户材料未提供镜号时不伪造原镜号。`finalAnimationDescription` 是 cue 级单一自然语言字符串，只描述所有必要澄清完成后、截至进入 A11 时该镜最终如何呈现，不采用固定字段清单，也不展示澄清过程、讨论理由或修改历史；页面不得从聊天重构说明或维护第二份副本。页面在当前 cue / still 旁就地提供 comment、处理状态和批准操作，不要求用户重复选择 A11、cue 或时间码；只有当前 layout lock 有效、最终动画说明存在且没有开放 comment 的 cue 才可单独或批量批准，机器仍保存逐 cue evidence。提交 comment 只使相关批准证据与下游状态失效，当前锁定静帧继续显示为被评论的待修改版本；直到 composition、projection、依赖或审核帧字节真实变化，layout lock 才因哈希不符而失效。评论保存结果必须独立反馈，不能用批准 blocker 暗示写入成败。记录持久化到当前 Vn，而不是只留在浏览器临时状态或聊天历史中。候选联系表只作方案比较材料，不能替代正式审核页。
+
+Review shell 与其中承载的受审内容是两个独立视觉层。Reviewer 自身的页面背景、字体、导航、按钮、表单、状态和容器样式由仓库级 Review 实现固定维护，不读取项目级 `AfterForge/frame.md`，也不读取 Vn 内的 `frame.md` 快照；这些项目视觉规范只影响 iframe、静帧或视频中实际被审核的动画内容。当前 `serve_workflow_review.py` 的视觉 shell 暂时作为仓库级 Review UI 基线，后续只能通过显式的仓库级 UI/UX 变更调整，不能随项目或 Vn 视觉规范变化。
 
 每个 cue 必须有 1 张主审帧：选择主要元素已经进入并停稳、文字完整可读、原片主体自然清晰且静态设计信息最完整的代表状态，不机械选择中间帧，也不使用转场、过冲、遮挡或退场状态。若存在主审帧无法表达的其他静态构图状态，可额外增加 1–2 张辅助帧，因此每镜总计 1–3 张静帧；辅助帧不展示运动路径。A/B/C 候选必须固定相同语义状态、相同原片帧与相同真实文案，只比较设计变量。
 
 每条 animated cue 的真实文案、DOM、布局和 CSS 终态只写在 `compositions/cues/<cue>.html`，其 root 尺寸必须与 `project.delivery` 完全一致。A11 不再另写静态 frame：`sync_storyboard.py` 生成的 854×480 `compositions/review/<cue>.html` 把对应原画 still 与该 1920×1080 正式 cue composition 按 manifest 比例叠加，并由 `heroTime` 选择静态验收状态。A12 的 854×480 合成入口同样投影该 cue；`sync_delivery.py` 则生成不缩放的 1920×1080 单 cue render host。review、delivery host、`STORYBOARD.md` 与顶层 `index.html` 都是 projection，不是可独立编辑的布局源；生成器只允许覆盖带自身 marker 的文件。
 
-运动写在 `compositions/motion/<cue>.js`。它可以控制时间、transform、opacity、clip/mask 进度等动画状态，但不得改写 `left/top/width/height/font/gap/display` 等布局属性。A11 用户逐镜解决 comment 并批准静态设计后，`layout_lock.py` 用获批主审帧、`layoutDependencies` 中 canonical HTML/CSS/字体、生成的 review projection 及其尺寸规格建立 SHA-256 锁；任何依赖或投影变化都使该 cue 回到 A11，并向下使 480p Demo 批准和原生渲染授权失效，而不是在运动阶段静默重新对位。`source-only` cue 只有原画 review projection，不创建正式 composition、motion、delivery host 或渲染槽。完整 adapter 协议见 `references/hyperframes-single-source.md`。
+运动写在 `compositions/motion/<cue>.js`。它可以控制时间、transform、opacity、clip/mask 进度等动画状态，但不得改写 `left/top/width/height/font/gap/display` 等布局属性。A11 用户逐镜解决 comment 并批准静态设计后，`layout_lock.py` 用获批主审帧及必要辅助帧、`layoutDependencies` 中 canonical HTML/CSS/字体、生成的 review projection 及其尺寸规格建立 SHA-256 锁；任一审核帧、依赖或投影变化都使该 cue 回到 A11，并向下使 480p Demo 批准和原生渲染授权失效，而不是在运动阶段静默重新对位。`source-only` cue 只有原画 review projection，不创建正式 composition、motion、delivery host 或渲染槽。完整 adapter 协议见 `references/hyperframes-single-source.md`。
 
-内部制作仍按“先形成文字方案，再制作使用真实文案的静态关键画面”的顺序执行，但不在两步之间打断用户。只有两部分都准备好后才合并提交一次 Storyboard 静态样式验收。反馈先修正草稿 manifest，再重新生成审核页和受影响的静态关键画面；全部逐镜 comment 解决并确认后，静态审核才标记为 `approved`，随后进入完整运动制作。HyperFrames 所称 storyboard frame 是关键画面卡，不是 FCPXML 的帧级时间输入。
+内部制作仍按“先形成文字方案，再制作使用真实文案的静态关键画面”的顺序执行，但不在两步之间增加批准门。若文字方案存在会实质改变最终呈现的解释分叉，则先用一个聚焦问题完成必要澄清；结果明确后不再打断，直接制作静态关键画面。只有文字方案和画面都准备好后才合并提交一次 Storyboard 静态样式验收。反馈先修正草稿 manifest，再重新生成审核页和受影响的静态关键画面；全部逐镜 comment 解决并确认后，静态审核才标记为 `approved`，随后进入完整运动制作。HyperFrames 所称 storyboard frame 是关键画面卡，不是 FCPXML 的帧级时间输入。
 
 A8 与 A11 使用“可验收性门槛”而不是 Agent 质量验收门槛：完成当前产物后应尽快交给用户查看。低成本、确定性的自动检查可以执行，但结果默认只作为非阻塞自检；内容复读、结构复查、浏览器截图比较和 Agent 自行判断视觉完成度不得成为重复往返或延迟交付的理由。只有 storyboard 无法打开、关键资源缺失、页面明显报错等使用户无法正常查看目标产物的问题才构成 blocker。检查工具自身失败但用户仍能查看结果时，记录限制并继续交付。该宽松边界只适用于 A8、A11，不降低后续动画渲染、透明素材、FCPXML 回填和最终交付的工程验证要求。
 
@@ -289,7 +300,7 @@ V1 中，HyperFrames 使用同一 delivery-native canonical cue composition 和�
 - 审阅层：把 1920×1080 canonical cue 自动投影为 854×480 合成 MP4，叠加在对应粗剪画面上并保留粗剪参考视频自带的原声；该文件只用于动画效果确认；
 - 交付层：Storyboard 静态审核、480p Demo 运动审核和用户显式原生渲染授权三项均有效后，通过自动生成的 1920×1080 delivery host 在 composition 原生尺寸直接渲染透明 ProRes 4444 MOV；帧率始终跟随源 FCPXML，禁止 `--resolution` 和后期放大。
 
-审阅与交付之间必须存在三项独立事实：Storyboard 静态样式审核已通过、绑定当前文件哈希的 480p Demo 运动审核已通过、用户已针对这组获批输入显式授权原生渲染。Demo 审核页按当前播放时间点或可选时间段记录 comment，并自动关联 cue；页面记录是验收与机器门禁依据，聊天只负责实时讨论。布局、文字或素材变化使静态审核及全部下游状态失效；仅运动或 Demo 变化保留静态审核，但使运动审核和原生授权失效。`render_animations.py` 必须在三项事实或有效 layout lock 任一缺失、过期或哈希不匹配时 fail closed。该目标契约的详细设计见 `docs/superpowers/plans/2026-09-02-review-gates-design.md`；截至该设计落地时，相应页面与渲染硬门仍待实现。
+审阅与交付之间必须存在三项独立事实：Storyboard 静态样式审核已通过、绑定当前文件哈希的 480p Demo 运动审核已通过、用户已针对这组获批输入显式授权原生渲染。Demo 审核页自动记录当前播放时间和对应 cue，持续性问题才由用户附加时间范围；自由文本与机器影响范围分离，同一 comment 可由用户选择影响 static、motion 或二者。涉及 static 时重开受影响 A11 并完整向下失效，仅 motion 时保留有效 A11 并重开 A13/A14；两者都不强制用户退出当前 Demo 页面。页面记录是验收与机器门禁依据，聊天只负责实时讨论。`render_animations.py` 在三项事实、有效 layout lock、输入指纹或授权指纹任一缺失或不匹配时 fail closed，并由 D2 ledger 将正式 MOV 哈希绑定到授权状态。详细设计见 `docs/superpowers/plans/2026-09-02-review-gates-design.md`。
 
 旧 Vn 若仍以 854×480 为 canonical root，先用确定性 legacy stage 把既有布局映射进 1920×1080 root。该映射仍由浏览器在 1920×1080 capture 中绘制 CSS、文字和图形，不放大已编码视频；迁移会清除旧 lock、在 `layoutRevision` 保留修订基线，并要求用户重新确认 480p hero 与完整动画等价性。新批准锁必须从保留基线单调递增。新 Vn 不使用兼容 stage，直接按 delivery 坐标创作。
 
@@ -393,10 +404,10 @@ V1 采用先审阅、后高质量渲染与回填的两阶段工作模式。
 7. 依据参考视频实际口播校正明显文字错误，将旁白原句和可选触发词句对齐到 FCPXML 时间线；存在 `materials.animation_guidance` 时逐条审核其是否可直接使用、可自主规范化、需要额外素材、需要澄清、超出范围或无法可靠对齐，并把 cue 级 `guidanceReview` 写入草稿 manifest；脚本对单条镜头明确指定的风格在该镜明确范围内优先于项目默认，其余属性继续继承项目规范；若受影响 cue 需在动画内重新合成两段或以上原片，默认要求独立带余量片段并标记 `needs-material`，不根据粗剪自行猜测取段和顺序；随后判断每条候选动画的主次信息功能和与原画的主次关系，没有主观动画提示时由 Skill 自主完成。该审核不新增用户验收轮次，只有未解决问题会改变 A8 方向或阻止受影响 cue 可靠继续时才单独询问；
 8. 根据本视频的实际功能与原画关系统计，向用户提出适合当前视频的整体视觉包装与运动气质候选，并在产物可正常查看时尽快提交 A8 验收；确认后创建或更新项目级 canonical `AfterForge/frame.md`，并把统一运动气质写入草稿 `animation-manifest.json`；
 9. 使用确定性版本脚手架创建新的 Vn HyperFrames 工程，复制 canonical `frame.md` 为本版快照并记录 SHA-256；不得调用通用 `hyperframes init` 或触碰项目级 Agent 文件；
-10. 在已确认的项目视觉规范内为每条动画选择主要及可选辅助参考语言，完成 `designRoute`；对标记为 `needs-material` 的 cue，此时才索取已在 A7 明确的具体素材并复制进当前 Vn；随后内部细化逐条文字方案，并直接在正式 `compositions/cues/` 完成真实文案、DOM、布局和 CSS 终态；
-11. 从 manifest 和正式 cue composition 自动生成可逐镜 comment 的 Storyboard 审核页与 review projection，将视觉语法路由、文字方案与主审帧合并为 A11 静态样式验收；每镜必须有 1 张主审帧，必要时再附 1–2 张静态构图辅助帧；全部 comment 解决并逐镜确认后，用获批主审帧冻结 layout dependencies；
+10. 在已确认的项目视觉规范内为每条动画选择主要及可选辅助参考语言，完成 `designRoute`；对标记为 `needs-material` 的 cue，此时才索取已在 A7 明确的具体素材并复制进当前 Vn；随后内部细化逐条文字方案；若用户措辞或已确认约束仍存在会实质改变最终呈现的合理解释分叉，必须先提出一个聚焦问题，澄清后才在正式 `compositions/cues/` 完成真实文案、DOM、布局和 CSS 终态；
+11. 从 manifest 和正式 cue composition 自动生成 cue / still 就地 comment 的 Storyboard 审核页与 review projection，将对应旁白、`finalAnimationDescription` 与主审帧合并为 A11 静态样式验收；每镜必须有 1 张主审帧，必要时再附 1–2 张静态构图辅助帧，所有审核帧进入 layout lock；当前合格 cue 可单独或批量批准并形成逐 cue evidence，全部 cue 通过后 A11 才完成；
 12. 只在 A11 通过后，于独立 `compositions/motion/` 中实现运动并自动装配正式合成预览；不得复制或重写 A11 已批准布局；
-13. 输出保留粗剪原声的 854×480 Demo，在审核页按时间点或时间段收集运动路径、节奏、转场和衔接 comment；全部 comment 解决后，由用户批准绑定当前 Demo 哈希的运动审核；
+13. 输出保留粗剪原声的 854×480 Demo，在播放器上下文自动绑定 comment 的时间点与 cue，按需增加时间范围，并由用户为一条完整意见选择 static、motion 或二者影响范围；全部 comment 解决后，由用户批准绑定当前 Demo 哈希的运动审核；
 14. 静态与运动审核均通过后，另行取得用户针对当前获批输入的原生渲染授权；该授权不得从前两项批准或一般性的“继续”中推断。
 
 ### 阶段二：渲染、回填与验证
@@ -428,8 +439,8 @@ V1 采用先审阅、后高质量渲染与回填的两阶段工作模式。
 - 多原片 cue 素材：需在动画内重新合成两段或以上原片时，默认要求用户提供独立带余量片段；文件名使用 `01-` 等顺序前缀，或保留 `animation-source`、“动画素材”等明确信号时进入 `materials.animation_source_clips`，不与低码粗剪参考视频竞争候选身份；带顺序前缀但包含粗剪关键词的文件仍是参考候选；素材身份以用户当前说明和实际文件为权威，脚本素材类型默认只作参考；
 - 视觉场景：以 16:9 横屏口播类视频为首要目标；
 - 渲染：HyperFrames；
-- 静态审阅：可逐镜 comment 的 Storyboard 页面，每镜 1 张主审帧，存在额外静态构图状态时可再附 1–2 张辅助帧；
-- 运动审阅：854×480 合成 Demo，只用于确认运动路径、节奏、转场和衔接，支持绑定时间点或时间段及 cue 的 comment；视频保留粗剪参考视频自带的原声；
+- 静态审阅：cue / still 就地 comment 的 Storyboard 页面，每镜 1 张主审帧，存在额外静态构图状态时可再附 1–2 张辅助帧；
+- 运动审阅：854×480 合成 Demo，comment 自动绑定播放器时间与当前 cue，可选持续范围，允许用户将同一意见声明为影响 static、motion 或二者；视频保留粗剪参考视频自带的原声；
 - 透明动画交付：1920×1080 ProRes 4444 MOV，帧率跟随源 FCPXML；
 - 声音边界：不生成、设计、混合、交付或回填音效与音乐；
 - 回填：在项目级 `AfterForge/` 根层生成平铺、不可覆盖、可验证复用的 `.fcpxmld`，包含完整原 Project 副本和逐条独立动画，不覆盖原始输入；

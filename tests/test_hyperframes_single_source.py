@@ -70,6 +70,7 @@ def manifest_fixture() -> dict:
                 "productionMode": "animation",
                 "workflowState": "layout-built",
                 "narrationAnchor": "测试旁白",
+                "finalAnimationDescription": "标题居中落定并保持。",
                 "resolvedTimeline": {"start": "24/24s", "duration": "48/24s", "authority": "fcpxml"},
                 "designRoute": {
                     "functions": {"primary": "强调", "secondary": []},
@@ -243,6 +244,51 @@ class DeliveryProjectionTests(SingleSourceFixture):
 
 
 class LayoutLockTests(SingleSourceFixture):
+    def test_freeze_and_verify_cover_all_storyboard_review_frames(self) -> None:
+        self.assertIsNotNone(sync_storyboard, "sync_storyboard implementation is missing")
+        self.assertIsNotNone(freeze_layout, "layout_lock implementation is missing")
+        self.assertIsNotNone(verify_layouts, "layout_lock implementation is missing")
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_version(directory)
+            sync_storyboard(root)
+            hero = root / "hero.png"
+            cinema = root / "cinema.png"
+            interview = root / "interview.png"
+            hero.write_bytes(b"surveillance")
+            cinema.write_bytes(b"cinema")
+            interview.write_bytes(b"interview")
+
+            freeze_layout(
+                root,
+                "p1s01_c01_title",
+                hero,
+                hero_id="surveillance",
+                hero_label="最终监控框",
+                auxiliary_frames=[
+                    ("cinema", "电影院宽银幕", cinema),
+                    ("interview", "电视访谈技术框", interview),
+                ],
+            )
+            manifest = json.loads((root / "animation-manifest.json").read_text(encoding="utf-8"))
+            lock = manifest["cues"][0]["renderAdapters"]["hyperframes"]["layoutLock"]
+
+            self.assertEqual(
+                [(frame["id"], frame["role"], frame["label"]) for frame in lock["reviewFrames"]],
+                [
+                    ("surveillance", "hero", "最终监控框"),
+                    ("cinema", "auxiliary", "电影院宽银幕"),
+                    ("interview", "auxiliary", "电视访谈技术框"),
+                ],
+            )
+            self.assertEqual(len(lock["reviewFrameSetSha256"]), 64)
+            self.assertEqual(verify_layouts(root)["status"], "valid")
+
+            (root / lock["reviewFrames"][1]["path"]).write_bytes(b"changed cinema")
+            changed = verify_layouts(root)
+
+            self.assertEqual(changed["status"], "invalid")
+            self.assertEqual(changed["invalidCueIds"], ["p1s01_c01_title"])
+
     def test_freeze_increments_preserved_revision_after_lock_invalidation(self) -> None:
         self.assertIsNotNone(sync_storyboard, "sync_storyboard implementation is missing")
         self.assertIsNotNone(freeze_layout, "layout_lock implementation is missing")

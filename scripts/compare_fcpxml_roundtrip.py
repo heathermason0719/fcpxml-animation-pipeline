@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from fractions import Fraction
 from pathlib import Path
@@ -12,17 +13,19 @@ from urllib.parse import unquote, urlparse
 from xml.etree import ElementTree as ET
 
 try:
-    from scripts.hyperframes_adapter import parse_time
+    from scripts.hyperframes_adapter import load_manifest, parse_time, save_manifest
     from scripts.validate_fcpxml_package import (
         _global_afterforge_intervals,
         _remove_afterforge_anchors,
     )
+    from scripts.workflow_status import resolve_stage_status
 except ModuleNotFoundError:
-    from hyperframes_adapter import parse_time  # type: ignore
+    from hyperframes_adapter import load_manifest, parse_time, save_manifest  # type: ignore
     from validate_fcpxml_package import (  # type: ignore
         _global_afterforge_intervals,
         _remove_afterforge_anchors,
     )
+    from workflow_status import resolve_stage_status  # type: ignore
 
 
 def _parse(path: Path, label: str) -> ET.Element:
@@ -241,15 +244,62 @@ def compare_roundtrip(
     }
 
 
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(Path(path).expanduser().resolve().read_bytes()).hexdigest()
+
+
+def register_roundtrip(version_root: Path, reexported_xml: Path) -> dict[str, Any]:
+    root = Path(version_root).expanduser().resolve()
+    stage_status = resolve_stage_status(root)
+    if stage_status.get("nextEligibleStage") != "D6":
+        raise ValueError(
+            "round-trip registration requires current D5 Final Cut Pro acceptance; "
+            f"blocked at {stage_status.get('blockingStage')}"
+        )
+    manifest = load_manifest(root)
+    workflow = manifest["workflow"]
+    d4 = workflow["stageEvidence"]["D4"]
+    delivered = root.parent / d4["packageName"] / "Info.fcpxml"
+    reexported = Path(reexported_xml).expanduser().resolve()
+    result = compare_roundtrip(delivered, reexported, manifest)
+    evidence = {
+        "stageId": "D6",
+        "contractVersion": workflow["stageContractVersion"],
+        "semanticVersion": 1,
+        "status": "valid",
+        "deliveryFingerprint": d4["deliveryFingerprint"],
+        "deliveredSha256": _sha256(delivered),
+        "reexportedPath": str(reexported),
+        "reexportedSha256": _sha256(reexported),
+        "animatedCueIds": result["animatedCueIds"],
+    }
+    workflow["stageEvidence"]["D6"] = evidence
+    save_manifest(root, manifest)
+    return evidence
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="比较 FCP 导入后再导出的 FCPXML 语义。")
     parser.add_argument("delivered_xml", type=Path)
     parser.add_argument("reexported_xml", type=Path)
     parser.add_argument("manifest", type=Path)
+    parser.add_argument(
+        "--register-vn",
+        type=Path,
+        help="验证后把 D6 evidence 写入这个明确指定的 Vn。",
+    )
     args = parser.parse_args()
     try:
-        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-        result = compare_roundtrip(args.delivered_xml, args.reexported_xml, manifest)
+        if args.register_vn is not None:
+            registered_manifest = load_manifest(args.register_vn)
+            d4 = registered_manifest.get("workflow", {}).get("stageEvidence", {}).get("D4", {})
+            expected_delivered = args.register_vn.expanduser().resolve().parent / d4.get("packageName", "") / "Info.fcpxml"
+            if args.delivered_xml.expanduser().resolve() != expected_delivered:
+                raise ValueError("delivered_xml does not match the Vn D4 package")
+            result = register_roundtrip(args.register_vn, args.reexported_xml)
+        else:
+            manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+            result = compare_roundtrip(args.delivered_xml, args.reexported_xml, manifest)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
         print(json.dumps({"status": "blocked", "error": str(error)}, ensure_ascii=False, indent=2))
         return 2

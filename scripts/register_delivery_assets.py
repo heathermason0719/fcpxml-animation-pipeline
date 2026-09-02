@@ -16,10 +16,12 @@ try:
     from scripts.hyperframes_adapter import load_manifest, parse_time, project_dimensions, safe_project_path, save_manifest
     from scripts.layout_lock import verify_layouts
     from scripts.validate_delivery import DeliveryExpectation, validate_probe
+    from scripts.workflow_status import evidence_fingerprint, resolve_stage_status
 except ModuleNotFoundError:
     from hyperframes_adapter import load_manifest, parse_time, project_dimensions, safe_project_path, save_manifest  # type: ignore
     from layout_lock import verify_layouts  # type: ignore
     from validate_delivery import DeliveryExpectation, validate_probe  # type: ignore
+    from workflow_status import evidence_fingerprint, resolve_stage_status  # type: ignore
 
 
 def _sha256(path: Path) -> str:
@@ -91,6 +93,12 @@ def register_delivery_assets(
 ) -> dict[str, Any]:
     root = version_root.expanduser().resolve()
     manifest = load_manifest(root)
+    stage_status = resolve_stage_status(root)
+    if stage_status.get("evidence", {}).get("D2") not in {"current", "compatible-historical"}:
+        raise ValueError(
+            "delivery asset registration requires current D2 render evidence; "
+            f"blocked at {stage_status.get('blockingStage')}"
+        )
     lock_result = verify_layouts(root)
     if lock_result["status"] != "valid":
         raise ValueError(f"layout locks are invalid: {lock_result['invalidCueIds']}")
@@ -160,6 +168,17 @@ def register_delivery_assets(
 
     for cue in animated:
         cue["deliveryAsset"] = registrations[cue["id"]]
+    workflow = manifest["workflow"]
+    workflow.setdefault("stageEvidence", {})["D3"] = {
+        "stageId": "D3",
+        "contractVersion": workflow["stageContractVersion"],
+        "semanticVersion": 1,
+        "status": "registered",
+        "renderLedgerSha256": _sha256(ledger_path),
+        "assetFingerprint": evidence_fingerprint(
+            {cue_id: registrations[cue_id] for cue_id in sorted(registrations)}
+        ),
+    }
     save_manifest(root, manifest)
     return {
         "status": "registered",
