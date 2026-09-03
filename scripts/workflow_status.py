@@ -10,14 +10,14 @@ from typing import Any
 
 try:
     from scripts.hyperframes_adapter import cue_adapter, load_manifest, safe_project_path
-    from scripts.hyperframes_runtime import read_runtime_pin
     from scripts.layout_lock import verify_layouts
     from scripts.workflow_stages import assess_stage_evidence, load_stage_contract
+    from scripts.workflow_inputs import evidence_fingerprint_version, input_fingerprint, require_current_input_evidence
 except ModuleNotFoundError:  # pragma: no cover - direct script execution
     from hyperframes_adapter import cue_adapter, load_manifest, safe_project_path  # type: ignore
-    from hyperframes_runtime import read_runtime_pin  # type: ignore
     from layout_lock import verify_layouts  # type: ignore
     from workflow_stages import assess_stage_evidence, load_stage_contract  # type: ignore
+    from workflow_inputs import evidence_fingerprint_version, input_fingerprint, require_current_input_evidence  # type: ignore
 
 
 PRE_REVIEW_STAGES = [f"A{number}" for number in range(1, 11)]
@@ -29,33 +29,7 @@ def evidence_fingerprint(evidence: dict[str, Any]) -> str:
 
 
 def current_input_fingerprint(root: Path, manifest: dict[str, Any]) -> str:
-    records: list[dict[str, Any]] = []
-    for cue in sorted(manifest["cues"], key=lambda item: item["id"]):
-        if cue.get("productionMode") != "animation":
-            continue
-        adapter = cue_adapter(cue)
-        lock = adapter.get("layoutLock")
-        if not isinstance(lock, dict):
-            raise ValueError(f"animated cue lacks layout lock: {cue['id']}")
-        motion_path = safe_project_path(root, adapter["motionSrc"])
-        records.append(
-            {
-                "cueId": cue["id"],
-                "layoutRevision": lock.get("revision"),
-                "layoutAggregateSha256": lock.get("aggregateSha256"),
-                "approvedPosterSha256": lock.get("approvedPosterSha256"),
-                "reviewProjectionSha256": lock.get("reviewProjection", {}).get("sha256"),
-                "motionSha256": hashlib.sha256(motion_path.read_bytes()).hexdigest(),
-            }
-        )
-    payload = {
-        "hyperframesRuntimeVersion": read_runtime_pin(root),
-        "preview": manifest["project"]["preview"],
-        "delivery": manifest["project"]["delivery"],
-        "cues": records,
-    }
-    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return input_fingerprint(root, manifest)
 
 
 def _a12_evidence_status(root: Path, manifest: dict[str, Any], evidence: Any) -> str:
@@ -67,16 +41,55 @@ def _a12_evidence_status(root: Path, manifest: dict[str, Any], evidence: Any) ->
     if evidence.get("status") != "ready":
         return "pending"
     try:
+        version = evidence_fingerprint_version(evidence)
+    except ValueError:
+        return "unsupported-input-fingerprint-version"
+    try:
         preview = safe_project_path(root, evidence["preview"])
         preview_sha256 = hashlib.sha256(preview.read_bytes()).hexdigest()
-        input_fingerprint = current_input_fingerprint(root, manifest)
+        fingerprint = input_fingerprint(root, manifest, version)
     except (KeyError, OSError, ValueError):
         return "artifact-invalid"
     if evidence.get("sha256") != preview_sha256:
         return "demo-hash-mismatch"
-    if evidence.get("inputFingerprint") != input_fingerprint:
+    if evidence.get("inputFingerprint") != fingerprint:
         return "input-fingerprint-mismatch"
-    return assessment["status"]
+    return "compatible-historical" if version == 1 else assessment["status"]
+
+
+def _linked_input_version_status(upstream: dict[str, Any], evidence: dict[str, Any]) -> str | None:
+    try:
+        if evidence_fingerprint_version(upstream) != evidence_fingerprint_version(evidence):
+            return "input-fingerprint-version-mismatch"
+    except ValueError:
+        return "unsupported-input-fingerprint-version"
+    return None
+
+
+def _pending_input_stage_status(
+    root: Path, manifest: dict[str, Any], stage: str,
+    completed: list[str], evidence: dict[str, str],
+    *, input_stages: tuple[str, ...] = ("A12", "A13", "A14"),
+    active_context: str | None = None,
+) -> dict[str, Any]:
+    try:
+        require_current_input_evidence(root, manifest, stages=input_stages)
+    except ValueError:
+        # Historical completion remains readable, but weak evidence cannot grant a new write.
+        return {
+            "activeContext": None,
+            "blockingStage": "A12",
+            "nextEligibleStage": "A12",
+            "completedStages": [item for item in completed if item != "D1"],
+            "evidence": {**evidence, stage if stage in {"A13", "A14"} else "D1": "input-fingerprint-upgrade-required"},
+        }
+    return {
+        "activeContext": active_context,
+        "blockingStage": stage,
+        "nextEligibleStage": stage,
+        "completedStages": completed,
+        "evidence": evidence,
+    }
 
 
 def _a13_evidence_status(contract: dict[str, Any], a12: dict[str, Any], evidence: Any) -> str:
@@ -87,6 +100,9 @@ def _a13_evidence_status(contract: dict[str, Any], a12: dict[str, Any], evidence
         return assessment["status"]
     if evidence.get("status") != "approved":
         return "pending"
+    version_status = _linked_input_version_status(a12, evidence)
+    if version_status:
+        return version_status
     comments = evidence.get("comments", [])
     if not isinstance(comments, list) or any(comment.get("status") == "open" for comment in comments):
         return "open-comments"
@@ -97,7 +113,7 @@ def _a13_evidence_status(contract: dict[str, Any], a12: dict[str, Any], evidence
         return "demo-hash-mismatch"
     if evidence.get("inputFingerprint") != a12.get("inputFingerprint"):
         return "input-fingerprint-mismatch"
-    return assessment["status"]
+    return "compatible-historical" if evidence_fingerprint_version(evidence) == 1 else assessment["status"]
 
 
 def _a14_evidence_status(contract: dict[str, Any], a12: dict[str, Any], evidence: Any) -> str:
@@ -108,11 +124,14 @@ def _a14_evidence_status(contract: dict[str, Any], a12: dict[str, Any], evidence
         return assessment["status"]
     if evidence.get("status") != "authorized":
         return "pending"
+    version_status = _linked_input_version_status(a12, evidence)
+    if version_status:
+        return version_status
     if evidence.get("demoSha256") != a12.get("sha256"):
         return "demo-hash-mismatch"
     if evidence.get("inputFingerprint") != a12.get("inputFingerprint"):
         return "input-fingerprint-mismatch"
-    return assessment["status"]
+    return "compatible-historical" if evidence_fingerprint_version(evidence) == 1 else assessment["status"]
 
 
 def _d2_evidence_status(
@@ -135,10 +154,13 @@ def _d2_evidence_status(
         return assessment["status"]
     if ledger.get("status") != "rendered":
         return "pending"
+    version_status = _linked_input_version_status(a14, ledger)
+    if version_status:
+        return version_status
     try:
         if ledger.get("authorizationFingerprint") != evidence_fingerprint(a14):
             return "authorization-fingerprint-mismatch"
-        if ledger.get("inputFingerprint") != current_input_fingerprint(root, manifest):
+        if ledger.get("inputFingerprint") != input_fingerprint(root, manifest, evidence_fingerprint_version(ledger)):
             return "input-fingerprint-mismatch"
     except (OSError, ValueError, KeyError):
         return "input-invalid"
@@ -156,7 +178,7 @@ def _d2_evidence_status(
             return "artifact-invalid"
         if item.get("sha256") != actual_hash:
             return "artifact-hash-mismatch"
-    return assessment["status"]
+    return "compatible-historical" if evidence_fingerprint_version(ledger) == 1 else assessment["status"]
 
 
 def _d3_evidence_status(
@@ -282,6 +304,10 @@ def _d6_evidence_status(
 
 
 def _a11_evidence_status(root: Path, manifest: dict[str, Any], evidence: Any) -> str:
+    try:
+        from scripts.storyboard_approval import evaluate_storyboard_cue
+    except ModuleNotFoundError:
+        from storyboard_approval import evaluate_storyboard_cue
     if not isinstance(evidence, dict):
         return "missing"
     contract = load_stage_contract()
@@ -308,25 +334,9 @@ def _a11_evidence_status(root: Path, manifest: dict[str, Any], evidence: Any) ->
     if not isinstance(approvals, dict) or set(approvals) != expected_ids:
         return "cue-approvals-incomplete"
     for cue in animated:
-        lock = cue_adapter(cue).get("layoutLock")
-        approval = approvals.get(cue["id"])
-        if not isinstance(lock, dict) or not isinstance(approval, dict):
-            return "cue-approval-invalid"
-        cue_comments = [comment for comment in comments if comment.get("cueId") == cue["id"]]
-        latest_comment_revision = max(
-            (int(comment.get("revision", 0)) for comment in cue_comments),
-            default=0,
-        )
-        if (
-            approval.get("status") != "approved"
-            or approval.get("runtimeVersion") != lock.get("runtimeVersion")
-            or approval.get("layoutRevision") != lock.get("revision")
-            or approval.get("layoutAggregateSha256") != lock.get("aggregateSha256")
-            or approval.get("approvedPosterSha256") != lock.get("approvedPosterSha256")
-            or approval.get("reviewFrameSetSha256") != lock.get("reviewFrameSetSha256")
-            or int(approval.get("commentRevision", -1)) < latest_comment_revision
-        ):
-            return "cue-approval-stale"
+        result = evaluate_storyboard_cue(cue, approval=approvals.get(cue["id"]), comments=comments, layout_valid=True)
+        if result["evidenceStatus"] != "current":
+            return result["evidenceStatus"]
     return assessment["status"]
 
 
@@ -359,28 +369,23 @@ def resolve_stage_status(version_root: Path) -> dict[str, Any]:
     a13 = stage_evidence.get("A13") if isinstance(stage_evidence, dict) else None
     a13_status = _a13_evidence_status(contract, a12, a13)
     if a13_status not in {"current", "compatible-historical"}:
-        return {
-            "activeContext": "A13",
-            "blockingStage": "A13",
-            "nextEligibleStage": "A13",
-            "completedStages": [*PRE_REVIEW_STAGES, "A11", "A12"],
-            "evidence": {"A11": a11_status, "A12": a12_status, "A13": a13_status},
-        }
+        return _pending_input_stage_status(
+            root, manifest, "A13", [*PRE_REVIEW_STAGES, "A11", "A12"],
+            {"A11": a11_status, "A12": a12_status, "A13": a13_status},
+            input_stages=("A12",), active_context="A13",
+        )
     a14 = stage_evidence.get("A14") if isinstance(stage_evidence, dict) else None
     a14_status = _a14_evidence_status(contract, a12, a14)
     if a14_status not in {"current", "compatible-historical"}:
-        return {
-            "activeContext": "A13",
-            "blockingStage": "A14",
-            "nextEligibleStage": "A14",
-            "completedStages": [*PRE_REVIEW_STAGES, "A11", "A12", "A13"],
-            "evidence": {
+        return _pending_input_stage_status(
+            root, manifest, "A14", [*PRE_REVIEW_STAGES, "A11", "A12", "A13"],
+            {
                 "A11": a11_status,
                 "A12": a12_status,
                 "A13": a13_status,
                 "A14": a14_status,
-            },
-        }
+            }, input_stages=("A12", "A13"), active_context="A13",
+        )
     completed = [*PRE_REVIEW_STAGES, "A11", "A12", "A13", "A14", "D1"]
     evidence_status = {
         "A11": a11_status,
@@ -392,37 +397,19 @@ def resolve_stage_status(version_root: Path) -> dict[str, Any]:
     d2_status = _d2_evidence_status(root, manifest, contract, a14)
     evidence_status["D2"] = d2_status
     if d2_status not in {"current", "compatible-historical"}:
-        return {
-            "activeContext": None,
-            "blockingStage": "D2",
-            "nextEligibleStage": "D2",
-            "completedStages": completed,
-            "evidence": evidence_status,
-        }
+        return _pending_input_stage_status(root, manifest, "D2", completed, evidence_status)
     completed.append("D2")
     d3 = stage_evidence.get("D3") if isinstance(stage_evidence, dict) else None
     d3_status = _d3_evidence_status(root, manifest, contract, d3)
     evidence_status["D3"] = d3_status
     if d3_status not in {"current", "compatible-historical"}:
-        return {
-            "activeContext": None,
-            "blockingStage": "D3",
-            "nextEligibleStage": "D3",
-            "completedStages": completed,
-            "evidence": evidence_status,
-        }
+        return _pending_input_stage_status(root, manifest, "D3", completed, evidence_status)
     completed.append("D3")
     d4 = stage_evidence.get("D4") if isinstance(stage_evidence, dict) else None
     d4_status = _d4_evidence_status(root, manifest, contract, d4)
     evidence_status["D4"] = d4_status
     if d4_status not in {"current", "compatible-historical"}:
-        return {
-            "activeContext": None,
-            "blockingStage": "D4",
-            "nextEligibleStage": "D4",
-            "completedStages": completed,
-            "evidence": evidence_status,
-        }
+        return _pending_input_stage_status(root, manifest, "D4", completed, evidence_status)
     completed.append("D4")
     d5 = stage_evidence.get("D5") if isinstance(stage_evidence, dict) else None
     d5_status = _d5_evidence_status(contract, d4, d5)

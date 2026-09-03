@@ -4,17 +4,22 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 
 class Element {
-  constructor() {
+  constructor(tagName = '') {
+    this.tagName = tagName;
     this.dataset = {}; this.children = []; this.hidden = false; this.disabled = false; this.checked = false;
     this.textContent = ''; this.value = ''; this.currentTime = 0; this.paused = true;
     this.classes = new Set();
     this.classList = {toggle: (name, on) => on ? this.classes.add(name) : this.classes.delete(name)};
+    this.listeners = new Map();
   }
   set src(value) { this.source = value; this.currentTime = 0; this.paused = true; }
   get src() { return this.source; }
+  set id(value) { this.elementId = value; elements.set(value, this); }
+  get id() { return this.elementId; }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = nodes; }
-  addEventListener() {}
+  addEventListener(type, callback) { this.listeners.set(type, callback); }
+  dispatch(type) { return this.listeners.get(type)?.({preventDefault() {}, target: this}); }
 }
 
 const elements = new Map();
@@ -24,7 +29,11 @@ const get = id => {
 };
 const initial = {
   sourceVersion: 'test_V1', manifestSha256: 'manifest-one', cues: [{
-    id: 'cue-02', shotNumber: 2, frames: [], approvalBlockers: [],
+    id: 'cue-02', shotNumber: 2, layoutRevision: 1, approvalStatus: 'current', canApprove: true, approvalBlockers: [],
+    frames: [
+      {id: 'hero', role: 'hero', label: '主审帧', src: 'hero.png', sha256: 'hero-one', comments: []},
+      {id: 'aux', role: 'auxiliary', label: '辅助帧', src: 'aux.png', sha256: 'aux-one', comments: []},
+    ],
     resolvedTimeline: {start: '8.5s', duration: '6.125s'},
   }],
   stageStatus: {activeContext: 'A13', blockingStage: 'A13', nextEligibleStage: 'A13'},
@@ -33,7 +42,7 @@ const initial = {
 let respond = async () => ({ok: true, json: async () => structuredClone(initial)});
 const requests = [];
 const context = vm.createContext({
-  document: {getElementById: get, createElement: () => new Element(), createTextNode: text => ({textContent: text})},
+  document: {getElementById: get, createElement: tag => new Element(tag), createTextNode: text => ({textContent: text, children: []})},
   fetch: async (url, options) => { requests.push({url, options}); return respond(); },
   setTimeout: () => 1, clearTimeout: () => {},
 });
@@ -47,6 +56,11 @@ async function run() {
   get('demoBody').value = '尚未提交的创作意见';
   const scenario = process.argv[2];
   const textOf = element => [element.textContent, ...element.children.map(textOf)].join(' ');
+  const descendants = element => [element, ...element.children.flatMap(descendants)];
+  const storyboardForms = () => descendants(get('cues')).filter(element => element.tagName === 'form');
+  const bodyOf = form => form.children.find(element => element.tagName === 'textarea');
+  const buttonsOf = element => descendants(element).filter(child => child.tagName === 'button');
+  const actionRequests = () => requests.filter(request => request.url.startsWith('/api/action/'));
   const submit = () => get('demoComment').onsubmit({preventDefault() {}});
   get('impactMotion').checked = true; get('impactMotion').value = 'motion';
   get('impactStatic').value = 'static';
@@ -66,9 +80,9 @@ async function run() {
     respond = () => new Promise(resolve => { finish = resolve; });
     const pending = get('refresh').onclick();
     assert.equal(get('refresh').disabled, true, 'refresh must expose its pending state');
-    finish({ok: true, json: async () => ({...initial, sourceVersion: 'fresh_V1'})});
+    finish({ok: true, json: async () => ({...initial, stageStatus: {...initial.stageStatus, nextEligibleStage: 'A14'}})});
     await pending;
-    assert.match(get('title').textContent, /fresh_V1/);
+    assert.match(get('stage').textContent, /A14/);
     assert.equal(get('notice').hidden, false);
     assert.match(get('notice').textContent, /已刷新/);
     assert.equal(requests.at(-1).options?.cache, 'no-store');
@@ -147,6 +161,120 @@ async function run() {
     player.currentTime = 10; get('captureEnd').onclick();
     await submit();
     assert.equal(requests.length, before, 'reversed endpoints must not be submitted');
+  } else if (scenario === 'approval-current-stale') {
+    const stale = structuredClone(initial.cues[0]);
+    stale.approvalStatus = 'stale';
+    const current = {...structuredClone(initial.cues[0]), id: 'cue-03'};
+    respond = async () => ({ok: true, json: async () => ({...initial, cues: [stale, current]})});
+    await get('refresh').onclick();
+    const cards = get('cues').children;
+    assert.match(textOf(cards[0]), /stale/);
+    assert.equal(buttonsOf(cards[0]).find(button => button.textContent === '批准当前镜头').disabled, false);
+    assert.equal(buttonsOf(cards[1]).find(button => button.textContent === '批准当前镜头').disabled, true);
+    respond = async () => ({ok: true, json: async () => ({message: '已保存', state: initial})});
+    await get('approveCleanStoryboard').onclick();
+    assert.deepEqual(JSON.parse(actionRequests().at(-1).options.body).cueIds, ['cue-02']);
+  } else if (scenario === 'storyboard-conflict-drafts') {
+    const forms = storyboardForms();
+    bodyOf(forms[0]).value = '当前主审帧未提交意见';
+    bodyOf(forms[1]).value = '另一张辅助帧草稿';
+    respond = async () => requests.at(-1).url.startsWith('/api/action/')
+      ? {ok: false, status: 409, json: async () => ({error: 'stale Review state'})}
+      : {ok: true, json: async () => ({...initial, manifestSha256: 'manifest-two'})};
+    await forms[0].dispatch('submit');
+    assert.equal(bodyOf(storyboardForms()[0]).value, '当前主审帧未提交意见');
+    assert.equal(bodyOf(storyboardForms()[1]).value, '另一张辅助帧草稿');
+    assert.match(get('notice').textContent, /stale/);
+    assert.equal(actionRequests().length, 1, 'conflict must not automatically retry a write');
+    respond = async () => ({ok: true, json: async () => ({message: '评论已保存', state: {...initial, manifestSha256: 'manifest-three'}})});
+    await storyboardForms()[0].dispatch('submit');
+    const saved = JSON.parse(actionRequests().at(-1).options.body);
+    assert.equal(saved.manifestSha256, 'manifest-two');
+    assert.equal(saved.cueId, 'cue-02');
+    assert.equal(saved.frameId, 'hero');
+    assert.equal(bodyOf(storyboardForms()[0]).value, '');
+    assert.equal(bodyOf(storyboardForms()[1]).value, '另一张辅助帧草稿');
+  } else if (scenario === 'storyboard-refresh-anchor') {
+    bodyOf(storyboardForms()[0]).value = '属于旧静帧的意见';
+    const changed = structuredClone(initial);
+    changed.cues[0].frames[0].sha256 = 'hero-two';
+    respond = async () => ({ok: true, json: async () => changed});
+    await get('refresh').onclick();
+    const form = storyboardForms()[0];
+    assert.equal(bodyOf(form).value, '属于旧静帧的意见');
+    assert.equal(buttonsOf(form).find(button => button.type === 'submit').disabled, true);
+    const before = actionRequests().length;
+    await form.dispatch('submit');
+    assert.equal(actionRequests().length, before, 'changed frame must not silently receive an old draft');
+    assert.match(textOf(get('cues')), /草稿.*旧.*帧/);
+    const rebind = buttonsOf(form).find(button => button.type === 'button');
+    await rebind.dispatch('click');
+    assert.equal(buttonsOf(form).find(button => button.type === 'submit').disabled, false);
+    respond = async () => ({ok: true, json: async () => ({message: '评论已保存', state: changed})});
+    await form.dispatch('submit');
+    assert.equal(JSON.parse(actionRequests().at(-1).options.body).body, '属于旧静帧的意见');
+    assert.equal(bodyOf(storyboardForms()[0]).value, '');
+  } else if (scenario === 'storyboard-removed-anchor') {
+    bodyOf(storyboardForms()[1]).value = '已移除帧仍可复制的草稿';
+    const changed = structuredClone(initial);
+    changed.cues[0].frames.pop();
+    respond = async () => ({ok: true, json: async () => changed});
+    await get('refresh').onclick();
+    const retained = descendants(get('cues')).find(element => element.value === '已移除帧仍可复制的草稿');
+    assert.ok(retained, 'a removed frame draft must remain visibly recoverable');
+    assert.match(textOf(get('cues')), /已移除/);
+    assert.equal(bodyOf(storyboardForms()[0]).value, '', 'removed auxiliary text must never be rebound to hero');
+  } else if (scenario === 'action-network-error-drafts') {
+    bodyOf(storyboardForms()[0]).value = '网络错误不能丢意见';
+    respond = async () => { throw new Error('offline'); };
+    await assert.doesNotReject(() => storyboardForms()[0].dispatch('submit'));
+    assert.equal(bodyOf(storyboardForms()[0]).value, '网络错误不能丢意见');
+    assert.match(get('notice').textContent, /offline/);
+  } else if (scenario === 'demo-conflict-point-draft') {
+    player.currentTime = 11;
+    get('impactStatic').checked = true;
+    respond = async () => {
+      if (requests.at(-1).url.startsWith('/api/action/')) {
+        player.currentTime = 14;
+        return {ok: false, status: 409, json: async () => ({error: 'stale Review state'})};
+      }
+      return {ok: true, json: async () => ({...initial, manifestSha256: 'manifest-two'})};
+    };
+    await submit();
+    assert.equal(get('demoBody').value, '尚未提交的创作意见');
+    assert.equal(get('impactStatic').checked, true);
+    assert.equal(get('impactMotion').checked, true);
+    respond = async () => actionResponse();
+    await submit();
+    const payload = JSON.parse(actionRequests().at(-1).options.body);
+    assert.equal(payload.timeStart, '11.000s', 'retry must retain the rejected point, not later playback');
+    assert.equal(payload.cueId, 'cue-02');
+    assert.equal(payload.manifestSha256, 'manifest-two');
+    assert.deepEqual(payload.impactScopes, ['static', 'motion']);
+  } else if (scenario === 'demo-conflict-range-draft') {
+    captureRange();
+    get('impactStatic').checked = true;
+    respond = async () => requests.at(-1).url.startsWith('/api/action/')
+      ? {ok: false, status: 409, json: async () => ({error: 'stale Review state'})}
+      : {ok: true, json: async () => ({...initial, manifestSha256: 'manifest-two'})};
+    await submit();
+    await get('refresh').onclick();
+    assert.equal(get('demoBody').value, '尚未提交的创作意见');
+    assert.equal(get('useRange').checked, true);
+    assert.equal(get('rangeStart').textContent, '00:11.000');
+    assert.equal(get('rangeEnd').textContent, '00:14.420');
+    assert.equal(get('impactStatic').checked, true);
+    assert.equal(get('impactMotion').checked, true);
+  } else if (scenario === 'draft-vn-isolation') {
+    bodyOf(storyboardForms()[0]).value = 'V1 主审帧草稿';
+    respond = async () => ({ok: true, json: async () => ({...initial, sourceVersion: 'test_V2'})});
+    await get('refresh').onclick();
+    assert.equal(bodyOf(storyboardForms()[0]).value, '', 'draft must not cross the Vn boundary');
+    assert.equal(get('demoBody').value, '', 'Demo draft must not cross the Vn boundary');
+    respond = async () => ({ok: true, json: async () => initial});
+    await get('refresh').onclick();
+    assert.equal(bodyOf(storyboardForms()[0]).value, 'V1 主审帧草稿');
+    assert.equal(get('demoBody').value, '尚未提交的创作意见');
   } else {
     throw new Error(`Unknown scenario: ${scenario}`);
   }

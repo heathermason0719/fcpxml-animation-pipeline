@@ -7,21 +7,52 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from scripts.hyperframes_adapter import cue_adapter, find_cue, load_manifest, parse_time, safe_project_path, save_manifest
+    from scripts.manifest_transaction import manifest_mutation
+    from scripts.manifest_schema import save_review_manifest
+    from scripts.workflow_stages import load_stage_contract
+    from scripts.workflow_inputs import input_fingerprint, evidence_fingerprint_version, input_fingerprint_evidence, require_current_input_evidence
+    from scripts.storyboard_approval import evaluate_storyboard_cue
+except ModuleNotFoundError:
+    from manifest_transaction import manifest_mutation
+    from manifest_schema import save_review_manifest
+    from workflow_stages import load_stage_contract
+    from workflow_inputs import input_fingerprint, evidence_fingerprint_version, input_fingerprint_evidence, require_current_input_evidence
+    from storyboard_approval import evaluate_storyboard_cue
+
+try:
+    from scripts.hyperframes_adapter import cue_adapter, find_cue, load_manifest, parse_time, safe_project_path
     from scripts.layout_lock import verify_layouts
-    from scripts.workflow_status import current_input_fingerprint, resolve_stage_status
+    from scripts.workflow_status import resolve_stage_status
 except ModuleNotFoundError:  # pragma: no cover - direct script execution
-    from hyperframes_adapter import cue_adapter, find_cue, load_manifest, parse_time, safe_project_path, save_manifest  # type: ignore
+    from hyperframes_adapter import cue_adapter, find_cue, load_manifest, parse_time, safe_project_path  # type: ignore
     from layout_lock import verify_layouts  # type: ignore
-    from workflow_status import current_input_fingerprint, resolve_stage_status  # type: ignore
+    from workflow_status import resolve_stage_status  # type: ignore
+
+
+save_manifest = save_review_manifest
 
 
 def _stage_evidence(manifest: dict[str, Any], stage_id: str) -> dict[str, Any]:
-    workflow = manifest.setdefault("workflow", {})
+    workflow = manifest.get("workflow")
+    contract = load_stage_contract()
+    if not isinstance(workflow, dict) or workflow.get("stageContractVersion") != contract["contractVersion"]:
+        raise ValueError("workflow contract requires explicit initialization or migration")
     evidence = workflow.setdefault("stageEvidence", {})
-    stage = evidence.setdefault(stage_id, {})
+    definition = next((s for s in contract["stages"] if s["id"] == stage_id), None)
+    if definition is None:
+        raise ValueError(f"unknown workflow stage: {stage_id}")
+    if stage_id not in evidence:
+        evidence[stage_id] = {
+            "stageId": stage_id,
+            "contractVersion": contract["contractVersion"],
+            "semanticVersion": definition.get("semanticVersion", contract["defaultStageSemanticVersion"]),
+            "status": "pending",
+        }
+    stage = evidence[stage_id]
     if not isinstance(stage, dict):
         raise ValueError(f"stage evidence is not an object: {stage_id}")
+    if any(key not in stage for key in ("stageId", "contractVersion", "semanticVersion", "status")):
+        raise ValueError(f"incomplete historical stage evidence requires explicit migration: {stage_id}")
     return stage
 
 
@@ -31,9 +62,15 @@ def _next_comment_id(stage_id: str, comments: list[dict[str, Any]]) -> tuple[str
 
 
 def _invalidate(stage: dict[str, Any], comment_id: str) -> None:
-    if stage:
+    if stage and stage.get("status") != "pending":
         stage["status"] = "invalidated"
         stage["invalidatedByCommentId"] = comment_id
+
+
+def _invalidate_existing(manifest: dict[str, Any], stage_id: str, reason: str) -> None:
+    stage = manifest.get("workflow", {}).get("stageEvidence", {}).get(stage_id)
+    if isinstance(stage, dict):
+        _invalidate(stage, reason)
 
 
 def _normalize_impact_scopes(
@@ -56,6 +93,7 @@ def _normalize_impact_scopes(
     return normalized
 
 
+@manifest_mutation
 def add_review_comment(
     version_root: Path,
     *,
@@ -109,9 +147,9 @@ def add_review_comment(
     if frame_id is not None:
         comment["frameId"] = frame_id
     if time_start is not None:
-        comment["timeStart"] = time_start
+        comment["timeStart"] = f"{parse_time(time_start)}s"
     if time_end is not None:
-        comment["timeEnd"] = time_end
+        comment["timeEnd"] = f"{parse_time(time_end)}s"
     comments.append(comment)
     stage["commentRevision"] = revision
     manifest.setdefault("workflow", {})["activeReviewContext"] = stage_id
@@ -120,21 +158,22 @@ def add_review_comment(
         if not cue_id:
             raise ValueError("static comments require cueId")
         cue = find_cue(manifest, cue_id)
-        a11 = _stage_evidence(manifest, "A11")
-        _invalidate(a11, comment_id)
+        a11 = manifest["workflow"]["stageEvidence"].get("A11", {})
+        _invalidate_existing(manifest, "A11", comment_id)
         approval = a11.get("cueApprovals", {}).get(cue_id)
         if isinstance(approval, dict):
             approval["status"] = "invalidated"
             approval["invalidatedByCommentId"] = comment_id
-        _invalidate(_stage_evidence(manifest, "A13"), comment_id)
-        _invalidate(_stage_evidence(manifest, "A14"), comment_id)
+        _invalidate_existing(manifest, "A13", comment_id)
+        _invalidate_existing(manifest, "A14", comment_id)
     else:
-        _invalidate(_stage_evidence(manifest, "A13"), comment_id)
-        _invalidate(_stage_evidence(manifest, "A14"), comment_id)
+        _invalidate_existing(manifest, "A13", comment_id)
+        _invalidate_existing(manifest, "A14", comment_id)
     save_manifest(root, manifest)
     return comment
 
 
+@manifest_mutation
 def address_review_comment(
     version_root: Path,
     stage_id: str,
@@ -159,6 +198,7 @@ def address_review_comment(
     return comment
 
 
+@manifest_mutation
 def approve_storyboard(
     version_root: Path,
     *,
@@ -225,18 +265,10 @@ def approve_storyboard(
                 comment["status"] = "accepted"
                 comment["acceptedBy"] = "user"
     def approval_is_current(cue: dict[str, Any]) -> bool:
-        lock = cue_adapter(cue).get("layoutLock")
-        approval = approvals.get(cue["id"])
-        return (
-            isinstance(lock, dict)
-            and isinstance(approval, dict)
-            and approval.get("status") == "approved"
-            and approval.get("runtimeVersion") == lock.get("runtimeVersion")
-            and approval.get("layoutRevision") == lock.get("revision")
-            and approval.get("layoutAggregateSha256") == lock.get("aggregateSha256")
-            and approval.get("approvedPosterSha256") == lock.get("approvedPosterSha256")
-            and approval.get("reviewFrameSetSha256") == lock.get("reviewFrameSetSha256")
-        )
+        return evaluate_storyboard_cue(
+            cue, approval=approvals.get(cue["id"]), comments=comments,
+            layout_valid=cue["id"] in checked and cue["id"] not in invalid,
+        )["evidenceStatus"] == "current"
 
     stage.update(
         {
@@ -253,17 +285,20 @@ def approve_storyboard(
             preview = safe_project_path(root, a12["preview"])
             preserve_a12 = (
                 a12.get("sha256") == hashlib.sha256(preview.read_bytes()).hexdigest()
-                and a12.get("inputFingerprint") == current_input_fingerprint(root, manifest)
+                and a12.get("inputFingerprint") == input_fingerprint(
+                    root, manifest, version=evidence_fingerprint_version(a12)
+                )
             )
         except (KeyError, OSError, ValueError):
             preserve_a12 = False
     for downstream_id in (("A13", "A14") if preserve_a12 else ("A12", "A13", "A14")):
-        _invalidate(_stage_evidence(manifest, downstream_id), "A11-approval-changed")
+        _invalidate_existing(manifest, downstream_id, "A11-approval-changed")
     workflow["activeReviewContext"] = "A11"
     save_manifest(root, manifest)
     return {"status": stage["status"], "approvedCueIds": selected}
 
 
+@manifest_mutation
 def register_demo(
     version_root: Path,
     preview_relative: str,
@@ -283,18 +318,19 @@ def register_demo(
         "status": "ready",
         "preview": preview_relative,
         "sha256": hashlib.sha256(preview.read_bytes()).hexdigest(),
-        "inputFingerprint": current_input_fingerprint(root, manifest),
+        **input_fingerprint_evidence(root, manifest),
     }
     if metadata:
         evidence["media"] = metadata
     workflow.setdefault("stageEvidence", {})["A12"] = evidence
     for stage_id in ("A13", "A14"):
-        _invalidate(_stage_evidence(manifest, stage_id), "A12-demo-changed")
+        _invalidate_existing(manifest, stage_id, "A12-demo-changed")
     workflow["activeReviewContext"] = "A13"
     save_manifest(root, manifest)
     return evidence
 
 
+@manifest_mutation
 def approve_demo(version_root: Path, *, actor: str) -> dict[str, Any]:
     if actor != "user":
         raise ValueError("only the user may approve the Demo")
@@ -305,6 +341,7 @@ def approve_demo(version_root: Path, *, actor: str) -> dict[str, Any]:
     manifest = load_manifest(root)
     workflow = manifest["workflow"]
     demo = workflow["stageEvidence"]["A12"]
+    require_current_input_evidence(root, manifest, stages=("A12",))
     stage = _stage_evidence(manifest, "A13")
     comments = stage.setdefault("comments", [])
     if any(comment.get("status") == "open" for comment in comments):
@@ -322,15 +359,17 @@ def approve_demo(version_root: Path, *, actor: str) -> dict[str, Any]:
             "status": "approved",
             "demoSha256": demo["sha256"],
             "inputFingerprint": demo["inputFingerprint"],
+            "inputFingerprintVersion": demo["inputFingerprintVersion"],
             "commentRevision": comment_revision,
         }
     )
-    _invalidate(_stage_evidence(manifest, "A14"), "A13-approval-changed")
+    _invalidate_existing(manifest, "A14", "A13-approval-changed")
     workflow["activeReviewContext"] = "A13"
     save_manifest(root, manifest)
     return stage
 
 
+@manifest_mutation
 def authorize_native_render(version_root: Path, *, actor: str) -> dict[str, Any]:
     if actor != "user":
         raise ValueError("only the user may authorize native rendering")
@@ -341,6 +380,7 @@ def authorize_native_render(version_root: Path, *, actor: str) -> dict[str, Any]
     manifest = load_manifest(root)
     workflow = manifest["workflow"]
     demo = workflow["stageEvidence"]["A12"]
+    require_current_input_evidence(root, manifest, stages=("A12", "A13"))
     evidence = {
         "stageId": "A14",
         "contractVersion": workflow["stageContractVersion"],
@@ -348,12 +388,14 @@ def authorize_native_render(version_root: Path, *, actor: str) -> dict[str, Any]
         "status": "authorized",
         "demoSha256": demo["sha256"],
         "inputFingerprint": demo["inputFingerprint"],
+        "inputFingerprintVersion": demo["inputFingerprintVersion"],
     }
     workflow["stageEvidence"]["A14"] = evidence
     save_manifest(root, manifest)
     return evidence
 
 
+@manifest_mutation
 def record_fcp_acceptance(version_root: Path, *, actor: str) -> dict[str, Any]:
     if actor != "user":
         raise ValueError("only the user may record Final Cut Pro acceptance")

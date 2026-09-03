@@ -15,8 +15,14 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 try:
+    from scripts.manifest_transaction import manifest_mutation
+except ModuleNotFoundError:
+    from manifest_transaction import manifest_mutation
+
+try:
     from scripts.hyperframes_adapter import cue_adapter, load_manifest, safe_project_path
     from scripts.layout_lock import verify_layouts
+    from scripts.storyboard_approval import evaluate_storyboard_cue
     from scripts.workflow_review import (
         add_review_comment,
         approve_demo,
@@ -25,9 +31,11 @@ try:
         record_fcp_acceptance,
     )
     from scripts.workflow_status import resolve_stage_status
+    from scripts.workflow_stages import assess_stage_evidence, load_stage_contract
 except ModuleNotFoundError:  # pragma: no cover - direct script execution
     from hyperframes_adapter import cue_adapter, load_manifest, safe_project_path  # type: ignore
     from layout_lock import verify_layouts  # type: ignore
+    from storyboard_approval import evaluate_storyboard_cue  # type: ignore
     from workflow_review import (  # type: ignore
         add_review_comment,
         approve_demo,
@@ -36,12 +44,23 @@ except ModuleNotFoundError:  # pragma: no cover - direct script execution
         record_fcp_acceptance,
     )
     from workflow_status import resolve_stage_status  # type: ignore
+    from workflow_stages import assess_stage_evidence, load_stage_contract  # type: ignore
 
 
 def _manifest_hash(root: Path) -> str:
     return hashlib.sha256((root / "animation-manifest.json").read_bytes()).hexdigest()
 
 
+def _frame_hash(root: Path, relative: Any) -> str | None:
+    if not isinstance(relative, str):
+        return None
+    try:
+        return hashlib.sha256(safe_project_path(root, relative).read_bytes()).hexdigest()
+    except (OSError, ValueError):
+        return None
+
+
+@manifest_mutation
 def review_state(version_root: Path) -> dict[str, Any]:
     root = Path(version_root).expanduser().resolve()
     manifest = load_manifest(root)
@@ -51,6 +70,7 @@ def review_state(version_root: Path) -> dict[str, Any]:
     a11_comments = a11.get("comments", []) if isinstance(a11, dict) else []
     a13_comments = a13.get("comments", []) if isinstance(a13, dict) else []
     cue_approvals = a11.get("cueApprovals", {}) if isinstance(a11, dict) else {}
+    a11_usable = isinstance(a11, dict) and assess_stage_evidence(load_stage_contract(), "A11", a11)["usable"]
     layout_verification = verify_layouts(root)
     valid_lock_ids = set(layout_verification.get("checkedCueIds", [])) - set(
         layout_verification.get("invalidCueIds", [])
@@ -76,14 +96,11 @@ def review_state(version_root: Path) -> dict[str, Any]:
             ]
         description = cue.get("finalAnimationDescription")
         has_description = isinstance(description, str) and bool(description.strip())
-        has_open_comments = any(comment.get("status") == "open" for comment in cue_comments)
-        approval_blockers = []
-        if cue["id"] not in valid_lock_ids:
-            approval_blockers.append("布局锁无效")
-        if not has_description:
-            approval_blockers.append("缺少最终动画说明")
-        if has_open_comments:
-            approval_blockers.append("存在未处理 comment")
+        assessment = evaluate_storyboard_cue(
+            cue, approval=approval, comments=cue_comments, layout_valid=cue["id"] in valid_lock_ids,
+        )
+        if assessment["approvalStatus"] == "current" and not a11_usable:
+            assessment["approvalStatus"] = "stale"
         cues.append(
             {
                 "id": cue["id"],
@@ -102,6 +119,7 @@ def review_state(version_root: Path) -> dict[str, Any]:
                         "role": frame["role"],
                         "label": frame.get("label") or ("主审帧" if frame["role"] == "hero" else "辅助帧"),
                         "src": frame.get("path") or frame.get("src"),
+                        "sha256": _frame_hash(root, frame.get("path") or frame.get("src")),
                         "comments": [
                             comment
                             for comment in cue_comments
@@ -112,9 +130,9 @@ def review_state(version_root: Path) -> dict[str, Any]:
                     for frame in locked_frames
                 ],
                 "comments": cue_comments,
-                "approvalStatus": approval.get("status", "pending") if isinstance(approval, dict) else "pending",
-                "canApprove": not approval_blockers,
-                "approvalBlockers": approval_blockers,
+                "approvalStatus": assessment["approvalStatus"],
+                "canApprove": assessment["canApprove"],
+                "approvalBlockers": assessment["approvalBlockers"],
             }
         )
     comments = [*a11_comments, *a13_comments]
@@ -136,6 +154,7 @@ def review_state(version_root: Path) -> dict[str, Any]:
     }
 
 
+@manifest_mutation
 def apply_review_action(version_root: Path, action: str, payload: dict[str, Any]) -> dict[str, Any]:
     root = Path(version_root).expanduser().resolve()
     if payload.get("manifestSha256") != _manifest_hash(root):
@@ -209,7 +228,8 @@ main{max-width:1440px;margin:auto;padding:24px}.view[hidden]{display:none}.secti
 <pre class="log" id="log" aria-live="polite"></pre>
 <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
 </main><script>
-let state=null,activeView=null,rangeStartValue=null,rangeEndValue=null,noticeTimer=null;
+let state=null,activeView=null,rangeStartValue=null,rangeEndValue=null,noticeTimer=null,demoAnchor=null;
+const storyboardDrafts=new Map(),demoDrafts=new Map();let storyboardForms=[];
 const byId=id=>document.getElementById(id);const vn=p=>'/vn/'+p.split('/').map(encodeURIComponent).join('/');const sec=s=>{const x=s.slice(0,-1).split('/').map(Number);return x.length===1?x[0]:x[0]/x[1]};
 function node(tag,className,text){const element=document.createElement(tag);if(className)element.className=className;if(text!==undefined)element.textContent=text;return element}
 function formatTime(seconds){const mins=Math.floor(seconds/60),secs=(seconds-mins*60).toFixed(3).padStart(6,'0');return `${String(mins).padStart(2,'0')}:${secs}`}
@@ -220,8 +240,80 @@ function renderCommentList(target,comments,{showTime=false}={}){target.replaceCh
 function switchView(name){activeView=name;const storyboard=name==='storyboard';byId('storyboardView').hidden=!storyboard;byId('demoView').hidden=storyboard;byId('showStoryboard').classList.toggle('active',storyboard);byId('showDemo').classList.toggle('active',!storyboard)}
 function cueAt(seconds){return state.cues.find(cue=>{const start=sec(cue.resolvedTimeline.start),end=start+sec(cue.resolvedTimeline.duration);return start<=seconds&&seconds<end})||null}
 function updatePlayerContext(seconds=byId('demo').currentTime||0){const cue=cueAt(seconds);byId('currentTime').textContent=formatTime(seconds);byId('currentCue').textContent=`当前镜头：${cue?(cue.shotNumber?`第 ${cue.shotNumber} 镜 · `:'')+cue.id:'—'}`;return cue}
-function makeCueCard(cue){const card=node('article','card');const head=node('div','cue-head');const title=node('h3','',`${cue.shotNumber?`第 ${cue.shotNumber} 镜 · `:''}${cue.id} · layout r${cue.layoutRevision??'—'}`);head.append(title,node('span',`badge ${cue.approvalStatus}`,cue.approvalStatus));const narration=node('p','narration');narration.append(node('span','eyebrow','对应旁白'),document.createTextNode(cue.narrationAnchor||''));card.append(head,narration);const gallery=node('div','frame-gallery');for(const frame of cue.frames){const figure=node('figure',`frame-block ${frame.role}`);const image=node('img','frame');image.src=vn(frame.src);image.alt=`${cue.id} ${frame.label}`;const caption=node('figcaption','',`${frame.role==='hero'?'主审帧':'辅助帧'} · ${frame.label}`);figure.append(image,caption);gallery.append(figure)}card.append(gallery);const description=node('section','final-description');description.append(node('h4','','最终动画说明'),node('p','',cue.finalAnimationDescription||'尚未填写'));card.append(description);for(const frame of cue.frames){const review=node('section','frame-review');review.append(node('h4','',`${frame.role==='hero'?'主审帧':'辅助帧'} · ${frame.label} · comment`));const comments=node('div','comment-list');renderCommentList(comments,frame.comments);review.append(comments);const form=node('form','inline-comment');const body=node('textarea','');body.placeholder=`针对“${frame.label}”写 comment`;const submit=node('button','primary','提交当前静帧评论');submit.type='submit';form.append(body,submit);form.addEventListener('submit',async event=>{event.preventDefault();if(!body.value.trim()){byId('log').textContent='comment 不能为空';return}await act('add-storyboard-comment',{cueId:cue.id,frameId:frame.id,body:body.value});body.value=''});review.append(form);card.append(review)}const cueActions=node('div','cue-actions');const hint=node('span','muted',cue.canApprove?'当前镜头可批准':cue.approvalBlockers.join('；'));const approve=node('button','','批准当前镜头');approve.type='button';approve.disabled=!cue.canApprove||cue.approvalStatus==='approved';approve.addEventListener('click',()=>act('approve-storyboard',{cueIds:[cue.id]}));cueActions.append(hint,approve);card.append(cueActions);return card}
-function render(){byId('cues').replaceChildren(...state.cues.map(makeCueCard));const clean=state.cues.filter(cue=>cue.canApprove&&cue.approvalStatus!=='approved').map(cue=>cue.id);byId('approveCleanStoryboard').disabled=!clean.length;byId('approveCleanStoryboard').onclick=()=>act('approve-storyboard',{cueIds:clean});if(state.demo){byId('showDemo').disabled=false;const source=vn(state.demo.src)+'?v='+encodeURIComponent(state.demo.sha256||'');if(byId('demo').dataset.src!==source){byId('demo').src=source;byId('demo').dataset.src=source}renderCommentList(byId('demoComments'),state.demo.comments,{showTime:true})}else{byId('showDemo').disabled=true;if(activeView==='demo')switchView('storyboard')}byId('demoReopened').hidden=!(state.stageStatus.activeContext==='A13'&&state.stageStatus.blockingStage==='A11');byId('approveDemo').disabled=state.stageStatus.blockingStage!=='A13';byId('authorize').disabled=state.stageStatus.blockingStage!=='A14';byId('acceptFcp').disabled=state.stageStatus.blockingStage!=='D5';updatePlayerContext()}
+function frameKey(cue,frame){return JSON.stringify([state.sourceVersion,cue.id,frame.id])}
+function frameAnchor(cue,frame){return JSON.stringify([cue.layoutRevision,frame.id,frame.role,frame.src,frame.sha256])}
+function demoIdentity(){return JSON.stringify([state.sourceVersion,state.demo?.src,state.demo?.sha256])}
+function captureStoryboardDrafts(){
+  for(const entry of storyboardForms){
+    if(entry.body.value)storyboardDrafts.set(entry.key,{version:entry.version,cueId:entry.cueId,frameId:entry.frameId,label:entry.label,anchor:entry.anchor,body:entry.body.value});
+    else storyboardDrafts.delete(entry.key);
+  }
+}
+function captureDemoDraft(){
+  if(!state)return;
+  const body=byId('demoBody').value,ranged=byId('useRange').checked;
+  if(!body)demoAnchor=null;
+  if(body&&!demoAnchor){const point=ranged?rangeStartValue:byId('demo').currentTime;demoAnchor={identity:demoIdentity(),point,cueId:point===null?null:cueAt(point)?.id||null}}
+  demoDrafts.set(state.sourceVersion,{body,anchor:demoAnchor,ranged,start:rangeStartValue,end:rangeEndValue,static:byId('impactStatic').checked,motion:byId('impactMotion').checked});
+}
+function captureDrafts(){captureStoryboardDrafts();captureDemoDraft()}
+function demoAnchorChanged(){return !!demoAnchor&&(demoAnchor.identity!==demoIdentity()||(demoAnchor.point!==null&&(cueAt(demoAnchor.point)?.id||null)!==demoAnchor.cueId))}
+function updateDemoDraftNotice(){
+  const changed=demoAnchorChanged(),notice=byId('demoDraftNotice');
+  notice.hidden=!demoAnchor;notice.textContent=demoAnchor?(changed?'Demo 或镜头锚点已更新；草稿保留在旧锚点，请核对后重新绑定。':`草稿锚点：${byId('useRange').checked?'区间起点':'时间点'} ${demoAnchor.point===null?'未设置':formatTime(demoAnchor.point)}`):'';
+  byId('rebindDemoDraft').hidden=!demoAnchor;byId('submitDemoComment').disabled=changed;
+}
+function restoreDemoDraft(){
+  const draft=demoDrafts.get(state.sourceVersion)||{body:'',anchor:null,ranged:false,start:null,end:null,static:false,motion:true};
+  byId('demoBody').value=draft.body;demoAnchor=draft.anchor;rangeStartValue=draft.start;rangeEndValue=draft.end;
+  byId('impactStatic').checked=draft.static;byId('impactMotion').checked=draft.motion;byId('useRange').checked=draft.ranged;
+  byId('rangePanel').hidden=!draft.ranged;byId('submitDemoComment').textContent=draft.ranged?'提交区间评论':'提交当前时间评论';
+  byId('rangeStart').textContent=draft.start===null?'未设置':formatTime(draft.start);byId('rangeEnd').textContent=draft.end===null?'未设置':formatTime(draft.end);updateDemoDraftNotice();
+}
+function makeFrameForm(cue,frame){
+  const form=node('form','inline-comment'),body=node('textarea',''),key=frameKey(cue,frame),anchor=frameAnchor(cue,frame),draft=storyboardDrafts.get(key);
+  body.placeholder=`针对“${frame.label}”写 comment`;body.value=draft?.body||'';
+  const entry={key,version:state.sourceVersion,cueId:cue.id,frameId:frame.id,label:frame.label,anchor:draft?.anchor||anchor,body};storyboardForms.push(entry);
+  const submit=node('button','primary','提交当前静帧评论');submit.type='submit';
+  const warning=node('div','context-warning','静帧已更新；草稿仍属于旧静帧。请核对新帧后确认重新绑定。');
+  const rebind=node('button','','已核对新静帧，重新绑定草稿');rebind.type='button';
+  const update=()=>{const changed=entry.anchor!==anchor;warning.hidden=!changed;rebind.hidden=!changed;submit.disabled=changed};update();
+  rebind.addEventListener('click',()=>{entry.anchor=anchor;captureStoryboardDrafts();update()});
+  form.append(body,warning,rebind,submit);
+  form.addEventListener('submit',async event=>{
+    event.preventDefault();if(entry.anchor!==anchor){showNotice('草稿仍属于旧静帧，请先核对并重新绑定',true);return}
+    if(!body.value.trim()){byId('log').textContent='comment 不能为空';return}
+    captureStoryboardDrafts();const submitted=storyboardDrafts.get(key);
+    await act('add-storyboard-comment',{cueId:cue.id,frameId:frame.id,body:submitted.body},()=>{
+      const latest=storyboardDrafts.get(key);if(latest?.body===submitted.body&&latest.anchor===submitted.anchor)storyboardDrafts.delete(key);
+    });
+  });return form;
+}
+function makeCueCard(cue){
+  const card=node('article','card'),head=node('div','cue-head'),title=node('h3','',`${cue.shotNumber?`第 ${cue.shotNumber} 镜 · `:''}${cue.id} · layout r${cue.layoutRevision??'—'}`);
+  head.append(title,node('span',`badge ${cue.approvalStatus==='current'?'approved':cue.approvalStatus}`,cue.approvalStatus));
+  const narration=node('p','narration');narration.append(node('span','eyebrow','对应旁白'),document.createTextNode(cue.narrationAnchor||''));card.append(head,narration);
+  const gallery=node('div','frame-gallery');for(const frame of cue.frames){const figure=node('figure',`frame-block ${frame.role}`),image=node('img','frame');image.src=vn(frame.src);image.alt=`${cue.id} ${frame.label}`;figure.append(image,node('figcaption','',`${frame.role==='hero'?'主审帧':'辅助帧'} · ${frame.label}`));gallery.append(figure)}card.append(gallery);
+  const description=node('section','final-description');description.append(node('h4','','最终动画说明'),node('p','',cue.finalAnimationDescription||'尚未填写'));card.append(description);
+  for(const frame of cue.frames){const review=node('section','frame-review');review.append(node('h4','',`${frame.role==='hero'?'主审帧':'辅助帧'} · ${frame.label} · comment`));const comments=node('div','comment-list');renderCommentList(comments,frame.comments);review.append(comments,makeFrameForm(cue,frame));card.append(review)}
+  const cueActions=node('div','cue-actions'),hint=node('span','muted',cue.approvalStatus==='current'?'当前镜头已批准':cue.canApprove?'当前镜头可批准':cue.approvalBlockers.join('；')),approve=node('button','','批准当前镜头');
+  approve.type='button';approve.disabled=!cue.canApprove||cue.approvalStatus==='current';approve.addEventListener('click',()=>act('approve-storyboard',{cueIds:[cue.id]}));cueActions.append(hint,approve);card.append(cueActions);return card;
+}
+function renderOrphanDrafts(){
+  const live=new Set(storyboardForms.map(entry=>entry.key));
+  for(const [key,draft] of storyboardDrafts){
+    if(draft.version!==state.sourceVersion||live.has(key))continue;
+    const card=node('article','card'),body=node('textarea','');body.value=draft.body;
+    card.append(node('h3','',`${draft.cueId} · ${draft.label} · 已移除锚点草稿`),node('p','context-warning','原镜头或静帧已移除；草稿保留供复制，不会自动绑定到其他静帧。'),body);
+    storyboardForms.push({...draft,key,body});byId('cues').append(card);
+  }
+}
+function render(){
+  storyboardForms=[];byId('cues').replaceChildren(...state.cues.map(makeCueCard));renderOrphanDrafts();
+  const clean=state.cues.filter(cue=>cue.canApprove&&cue.approvalStatus!=='current').map(cue=>cue.id);byId('approveCleanStoryboard').disabled=!clean.length;byId('approveCleanStoryboard').onclick=()=>act('approve-storyboard',{cueIds:clean});
+  if(state.demo){byId('showDemo').disabled=false;const source=vn(state.demo.src)+'?v='+encodeURIComponent(state.demo.sha256||'');if(byId('demo').dataset.src!==source){byId('demo').src=source;byId('demo').dataset.src=source}renderCommentList(byId('demoComments'),state.demo.comments,{showTime:true})}else{byId('showDemo').disabled=true;if(activeView==='demo')switchView('storyboard')}
+  byId('demoReopened').hidden=!(state.stageStatus.activeContext==='A13'&&state.stageStatus.blockingStage==='A11');byId('approveDemo').disabled=state.stageStatus.blockingStage!=='A13';byId('authorize').disabled=state.stageStatus.blockingStage!=='A14';byId('acceptFcp').disabled=state.stageStatus.blockingStage!=='D5';restoreDemoDraft();updatePlayerContext();
+}
 async function load({notify=false}={}){
   const refresh=byId('refresh');
   if(refresh.disabled)return false;
@@ -230,7 +322,7 @@ async function load({notify=false}={}){
     const response=await fetch('/api/state',{cache:'no-store'});
     const result=await response.json();
     if(!response.ok)throw new Error(result.error||`HTTP ${response.status}`);
-    state=result;
+    captureDrafts();state=result;
     byId('title').textContent='AfterForge Review · '+state.sourceVersion;
     byId('stage').textContent=`阻塞阶段 ${state.stageStatus.blockingStage??'无'} · 下一阶段 ${state.stageStatus.nextEligibleStage??'已完成'}`;
     if(!activeView)activeView=state.stageStatus.activeContext==='A13'&&state.demo?'demo':'storyboard';
@@ -241,8 +333,18 @@ async function load({notify=false}={}){
     const message='刷新失败：'+error.message;byId('log').textContent=message;showNotice(message,true);return false;
   }finally{refresh.disabled=false;refresh.textContent='刷新'}
 }
-async function act(name,data={}){byId('log').textContent='提交中…';const response=await fetch('/api/action/'+name,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({manifestSha256:state.manifestSha256,...data})});const result=await response.json();if(!response.ok){byId('log').textContent=result.error;showNotice(result.error,true);await load();return false}state=result.state;byId('stage').textContent=`阻塞阶段 ${state.stageStatus.blockingStage??'无'} · 下一阶段 ${state.stageStatus.nextEligibleStage??'已完成'}`;byId('log').textContent=result.message;render();showNotice(result.message);return true}
+async function act(name,data={},onSaved=null){
+  captureDrafts();byId('log').textContent='提交中…';
+  try{
+    const response=await fetch('/api/action/'+name,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({manifestSha256:state.manifestSha256,...data})}),result=await response.json();
+    if(!response.ok){await load();byId('log').textContent=result.error;showNotice(result.error,true);return false}
+    if(!result.state)throw new Error('服务端未返回可核对的保存状态');
+    captureDrafts();if(onSaved)onSaved();state=result.state;
+    byId('stage').textContent=`阻塞阶段 ${state.stageStatus.blockingStage??'无'} · 下一阶段 ${state.stageStatus.nextEligibleStage??'已完成'}`;byId('log').textContent=result.message;render();showNotice(result.message);return true;
+  }catch(error){const message='提交结果未确认：'+error.message+'；草稿已保留，请刷新核对后再提交';byId('log').textContent=message;showNotice(message,true);return false}
+}
 function setRangeMode(enabled){
+  demoAnchor=null;
   byId('useRange').checked=enabled;byId('rangePanel').hidden=!enabled;
   byId('submitDemoComment').textContent=enabled?'提交区间评论':'提交当前时间评论';
   if(!enabled){rangeStartValue=null;rangeEndValue=null;byId('rangeStart').textContent='未设置';byId('rangeEnd').textContent='未设置'}
@@ -251,7 +353,23 @@ byId('showStoryboard').onclick=()=>switchView('storyboard');byId('showDemo').onc
 byId('useRange').onchange=event=>setRangeMode(event.target.checked);
 byId('captureStart').onclick=()=>{setRangeMode(true);rangeStartValue=byId('demo').currentTime;byId('rangeStart').textContent=formatTime(rangeStartValue)};
 byId('captureEnd').onclick=()=>{setRangeMode(true);rangeEndValue=byId('demo').currentTime;byId('rangeEnd').textContent=formatTime(rangeEndValue)};
-byId('demoComment').onsubmit=async event=>{event.preventDefault();const impacts=[byId('impactStatic'),byId('impactMotion')].filter(input=>input.checked).map(input=>input.value);if(!impacts.length){byId('log').textContent='请选择至少一个影响范围';return}const ranged=byId('useRange').checked;if(ranged&&(rangeStartValue===null||rangeEndValue===null||rangeEndValue<rangeStartValue)){byId('log').textContent='持续范围需要有效的起点和终点';return}const anchor=ranged?rangeStartValue:byId('demo').currentTime;const cue=cueAt(anchor);if(impacts.includes('static')&&!cue){byId('log').textContent='静态影响需要落在一个具体镜头内';return}const saved=await act('add-demo-comment',{impactScopes:impacts,cueId:cue?cue.id:null,timeStart:`${anchor.toFixed(3)}s`,timeEnd:ranged?`${rangeEndValue.toFixed(3)}s`:null,body:byId('demoBody').value});if(saved){byId('demoBody').value=''}};
+const demoDraftNotice=node('div','muted');demoDraftNotice.id='demoDraftNotice';demoDraftNotice.hidden=true;
+const rebindDemoDraft=node('button','','已核对，使用当前画面或范围');rebindDemoDraft.id='rebindDemoDraft';rebindDemoDraft.type='button';rebindDemoDraft.hidden=true;
+byId('demoComment').append(demoDraftNotice,rebindDemoDraft);
+rebindDemoDraft.onclick=()=>{demoAnchor=null;captureDemoDraft();updateDemoDraftNotice()};
+byId('demoComment').onsubmit=async event=>{
+  event.preventDefault();const impacts=[byId('impactStatic'),byId('impactMotion')].filter(input=>input.checked).map(input=>input.value);
+  if(!impacts.length){byId('log').textContent='请选择至少一个影响范围';return}
+  if(!byId('demoBody').value.trim()){byId('log').textContent='comment 不能为空';return}
+  const ranged=byId('useRange').checked;if(ranged&&(rangeStartValue===null||rangeEndValue===null||rangeEndValue<rangeStartValue)){byId('log').textContent='持续范围需要有效的起点和终点';return}
+  captureDemoDraft();updateDemoDraftNotice();if(demoAnchorChanged()){showNotice('草稿仍属于旧 Demo 锚点，请先核对并重新绑定',true);return}
+  const anchor=demoAnchor.point,cueId=demoAnchor.cueId;
+  if(impacts.includes('static')&&!cueId){byId('log').textContent='静态影响需要落在一个具体镜头内';return}
+  const version=state.sourceVersion,submitted=JSON.stringify(demoDrafts.get(version));
+  await act('add-demo-comment',{impactScopes:impacts,cueId,timeStart:`${anchor.toFixed(3)}s`,timeEnd:ranged?`${rangeEndValue.toFixed(3)}s`:null,body:byId('demoBody').value},()=>{
+    const latest=demoDrafts.get(version);if(JSON.stringify(latest)===submitted)demoDrafts.set(version,{...latest,body:'',anchor:null});
+  });
+};
 byId('approveDemo').onclick=()=>act('approve-demo');byId('authorize').onclick=()=>act('authorize-native-render');byId('acceptFcp').onclick=()=>act('accept-fcp-import');load();
 </script></body></html>"""
 

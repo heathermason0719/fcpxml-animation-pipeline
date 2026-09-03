@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+try:
+    from scripts.manifest_transaction import manifest_mutation
+except ModuleNotFoundError:  # direct script execution
+    from manifest_transaction import manifest_mutation
+
 import argparse
 import json
 import os
@@ -100,6 +105,7 @@ def _wrap_legacy_cue(
     return with_open[:adjusted_root_close] + stage_close + with_open[adjusted_root_close:]
 
 
+@manifest_mutation
 def migrate_delivery_layout(version_root: Path) -> dict[str, Any]:
     root = version_root.expanduser().resolve()
     manifest = load_manifest(root)

@@ -75,6 +75,7 @@ class WorkflowStatusTests(SingleSourceFixture):
             "preview": "previews/demo.mp4",
             "sha256": hashlib.sha256(preview.read_bytes()).hexdigest(),
             "inputFingerprint": current_input_fingerprint(root, manifest),
+            "inputFingerprintVersion": 2,
         }
         write_json(root / "animation-manifest.json", manifest)
 
@@ -89,6 +90,7 @@ class WorkflowStatusTests(SingleSourceFixture):
             "comments": [],
             "demoSha256": demo["sha256"],
             "inputFingerprint": demo["inputFingerprint"],
+            "inputFingerprintVersion": demo["inputFingerprintVersion"],
             "commentRevision": 0,
         }
         write_json(root / "animation-manifest.json", manifest)
@@ -103,6 +105,7 @@ class WorkflowStatusTests(SingleSourceFixture):
             "status": "authorized",
             "demoSha256": demo["sha256"],
             "inputFingerprint": demo["inputFingerprint"],
+            "inputFingerprintVersion": demo["inputFingerprintVersion"],
         }
         write_json(root / "animation-manifest.json", manifest)
 

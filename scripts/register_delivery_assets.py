@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+try:
+    from scripts.manifest_transaction import manifest_commit, optimistic_operation
+except ModuleNotFoundError:  # direct script execution
+    from manifest_transaction import manifest_commit, optimistic_operation
+
 import argparse
 import hashlib
 import json
@@ -17,11 +22,13 @@ try:
     from scripts.layout_lock import verify_layouts
     from scripts.validate_delivery import DeliveryExpectation, validate_probe
     from scripts.workflow_status import evidence_fingerprint, resolve_stage_status
+    from scripts.workflow_inputs import effective_project_fps, require_current_input_evidence
 except ModuleNotFoundError:
     from hyperframes_adapter import load_manifest, parse_time, project_dimensions, safe_project_path, save_manifest  # type: ignore
     from layout_lock import verify_layouts  # type: ignore
     from validate_delivery import DeliveryExpectation, validate_probe  # type: ignore
     from workflow_status import evidence_fingerprint, resolve_stage_status  # type: ignore
+    from workflow_inputs import effective_project_fps, require_current_input_evidence  # type: ignore
 
 
 def _sha256(path: Path) -> str:
@@ -44,14 +51,7 @@ def _fraction_text(value: Fraction) -> str:
 
 
 def _project_fps(manifest: dict[str, Any]) -> Fraction:
-    source = manifest["project"]["source"]
-    if source.get("frameRate") is not None:
-        fps = _fraction(source["frameRate"])
-    else:
-        fps = Fraction(1, 1) / parse_time(source["frameDuration"])
-    if fps <= 0:
-        raise ValueError("project frame rate must be positive")
-    return fps
+    return effective_project_fps(manifest)
 
 
 def _stable_file_name(cue_id: str) -> str:
@@ -86,6 +86,7 @@ def probe_delivery_asset(path: Path) -> dict[str, Any]:
     return {**videos[0], "audio_streams": len(audios)}
 
 
+@optimistic_operation
 def register_delivery_assets(
     version_root: Path,
     *,
@@ -93,6 +94,7 @@ def register_delivery_assets(
 ) -> dict[str, Any]:
     root = version_root.expanduser().resolve()
     manifest = load_manifest(root)
+    require_current_input_evidence(root, manifest)
     stage_status = resolve_stage_status(root)
     if stage_status.get("evidence", {}).get("D2") not in {"current", "compatible-historical"}:
         raise ValueError(
@@ -179,7 +181,11 @@ def register_delivery_assets(
             {cue_id: registrations[cue_id] for cue_id in sorted(registrations)}
         ),
     }
-    save_manifest(root, manifest)
+    with manifest_commit(root):
+        if resolve_stage_status(root).get("evidence", {}).get("D2") not in {"current", "compatible-historical"}:
+            raise ValueError("delivery registration requires current D2 evidence after media probing")
+        require_current_input_evidence(root, manifest)
+        save_manifest(root, manifest)
     return {
         "status": "registered",
         "versionRoot": str(root),

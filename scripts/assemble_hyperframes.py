@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+try:
+    from scripts.manifest_transaction import manifest_mutation
+except ModuleNotFoundError:  # direct script execution
+    from manifest_transaction import manifest_mutation
+
 import argparse
 import json
 from html import escape
@@ -35,6 +40,7 @@ except ModuleNotFoundError:
     )
 
 
+@manifest_mutation
 def assemble_hyperframes(version_root: Path) -> dict[str, Any]:
     root = version_root.expanduser().resolve()
     manifest = load_manifest(root)

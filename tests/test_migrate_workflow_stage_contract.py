@@ -43,6 +43,7 @@ class WorkflowStageMigrationTests(SingleSourceFixture):
         except ModuleNotFoundError:
             self.fail("workflow stage contract migration is not implemented")
         from scripts.workflow_status import resolve_stage_status
+        from scripts.workflow_inputs import input_fingerprint
 
         with tempfile.TemporaryDirectory() as directory:
             root = self.make_legacy_version(directory)
@@ -56,13 +57,20 @@ class WorkflowStageMigrationTests(SingleSourceFixture):
             self.assertEqual(manifest["workflow"]["migration"]["source"], "legacy-unversioned")
             self.assertNotIn("A11", manifest["workflow"]["stageEvidence"])
             self.assertEqual(manifest["workflow"]["stageEvidence"]["A12"]["status"], "ready")
+            migrated_demo = manifest["workflow"]["stageEvidence"]["A12"]
+            self.assertEqual(migrated_demo.get("inputFingerprintVersion"), 1)
+            self.assertEqual(migrated_demo["inputFingerprint"], input_fingerprint(root, manifest, version=1))
+            self.assertNotEqual(migrated_demo["inputFingerprint"], input_fingerprint(root, manifest, version=2))
             self.assertEqual(resolve_stage_status(root)["blockingStage"], "A11")
             self.assertEqual(result["preservedLegacyReviewStages"], ["a11", "a12"])
 
             from scripts.workflow_review import approve_storyboard
 
             approve_storyboard(root, actor="user")
-            self.assertEqual(resolve_stage_status(root)["blockingStage"], "A13")
+            status = resolve_stage_status(root)
+            self.assertEqual(status["blockingStage"], "A12")
+            self.assertEqual(status["nextEligibleStage"], "A12")
+            self.assertEqual(status["evidence"]["A12"], "compatible-historical")
 
     def test_migration_is_byte_idempotent(self) -> None:
         from scripts.migrate_workflow_stage_contract import migrate_workflow_stage_contract

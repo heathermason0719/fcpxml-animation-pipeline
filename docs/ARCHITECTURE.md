@@ -128,6 +128,9 @@ V1 计划由以下脚本组件承担机械操作；名称表达职责，具体�
 - `migrate_delivery_layout.py`：把旧 854×480 canonical cue 包装为 delivery-native root，并强制重新执行等价验收；
 - `migrate_workflow_stage_contract.py`：把一个 legacy Vn 显式绑定到当前合同，保留旧 reviews，但不继承旧用户批准；
 - `workflow_status.py`：从当前 evidence 推导阶段状态与失效结果；
+- `workflow_inputs.py`：定义版本化执行输入指纹及渲染/注册共用的精确 FPS；
+- `storyboard_approval.py`：提供 Review UI、批准动作和 resolver 共用的逐 cue 有效性判断；
+- `manifest_transaction.py`、`manifest_schema.py`：分别负责同一 Vn 的协作写入隔离、正常 Review 落盘前 canonical Schema 校验；
 - `serve_workflow_review.py`：启动绑定单个 Vn 的本地 Review，受控写入 A11/A13 comment、用户批准、A14 授权和 D5 验收；
 - `render_animations.py`：只有 resolver 证明 A11–A14 与 D1 当前有效时，才按 composition 原生尺寸渲染透明 ProRes 4444；
 - `validate_delivery.py`：检查 ProRes 4444、alpha、尺寸、帧率与逐 cue 时长；
@@ -311,6 +314,18 @@ V1 中，HyperFrames 使用同一 delivery-native canonical cue composition 和�
 旧 Vn 若仍以 854×480 为 canonical root，先用确定性 legacy stage 把既有布局映射进 1920×1080 root。该映射仍由浏览器在 1920×1080 capture 中绘制 CSS、文字和图形，不放大已编码视频；迁移会清除旧 lock、在 `layoutRevision` 保留修订基线，并要求用户重新确认 480p hero 与完整动画等价性。新批准锁必须从保留基线单调递增。新 Vn 不使用兼容 stage，直接按 delivery 坐标创作。
 
 源时间线分辨率不决定动画交付分辨率。当前 16:9 自媒体 V1 即使接入 4K 电影素材时间线，也不生成 4K 动画；720p 不作为统一最终规格。
+
+### 执行输入与写入一致性
+
+执行输入指纹与 Stage Contract、HyperFrames runtime 和 delivery protocol 是不同版本轴。`inputFingerprintVersion=2` 覆盖原有 runtime/layout/motion/输出规格绑定，以及按 manifest 顺序排列的 animated cues、各自 `resolvedTimeline.start/duration`、源总时长/帧时长和有效渲染 FPS。时间以精确有理数规范化；冗余 `frameRate` 与 `frameDuration` 必须一致。评论和批准本身不纳入输入指纹，避免状态写入使自己的证据失效。
+
+缺少指纹版本的旧 evidence 按冻结的 v1 算法解释，兼容历史事实不因新算法发布而自动无效。旧链已完成的交付可继续读取/验证复用；若下一步要新批准 A13/A14 或生产写入 D2/D3/D4，却只有 v1 输入证据，resolver 指向 A12 建立当前证据，不把旧哈希直接标成 v2。legacy Demo 迁移也保留 v1 语义。
+
+所有受控 Vn manifest 写入、生成视图和 Review 状态快照共用稳定 sidecar 文件锁及进程内重入锁。短操作持锁覆盖完整 read-modify-write；多文件迁移持独占维护锁覆盖预检、兼容性检查和失败回滚。长渲染/媒体探测/包构建/round-trip 比较不长期阻塞评论，先捕获 manifest revision，正式发布/登记前在锁内复核 revision 和仍有效的文件/阶段证据。冲突拒绝旧结果，不自动重放用户意见或覆盖新状态。该协议不约束用户在外部编辑器直接改文件；相关文件哈希仍在生产门前复核。
+
+正常 Review 写入先经 canonical JSON Schema 全量校验，再原子替换 manifest；首次 comment 建立完整 stage envelope，失效传播不创建空的下游 evidence。播放器小数秒精确规范化为有理数再保存，不放宽源时间合同。已有不合 Schema 的历史记录可继续只读检查，但后续写入前须显式治理，不由普通 Review 操作静默迁移。UI、批准动作和 resolver 使用同一逐 cue predicate；失效批准与当前可否重新批准分开判断。
+
+D4 的执行资格依赖当前有效 D3，不依赖 resolver 恰好停在 D4。已登记同指纹包通过完整验证后只读返回，不改写 D4/D5/D6；缺失登记的恢复与新发布仍属于受保护写入。原生渲染先检查门禁才生成 delivery projection，长任务结束后再次复核，过期渲染留在临时区，不登记为正式输出。
 
 ## 声音制作边界
 

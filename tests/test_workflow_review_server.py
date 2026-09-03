@@ -31,6 +31,127 @@ class ReviewVersionFixture(SingleSourceFixture):
 
 
 class WorkflowReviewServerTests(ReviewVersionFixture):
+    def test_storyboard_marks_only_matching_live_approval_current(self) -> None:
+        from scripts.serve_workflow_review import apply_review_action, review_state
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_review_version(directory)
+            first = review_state(root)
+            self.assertEqual(first["cues"][0]["approvalStatus"], "pending")
+            apply_review_action(root, "approve-storyboard", {"manifestSha256": first["manifestSha256"]})
+            state = review_state(root)
+            self.assertEqual(state["cues"][0]["approvalStatus"], "current")
+            self.assertTrue(state["cues"][0]["canApprove"])
+
+    def test_storyboard_historical_approval_is_stale_for_each_changed_binding(self) -> None:
+        from scripts.serve_workflow_review import apply_review_action, review_state
+
+        mutations = {
+            "runtimeVersion": "0.0.1",
+            "layoutRevision": 0,
+            "layoutAggregateSha256": "0" * 64,
+            "approvedPosterSha256": "0" * 64,
+            "reviewFrameSetSha256": "0" * 64,
+            "commentRevision": 0,
+        }
+        for field, value in mutations.items():
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
+                root = self.make_review_version(directory)
+                first = review_state(root)
+                apply_review_action(root, "approve-storyboard", {"manifestSha256": first["manifestSha256"]})
+                path = root / "animation-manifest.json"
+                manifest = json.loads(path.read_text(encoding="utf-8"))
+                stage = manifest["workflow"]["stageEvidence"]["A11"]
+                stage["cueApprovals"]["p1s01_c01_title"][field] = value
+                if field == "commentRevision":
+                    stage["comments"] = [{
+                        "id": "A11-C0001", "stageId": "A11", "cueId": "p1s01_c01_title",
+                        "frameId": "hero", "revision": 1, "author": "user", "body": "已处理的意见",
+                        "status": "accepted", "impactScopes": ["static"],
+                    }]
+                write_json(path, manifest)
+
+                state = review_state(root)
+
+                self.assertEqual(state["stageStatus"]["blockingStage"], "A11")
+                self.assertEqual(state["cues"][0]["approvalStatus"], "stale")
+                self.assertTrue(state["cues"][0]["canApprove"])
+
+    def test_storyboard_refrozen_layout_can_be_reapproved_but_damaged_lock_cannot(self) -> None:
+        from scripts.serve_workflow_review import apply_review_action, review_state
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_review_version(directory)
+            first = review_state(root)
+            apply_review_action(root, "approve-storyboard", {"manifestSha256": first["manifestSha256"]})
+            freeze_layout(root, "p1s01_c01_title", root / "approved.png")
+            refreshed = review_state(root)["cues"][0]
+            self.assertEqual(refreshed["approvalStatus"], "stale")
+            self.assertTrue(refreshed["canApprove"])
+            (root / refreshed["frames"][0]["src"]).write_bytes(b"changed frame")
+            damaged = review_state(root)["cues"][0]
+            self.assertEqual(damaged["approvalStatus"], "stale")
+            self.assertFalse(damaged["canApprove"])
+
+    def test_storyboard_frame_anchor_hash_tracks_same_path_byte_changes(self) -> None:
+        import hashlib
+        from scripts.serve_workflow_review import review_state
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_review_version(directory)
+            first = review_state(root)["cues"][0]["frames"][0]
+            self.assertEqual(first.get("sha256"), hashlib.sha256(b"approved poster").hexdigest())
+            (root / first["src"]).write_bytes(b"new frame")
+            second = review_state(root)["cues"][0]["frames"][0]
+            self.assertEqual(second.get("sha256"), hashlib.sha256(b"new frame").hexdigest())
+            self.assertEqual(first["src"], second["src"])
+
+    def test_cue_assessment_rejects_future_comment_revision(self) -> None:
+        from scripts.storyboard_approval import evaluate_storyboard_cue
+        from scripts.workflow_review import approve_storyboard
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_review_version(directory)
+            approve_storyboard(root, actor="user")
+            manifest = json.loads((root / "animation-manifest.json").read_text(encoding="utf-8"))
+            approval = manifest["workflow"]["stageEvidence"]["A11"]["cueApprovals"]["p1s01_c01_title"]
+            approval["commentRevision"] = 3
+            result = evaluate_storyboard_cue(manifest["cues"][0], approval=approval, comments=[], layout_valid=True)
+            self.assertEqual(result["approvalStatus"], "stale")
+            self.assertTrue(result["canApprove"])
+
+    def test_cue_assessment_never_accepts_a_missing_runtime_on_both_sides(self) -> None:
+        from scripts.hyperframes_adapter import cue_adapter
+        from scripts.storyboard_approval import evaluate_storyboard_cue
+        from scripts.workflow_review import approve_storyboard
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_review_version(directory)
+            approve_storyboard(root, actor="user")
+            manifest = json.loads((root / "animation-manifest.json").read_text(encoding="utf-8"))
+            cue = manifest["cues"][0]
+            approval = manifest["workflow"]["stageEvidence"]["A11"]["cueApprovals"][cue["id"]]
+            cue_adapter(cue)["layoutLock"].pop("runtimeVersion")
+            approval.pop("runtimeVersion")
+            result = evaluate_storyboard_cue(cue, approval=approval, comments=[], layout_valid=True)
+            self.assertEqual(result["approvalStatus"], "stale")
+            self.assertFalse(result["canApprove"])
+
+    def test_storyboard_does_not_show_incompatible_contract_approval_as_current(self) -> None:
+        from scripts.serve_workflow_review import review_state
+        from scripts.workflow_review import approve_storyboard
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_review_version(directory)
+            approve_storyboard(root, actor="user")
+            path = root / "animation-manifest.json"
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["workflow"]["stageEvidence"]["A11"]["semanticVersion"] = 999
+            write_json(path, manifest)
+            state = review_state(root)
+            self.assertEqual(state["stageStatus"]["blockingStage"], "A11")
+            self.assertEqual(state["cues"][0]["approvalStatus"], "stale")
+
     def test_state_is_bound_to_one_vn_and_exposes_storyboard_assets(self) -> None:
         try:
             from scripts.serve_workflow_review import review_state
@@ -421,6 +542,30 @@ class ReviewClientTests(unittest.TestCase):
 
     def test_incomplete_or_reversed_range_does_not_submit(self) -> None:
         self.run_client("range-incomplete")
+
+    def test_only_current_approvals_disable_single_and_bulk_buttons(self) -> None:
+        self.run_client("approval-current-stale")
+
+    def test_failed_storyboard_submit_preserves_all_drafts_and_success_clears_only_saved_one(self) -> None:
+        self.run_client("storyboard-conflict-drafts")
+
+    def test_refreshed_frame_draft_requires_explicit_rebinding(self) -> None:
+        self.run_client("storyboard-refresh-anchor")
+
+    def test_removed_frame_draft_remains_visible_without_rebinding(self) -> None:
+        self.run_client("storyboard-removed-anchor")
+
+    def test_network_failure_preserves_storyboard_draft_and_reports_error(self) -> None:
+        self.run_client("action-network-error-drafts")
+
+    def test_rejected_demo_point_retains_its_time_cue_and_impact_scopes(self) -> None:
+        self.run_client("demo-conflict-point-draft")
+
+    def test_rejected_demo_range_retains_full_draft_across_refresh(self) -> None:
+        self.run_client("demo-conflict-range-draft")
+
+    def test_drafts_remain_isolated_by_vn_during_refresh(self) -> None:
+        self.run_client("draft-vn-isolation")
 
 
 if __name__ == "__main__":

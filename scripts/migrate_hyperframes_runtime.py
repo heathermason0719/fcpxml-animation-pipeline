@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+try:
+    from scripts.manifest_transaction import manifest_mutation
+except ModuleNotFoundError:  # direct script execution
+    from manifest_transaction import manifest_mutation
+
 import argparse
 import json
 import os
@@ -213,6 +218,7 @@ def _adapter_check(root: Path, *, allow_runtime_lock_mismatch: bool) -> dict[str
     return record
 
 
+@manifest_mutation
 def migrate_hyperframes_runtime(
     version_root: Path,
     target_version: str,

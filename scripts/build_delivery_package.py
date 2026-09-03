@@ -18,13 +18,17 @@ try:
     from scripts.hyperframes_adapter import load_manifest, save_manifest
     from scripts.inject_fcpxml import build_delivery_fcpxml
     from scripts.layout_lock import verify_layouts
+    from scripts.manifest_transaction import manifest_commit, optimistic_operation
     from scripts.validate_fcpxml_package import sha256_file, validate_delivery_package
+    from scripts.workflow_inputs import require_current_input_evidence
     from scripts.workflow_status import resolve_stage_status
 except ModuleNotFoundError:
     from hyperframes_adapter import load_manifest, save_manifest  # type: ignore
     from inject_fcpxml import build_delivery_fcpxml  # type: ignore
     from layout_lock import verify_layouts  # type: ignore
+    from manifest_transaction import manifest_commit, optimistic_operation  # type: ignore
     from validate_fcpxml_package import sha256_file, validate_delivery_package  # type: ignore
+    from workflow_inputs import require_current_input_evidence  # type: ignore
     from workflow_status import resolve_stage_status  # type: ignore
 
 
@@ -188,6 +192,34 @@ def default_dtd_path(source_xml: Path) -> Path:
     return dtd
 
 
+def _package_file_hashes(package: Path) -> dict[str, str]:
+    """Ephemeral validation snapshot, not a second delivery authority."""
+    if not package.is_dir() or package.is_symlink():
+        raise ValueError("delivery package changed or is not a regular directory")
+    files: dict[str, str] = {}
+    for path in package.iterdir():
+        if not path.is_file() or path.is_symlink():
+            raise ValueError("delivery package contains a non-regular file")
+        files[path.name] = sha256_file(path)
+    return files
+
+
+def _assert_validated_package_current(
+    root: Path, source: Path, source_hash: str,
+    package: Path, validated_files: dict[str, str],
+) -> dict[str, Any]:
+    """Recheck file-only changes as well as the caller's manifest CAS."""
+    status = resolve_stage_status(root)
+    if status.get("evidence", {}).get("D3") not in {"current", "compatible-historical"}:
+        raise ValueError("delivery package requires current D3 inputs after validation")
+    if sha256_file(source) != source_hash:
+        raise ValueError("source FCPXML changed during package validation")
+    if _package_file_hashes(package) != validated_files:
+        raise ValueError("delivery package bytes changed during validation")
+    return status
+
+
+@optimistic_operation
 def build_delivery_package(
     version_root: Path,
     *,
@@ -195,7 +227,7 @@ def build_delivery_package(
 ) -> dict[str, Any]:
     root = Path(version_root).expanduser().resolve()
     stage_status = resolve_stage_status(root)
-    if stage_status.get("nextEligibleStage") not in {"D4", "D5"}:
+    if stage_status.get("evidence", {}).get("D3") not in {"current", "compatible-historical"}:
         raise ValueError(
             "delivery package build requires current D3 registration evidence; "
             f"blocked at {stage_status.get('blockingStage')}"
@@ -223,6 +255,7 @@ def build_delivery_package(
     target = package_parent / package_name
     if target.exists():
         try:
+            validated_files = _package_file_hashes(target)
             validation = validate_delivery_package(
                 target,
                 source_xml,
@@ -237,9 +270,22 @@ def build_delivery_package(
             "deliveryFingerprint": fingerprint,
             "deliveryProtocolVersion": DELIVERY_PROTOCOL_VERSION,
         }
-        _record_d4(root, target, fingerprint, "reused")
+        with manifest_commit(root):
+            final_status = _assert_validated_package_current(root, source_xml, source_hash, target, validated_files)
+            recorded_d4 = manifest.get("workflow", {}).get("stageEvidence", {}).get("D4")
+            same_registered_package = (
+                final_status.get("evidence", {}).get("D4") in {"current", "compatible-historical"}
+                and isinstance(recorded_d4, dict)
+                and recorded_d4.get("packageName") == target.name
+                and recorded_d4.get("deliveryFingerprint") == fingerprint
+                and recorded_d4.get("infoFcpxmlSha256") == validated_files["Info.fcpxml"]
+            )
+            if not same_registered_package:
+                require_current_input_evidence(root, manifest)
+                _record_d4(root, target, fingerprint, "reused")
         return result
 
+    require_current_input_evidence(root, manifest)
     temporary = Path(
         tempfile.mkdtemp(
             prefix=f".{package_name}.tmp-",
@@ -256,10 +302,15 @@ def build_delivery_package(
             methods[cue_id] = _materialize_movie(canonical_movies[cue_id], target_movie)
             if sha256_file(target_movie) != cue["deliveryAsset"]["sha256"]:
                 raise ValueError(f"materialized delivery movie hash mismatch: {cue_id}")
+        validated_files = _package_file_hashes(temporary)
         validate_delivery_package(temporary, source_xml, manifest, dtd_path=dtd_path)
-        if target.exists():
-            raise ValueError(f"delivery package appeared during publication: {target}")
-        os.rename(temporary, target)
+        with manifest_commit(root):
+            _assert_validated_package_current(root, source_xml, source_hash, temporary, validated_files)
+            require_current_input_evidence(root, manifest)
+            if target.exists():
+                raise ValueError(f"delivery package appeared during publication: {target}")
+            os.rename(temporary, target)
+            _record_d4(root, target, fingerprint, "published")
     except BaseException:
         if temporary.exists():
             shutil.rmtree(temporary)
@@ -276,7 +327,6 @@ def build_delivery_package(
         ),
         "materialization": methods,
     }
-    _record_d4(root, target, fingerprint, "published")
     return result
 
 

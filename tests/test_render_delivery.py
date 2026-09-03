@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from fractions import Fraction
 
@@ -107,6 +109,34 @@ class RenderPlanningTests(SingleSourceFixture):
             self.assertEqual(len(ledger["authorizationFingerprint"]), 64)
             self.assertEqual(len(ledger["inputFingerprint"]), 64)
             self.assertEqual(len(ledger["items"][0]["sha256"]), 64)
+
+    def test_inputs_or_review_changed_during_render_cannot_publish_movie_or_ledger(self):
+        from scripts.workflow_review import add_review_comment
+
+        for change in ("motion", "comment"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root = self.make_locked_version(directory)
+                self.authorize(root)
+
+                def runner(command, **kwargs):
+                    Path(command[command.index("--output") + 1]).write_bytes(b"obsolete render")
+                    if change == "motion":
+                        manifest = json.loads((root / "animation-manifest.json").read_text())
+                        path = root / manifest["cues"][0]["renderAdapters"]["hyperframes"]["motionSrc"]
+                        path.write_text(path.read_text() + "\n// motion changed\n")
+                    else:
+                        with ThreadPoolExecutor(1) as pool:
+                            pool.submit(add_review_comment, root, stage_id="A13", cue_id="p1s01_c01_title", body="slower", actor="user", impact_scopes=["motion"], time_start="1s").result(5)
+
+                probe = {"codec_name":"prores", "profile":"4444", "width":1920, "height":1080,
+                         "pix_fmt":"yuva444p12le", "r_frame_rate":"24/1", "duration":"2.000000"}
+                with self.assertRaises(ValueError):
+                    render_animations(root, runner=runner, prober=lambda _: probe)
+                self.assertFalse((root / "delivery/render-ledger.json").exists())
+                self.assertFalse((root / "delivery/prores4444/p1s01-c01-title.mov").exists())
+                if change == "comment":
+                    manifest = json.loads((root / "animation-manifest.json").read_text())
+                    self.assertEqual(manifest["workflow"]["stageEvidence"]["A13"]["comments"][0]["body"], "slower")
 
 
 class DeliveryValidationTests(unittest.TestCase):

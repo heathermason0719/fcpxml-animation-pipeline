@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+try:
+    from scripts.manifest_transaction import manifest_mutation
+except ModuleNotFoundError:  # direct script execution
+    from manifest_transaction import manifest_mutation
+
 import argparse
 import json
 from html import escape
@@ -70,6 +75,7 @@ def _write_generated(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
+@manifest_mutation
 def sync_delivery(version_root: Path) -> dict[str, Any]:
     root = version_root.expanduser().resolve()
     manifest = load_manifest(root)

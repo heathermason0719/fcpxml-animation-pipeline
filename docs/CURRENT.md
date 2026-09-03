@@ -19,7 +19,7 @@
 - 已在同一真实项目中执行一次性 AfterForge 项目初始化：既有 `AfterForge/` 与 `user-inbox/` 原样复用，只在 `AfterForge/` 根层创建缺失的项目级 `AGENTS.md` 和 `CLAUDE.md`，未创建 canonical `frame.md` 或 Vn；
 - 用户工作目录初始化已在一个真实项目根目录完成验证：首次返回 `created`，重复运行返回 `existing`，目录内未生成其他内容；
 - 入口能以 `ready`/`blocked`、blocker、warning、ambiguity 和最小问题清单表达是否具备后续分析条件；
-- 当前可靠行为已通过 149 个自动化测试（含使用 Node.js 执行实际 Review 页面脚本的行为回归），并完成 Skill 流程对照场景验证；
+- 当前可靠行为已通过 199 个自动化测试（含使用 Node.js 执行实际 Review 页面脚本、跨进程并发、Schema 和交付提交边界的行为回归），并完成 Skill 流程对照场景验证；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-25_V2` 执行 `--flat` intake：唯一选择 `P1-sence-01-粗剪.fcpxmld` 和 `P1-sence-01 粗剪.m4v`，识别 `P1-sence-01 脚本.docx` 为旁白证据，结果为 `ready`，无 blocker、warning 或 ambiguity；
 - intake 已新增 `materials.animation_guidance`，用于独立保留用户主动提供的动画脚本或逐镜要求；存在 SRT 时不再因旁白来源已经成立而丢弃动画脚本，脚本内时码仍不具备 FCPXML 时间权威；
 - 已冻结 A7 动画脚本可执行性审核：intake 仍只发现并保留可选脚本，A7 才对照口播、原画、FCPXML、产品范围和当前后端给相关 cue 写入可选 `guidanceReview`；审核不新增独立报告或用户验收，不改变 intake 状态，只有真实方向分叉或受影响 cue 无法可靠继续时才询问；
@@ -78,6 +78,23 @@
 
 当前真实 Vn 的 resolver 为 `blockingStage=null`、`nextEligibleStage=null`；A1–A14、D1–D5 已完成且 evidence 有效，D6 为 `not-applicable`，不进入 `completedStages`。用户确认本轮临时采用完整时长一致摆放：第 2 镜 10.5 秒、第 4 镜 12.5 秒，原时间线起点不动，允许 Demo 与 FCPXML 全长放置产生重叠；整片中被后镜遮住的完整动作通过单镜小样补审，不将已接受重叠冒充新的阻塞。原参考区间及调整依据保留在 cue notes，源 XML 未改。不实现 Handles、sourceIn、初始使用子区间或新 artifact-set 门禁；该架构改造推迟到本轮闭环、合并后另开分支。2026-09-03 用户明确决定本轮不回导：实际导入的可见时间线无问题，既有 `deliveryProtocolVersion = 1` 已有真实往返基线，本轮输出协议未变。因此仅将当前 Vn 的 `roundTripRequired` 从 `true` 改为 `false`，不生成 D6 通过 evidence，其他 manifest 内容原样保留。本轮按已确认适用范围完成交付验收；不能据此宣称新 D6 登记链经过本轮真实验证。后续实施初始使用子区间、改变 XML 时间表达时，需要重新执行 round-trip。迁移器目前仍无条件写入 `roundTripRequired=true`，条件适用规则与默认值的差异留待复盘，不在本次状态收尾中修改生产代码。
 
+### 2026-09-04 合并前一致性修复
+
+当前 feature worktree 已落实五项修复：版本化执行输入指纹、HTTP/CLI/迁移共用写入隔离与冲突草稿保护、逐 cue 统一批准 predicate、D3 门禁下的交付包幂等复用、正常 Review 全量 Schema 校验。实现细节集中在 `docs/ARCHITECTURE.md`，安装入口见 README；`requirements.txt` 中的 `jsonschema` 为必需依赖，`PyYAML` 用于 Skill 校验。仅在当前 worktree 建立隔离 `.venv`，未安装到全局环境。
+
+只读复核真实 `2026-09-01_v1`：运行 pin 仍为 `0.8.26`，无 blocker，D6 仍为不适用；原 A12/A13/A14/D2 按冻结的输入指纹 v1 显示为 `compatible-historical`，不自动重开已完成交付。上文 `d95628...` 是已交付历史 v1 指纹，不是新算法的当前执行指纹。另确认旧 UI 留下 7 条小数格式的 A13 `timeStart`，不符合 canonical rationalTime Schema；本轮不改真实 manifest，也不把这项历史格式问题当成新写入通过证据。普通 Review 不静默修复旧记录，若未来重新开启该 Vn 的写入，须先显式治理旧数据。新播放器点/区间评论已精确规范化为有理数并覆盖实际 HTTP payload 回归。
+
+本轮最终全套 199 项测试通过，Skill 校验、Stage Contract 生成视图检查和 `git diff --check` 通过。验证入口（首次环境设置须按 README 安装依赖）：
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -v
+.venv/bin/python "$HOME/.codex/skills/.system/skill-creator/scripts/quick_validate.py" .
+.venv/bin/python scripts/sync_workflow_stage_contract.py --check
+git diff --check
+```
+
+`runtime migration chain` 与当前 pin 的互校仍明确 defer；本轮只给迁移器加共享写入/回滚隔离，不改变迁移历史语义。D6 条件默认值和 Handles / 初始使用子区间改造也未纳入。
+
 ## 下一步
 
-本轮交付复盘及已确认的两项规则修订已完成；下一步在用户要求时检查合并范围并完成合并前回归，D6 本轮未执行和条件默认值差异继续如实保留。当前 `codex/workflow-stage-contract` feature branch/worktree 保持不变，commit、push、merge 需用户当轮明确授权。待用户确认合并且 main 核验妥当后，再从 main 新建分支实施已放到桌面 INBOX 的 Handles / 完整素材与初始使用窗口解耦计划及冒烟，不提前在当前分支施工。
+本轮交付复盘及两项规则修订已完成，合并前五项修复已在当前 `codex/workflow-stage-contract` feature branch 保存并推送，worktree 继续保留；不重开已收工的脚本。D6 本轮未执行、条件默认值差异与历史数据格式限制继续如实保留。尚未 merge、rebase 或修改 main。待用户确认合并且 main 核验妥当后，再从 main 新建分支实施已放到桌面 INBOX 的 Handles / 完整素材与初始使用窗口解耦计划及冒烟，不提前在当前分支施工。

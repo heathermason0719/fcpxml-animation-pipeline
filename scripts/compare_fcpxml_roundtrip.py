@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+try:
+    from scripts.manifest_transaction import manifest_commit, optimistic_operation
+except ModuleNotFoundError:  # direct script execution
+    from manifest_transaction import manifest_commit, optimistic_operation
+
 import argparse
 import hashlib
 import json
@@ -248,6 +253,7 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(Path(path).expanduser().resolve().read_bytes()).hexdigest()
 
 
+@optimistic_operation
 def register_roundtrip(version_root: Path, reexported_xml: Path) -> dict[str, Any]:
     root = Path(version_root).expanduser().resolve()
     stage_status = resolve_stage_status(root)
@@ -261,6 +267,7 @@ def register_roundtrip(version_root: Path, reexported_xml: Path) -> dict[str, An
     d4 = workflow["stageEvidence"]["D4"]
     delivered = root.parent / d4["packageName"] / "Info.fcpxml"
     reexported = Path(reexported_xml).expanduser().resolve()
+    compared_hashes = (_sha256(delivered), _sha256(reexported))
     result = compare_roundtrip(delivered, reexported, manifest)
     evidence = {
         "stageId": "D6",
@@ -268,13 +275,18 @@ def register_roundtrip(version_root: Path, reexported_xml: Path) -> dict[str, An
         "semanticVersion": 1,
         "status": "valid",
         "deliveryFingerprint": d4["deliveryFingerprint"],
-        "deliveredSha256": _sha256(delivered),
+        "deliveredSha256": compared_hashes[0],
         "reexportedPath": str(reexported),
-        "reexportedSha256": _sha256(reexported),
+        "reexportedSha256": compared_hashes[1],
         "animatedCueIds": result["animatedCueIds"],
     }
-    workflow["stageEvidence"]["D6"] = evidence
-    save_manifest(root, manifest)
+    with manifest_commit(root):
+        if resolve_stage_status(root).get("nextEligibleStage") != "D6":
+            raise ValueError("round-trip registration requires current D5 inputs after comparison")
+        if (_sha256(delivered), _sha256(reexported)) != compared_hashes:
+            raise ValueError("round-trip XML inputs changed during comparison")
+        workflow["stageEvidence"]["D6"] = evidence
+        save_manifest(root, manifest)
     return evidence
 
 

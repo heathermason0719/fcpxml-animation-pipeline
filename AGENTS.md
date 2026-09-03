@@ -52,9 +52,14 @@
 当前没有 build 或 lint 命令。使用以下命令验证第一阶段能力：
 
 ```bash
-python3 -m unittest discover -s tests -v
-python3 "$HOME/.codex/skills/.system/skill-creator/scripts/quick_validate.py" .
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -B -m unittest discover -s tests -v
+.venv/bin/python "$HOME/.codex/skills/.system/skill-creator/scripts/quick_validate.py" .
+.venv/bin/python scripts/sync_workflow_stage_contract.py --check
 ```
+
+前两条只在首次设置或依赖变更且用户授权安装时执行。正常 Review 写入必须经过 canonical JSON Schema 校验，不允许缺少 `jsonschema` 时跳过。下列命令在 `source .venv/bin/activate` 后执行。
 
 初始化并检查项目工作区：
 
@@ -86,6 +91,8 @@ python3 scripts/sync_workflow_stage_contract.py --check
 前三条初始化命令会在各自严格边界内创建缺失目录或文件；`intake_project.py` 是只读检查。命令示例中的版本名使用大写 `V`，但 `scaffold_hyperframes.py` 同时接受小写 `v`，并原样保留用户选定的拼写；若发现仅大小写不同的既有版本则阻塞。脚手架只在 canonical `frame.md` 已存在且目标 Vn 不存在时创建隔离版本工程，在创建瞬间解析或接受一个精确 HyperFrames 版本、于临时目录检查后 pin，失败时不得留下半成品或修改项目级文件。已有 Vn 不随 latest 自动漂移；`migrate_hyperframes_runtime.py` 是唯一正式版本迁移入口，并记录具体兼容性检查与审核 evidence disposition。Stage Contract 迁移显式作用于单个 legacy Vn，保留旧审核记录但不继承用户批准；resolver 从证据推导上下文、阻塞点、下一可执行阶段和完成集合，不维护 `currentStage`。单 Vn Review 负责 A11/A13 comment、批准和 A14 授权。原生渲染、注册、包发布、FCP 验收与 round-trip 依次形成 D2–D6 证据链；详细布局协议见 `references/hyperframes-single-source.md`，FCPXML 交付协议见 `docs/ARCHITECTURE.md`。
 
 引入新的验证命令时，必须同时更新本节和 `docs/CURRENT.md`。
+
+新增或修改既有 Vn 的写入工具时，必须复用 `manifest_transaction.py`：短操作/多文件迁移及其回滚持有同一 Vn 锁；长渲染、探测、包构建使用乐观快照，在正式发布/登记前复核 revision 与实际 evidence。禁止仅在最终 `save_manifest` 加锁后把先前读出的旧对象写回。`.afterforge-manifest.lock` 是稳定的协调文件，不随 manifest 的原子替换删除；直接手工文件编辑不属于这套协作锁协议。
 
 ## 文档同步规则
 

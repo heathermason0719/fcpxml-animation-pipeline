@@ -4,6 +4,14 @@
 
 项目目前已具备项目入口、可选动画脚本审核、确定性 Vn 脚手架、HyperFrames 单一布局源 adapter、统一 Stage Contract、单 Vn Review 与 FCPXML 交付后端。Storyboard、480p Demo、独立原生渲染授权和 D1–D6 交付证据由 resolver 串联，不以文件存在或手工维护的 `currentStage` 代替当前完成语义。
 
+首次使用先在仓库的隔离 Python 环境安装依赖；后续命令在激活该环境后运行。`jsonschema` 是 Review 写入的必需校验依赖，不能缺失时跳过校验。
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+source .venv/bin/activate
+```
+
 ```bash
 python3 scripts/init_user_workspace.py "/absolute/project/workspace"
 python3 scripts/init_user_inbox.py "/absolute/project/workspace"
@@ -28,6 +36,10 @@ python3 scripts/build_delivery_package.py "/absolute/project/workspace/AfterForg
 前五条命令维持原有项目入口与 Vn 创建边界。A-stage 与 D-stage 的唯一机器定义见 `references/workflow-stage-contract.json`，完整可读表由它确定性生成到 `references/workflow-stage-contract.md`。仓库级 Review shell 绑定单个 Vn：Storyboard 在对应旁白和主审帧/必要辅助帧之后，直接投影 cue 级 `finalAnimationDescription`，再于当前静帧上下文记录 A11 comment 与逐 cue 批准。初始设计或后续 Review / 聊天反馈若仍支持会实质改变最终呈现的多种合理解释，Agent 会在修改受影响 cue 前提出一个聚焦问题；明确结果内的实现细节不重复询问，澄清不新增批准门，也不把过程写进最终动画说明。提交 comment 会撤销相应批准并保留被评论的锁定静帧作为待修改版本，只有受审文件实际变化才使 layout lock 失效。缺少最终动画说明、锁定审核帧失效或仍有开放 comment 时不能批准。Demo 从播放器自动绑定时间和 cue，一条 comment 可由用户标记为影响 static、motion 或二者；A14 独立授权仍是单独操作。所有状态写回 manifest，renderer、注册器和包构建器按 resolver 的证据链 fail closed。
 
 Demo 支持直接拖动播放条。右上角“刷新”重新读取审核状态并显示成功时间或失败原因；视频未变化时保留播放位置，已登记的 Demo 哈希变化时才切换到新视频，不会把刷新当作批准或推进流程。
+
+并发冲突或网络失败后，当前页面会话保留未提交的静帧与 Demo 草稿；刷新若发现审核对象已变化，需要用户确认重新绑定，不能把旧意见静默挂到新画面。此处不保证关闭页面或浏览器整页重载后的草稿恢复。旧逐镜批准失效后，只要当前静帧、说明和 comment 满足门槛即可重新批准；未受影响镜头的批准继续保留。
+
+当前执行输入使用 `inputFingerprintVersion=2`，覆盖动画时间位置、时长、叠层顺序和精确帧率等语义。它不是 HyperFrames 版本号。旧指纹按原语义保留历史事实，但新的审核授权或生产写入须重新建立当前输入证据；已完成的旧 Vn 不会被自动重开。同指纹交付包通过完整验证且已登记时，只读复用，不覆盖既有 FCP 验收或 round-trip 状态。
 
 每条动画的正式 DOM/CSS 只存在于 `compositions/cues/`，运动位于 `compositions/motion/`；`compositions/review/`、`compositions/delivery/`、`STORYBOARD.md` 和 `index.html` 均为生成视图。交付包不会直接修改 Final Cut Pro Library；首次导入后，可将 FCP 再导出的 XML 交给 `compare_fcpxml_roundtrip.py` 与原交付 XML 做语义回归。当前仍不会自动完成初始内容理解或语音转写。
 

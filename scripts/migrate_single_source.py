@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+try:
+    from scripts.manifest_transaction import manifest_mutation
+except ModuleNotFoundError:  # direct script execution
+    from manifest_transaction import manifest_mutation
+
 import argparse
 import copy
 import json
@@ -96,6 +101,7 @@ def _hero_time(hero_times: dict[str, float], cue: dict[str, Any]) -> float:
     return value
 
 
+@manifest_mutation
 def migrate_version(version_root: Path, hero_times: dict[str, float]) -> dict[str, Any]:
     root = version_root.expanduser().resolve()
     if not root.is_dir() or root.is_symlink():

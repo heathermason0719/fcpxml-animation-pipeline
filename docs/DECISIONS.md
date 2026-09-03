@@ -264,6 +264,14 @@
 
 **影响：** Storyboard 与 Demo 共用 Review runtime、持久化、并发保护、approval evidence、resolver 和失效引擎，但不共用错误的万能表单。Storyboard 对每个当前干净且锁有效的 cue 保存独立批准证据；Demo 保留当前视频上下文。包含 static 的 Demo comment 重开受影响 A11 并完整向下失效，motion-only comment 保留有效 A11 并只重开 A13/A14；两种情况都不强制用户离开 Demo 页面。原生授权必须绑定有效 layout lock、当前运动依赖和已批准 Demo 哈希；`render_animations.py` 在任一门缺失或不匹配时必须 fail closed。
 
+## 执行输入单独版本化，写入使用共享隔离边界
+
+**决定：** 对实际执行语义定义独立输入指纹版本，保留旧算法解释历史 evidence；新的批准/生产写入要求当前可验证输入，不把历史 evidence 直接升级。各受控工具共用同一 Vn 的文件锁与 revision 检查，正常 Review 写入必须符合 canonical JSON Schema。
+
+**原因：** 只哈希布局/运动文件会漏掉时间、顺序和帧率变化；只在 HTTP 层检查 manifest SHA 或仅对最终写文件加锁，无法保护 CLI、长任务和迁移回滚。另一方面，全量废弃旧版本会错误重开已完成交付；将整个 manifest 纳入输入哈希又会把评论和批准自身变成输入变化。
+
+**取舍：** 增加一个必需 Schema 校验依赖和协作锁文件；短事务等待、长任务提交时可能因并发修改被拒绝。代价换取可解释的历史保留和不丢评论的生产门禁，不扩展为数据库、多用户平台或自动历史迁移。
+
 ## 将当前 Review 视觉 shell 暂时冻结为仓库级基线
 
 **决定：** AfterForge Review UI 是跨项目复用的仓库级基础设施。Reviewer 自身的页面背景、字体、导航、按钮、表单、状态和容器样式不得由项目级 `AfterForge/frame.md` 或 Vn 的 `frame.md` 快照驱动；两类 `frame.md` 只约束页面中实际被审核的动画内容。当前 `serve_workflow_review.py` 提供的视觉 shell 暂时冻结为仓库级 Review UI 基线。

@@ -12,11 +12,13 @@ from typing import Any
 try:
     from scripts.hyperframes_adapter import load_manifest, safe_project_path, save_manifest
     from scripts.workflow_stages import load_stage_contract
-    from scripts.workflow_status import current_input_fingerprint
+    from scripts.workflow_inputs import input_fingerprint as execution_input_fingerprint
+    from scripts.manifest_transaction import manifest_mutation
 except ModuleNotFoundError:  # pragma: no cover - direct script execution
     from hyperframes_adapter import load_manifest, safe_project_path, save_manifest  # type: ignore
     from workflow_stages import load_stage_contract  # type: ignore
-    from workflow_status import current_input_fingerprint  # type: ignore
+    from workflow_inputs import input_fingerprint as execution_input_fingerprint  # type: ignore
+    from manifest_transaction import manifest_mutation  # type: ignore
 
 
 def _migrate_legacy_demo(root: Path, manifest: dict[str, Any]) -> dict[str, Any] | None:
@@ -26,7 +28,7 @@ def _migrate_legacy_demo(root: Path, manifest: dict[str, Any]) -> dict[str, Any]
     try:
         preview = safe_project_path(root, legacy["preview"])
         actual_hash = hashlib.sha256(preview.read_bytes()).hexdigest()
-        input_fingerprint = current_input_fingerprint(root, manifest)
+        input_fingerprint = execution_input_fingerprint(root, manifest, version=1)
     except (OSError, ValueError, KeyError):
         return None
     declared_hash = legacy.get("sha256")
@@ -46,6 +48,7 @@ def _migrate_legacy_demo(root: Path, manifest: dict[str, Any]) -> dict[str, Any]
         "preview": legacy["preview"],
         "sha256": actual_hash,
         "inputFingerprint": input_fingerprint,
+        "inputFingerprintVersion": 1,
         "migrationSource": "legacy-reviews.a12",
     }
     if media:
@@ -53,6 +56,7 @@ def _migrate_legacy_demo(root: Path, manifest: dict[str, Any]) -> dict[str, Any]
     return evidence
 
 
+@manifest_mutation
 def migrate_workflow_stage_contract(version_root: Path) -> dict[str, Any]:
     root = Path(version_root).expanduser().resolve()
     manifest = load_manifest(root)

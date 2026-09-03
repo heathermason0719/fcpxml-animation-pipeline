@@ -6,14 +6,17 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from fractions import Fraction
+from unittest.mock import patch
 from xml.etree import ElementTree as ET
 
 from scripts.layout_lock import freeze_layout
 from scripts.sync_storyboard import sync_storyboard
+from scripts.workflow_inputs import input_fingerprint, input_fingerprint_evidence
 from scripts.workflow_review import approve_demo, approve_storyboard, authorize_native_render, register_demo
-from scripts.workflow_status import current_input_fingerprint, evidence_fingerprint
+from scripts.workflow_status import evidence_fingerprint
 from tests.test_hyperframes_single_source import SingleSourceFixture, manifest_fixture, write_json
 
 try:
@@ -107,7 +110,7 @@ class DeliveryAssetRegistrationTests(SingleSourceFixture):
                 "semanticVersion": 1,
                 "status": "rendered",
                 "authorizationFingerprint": evidence_fingerprint(a14),
-                "inputFingerprint": current_input_fingerprint(root, manifest),
+                **input_fingerprint_evidence(root, manifest),
                 "items": [
                     {
                         "cueId": "p1s01_c01_title",
@@ -191,6 +194,46 @@ class DeliveryAssetRegistrationTests(SingleSourceFixture):
                 register_delivery_assets(root, prober=lambda _: valid_asset_probe())
 
             self.assertEqual((root / "animation-manifest.json").read_bytes(), before)
+
+    def test_comment_during_media_probe_cannot_be_overwritten_by_registration(self):
+        from scripts.workflow_review import add_review_comment
+
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.make_rendered_version(directory)
+
+            def probe(_path):
+                with ThreadPoolExecutor(1) as pool:
+                    pool.submit(add_review_comment, root, stage_id="A13", body="new motion opinion", actor="user",
+                                cue_id="p1s01_c01_title", time_start="1s", impact_scopes=["motion"]).result(5)
+                return valid_asset_probe()
+
+            with self.assertRaisesRegex(ValueError, "stale|current D2"):
+                register_delivery_assets(root, prober=probe)
+            manifest = json.loads((root / "animation-manifest.json").read_text())
+            self.assertEqual(manifest["workflow"]["stageEvidence"]["A13"]["comments"][0]["body"], "new motion opinion")
+            self.assertNotIn("D3", manifest["workflow"]["stageEvidence"])
+
+    def test_historical_weak_input_evidence_cannot_write_new_registration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _ = self.make_rendered_version(directory)
+            manifest = json.loads((root / "animation-manifest.json").read_text())
+            legacy = input_fingerprint(root, manifest, version=1)
+            for stage_id in ("A12", "A13", "A14"):
+                record = manifest["workflow"]["stageEvidence"][stage_id]
+                record.pop("inputFingerprintVersion", None)
+                record["inputFingerprint"] = legacy
+            write_json(root / "animation-manifest.json", manifest)
+            ledger_path = root / "delivery/render-ledger.json"
+            ledger = json.loads(ledger_path.read_text())
+            ledger.pop("inputFingerprintVersion", None)
+            ledger["inputFingerprint"] = legacy
+            ledger["authorizationFingerprint"] = evidence_fingerprint(manifest["workflow"]["stageEvidence"]["A14"])
+            write_json(ledger_path, ledger)
+            path = root / "animation-manifest.json"
+            before = path.read_bytes()
+            with self.assertRaisesRegex(ValueError, "current input fingerprint|current D2"):
+                register_delivery_assets(root, prober=lambda _: valid_asset_probe())
+            self.assertEqual(path.read_bytes(), before)
 
 
 class FCPXMLTimingTests(unittest.TestCase):
@@ -489,7 +532,7 @@ class DeliveryPackageTests(unittest.TestCase):
                 "semanticVersion": 1,
                 "status": "rendered",
                 "authorizationFingerprint": evidence_fingerprint(a14),
-                "inputFingerprint": current_input_fingerprint(root, manifest),
+                **input_fingerprint_evidence(root, manifest),
                 "items": [
                     {
                         "cueId": cue_id,
@@ -591,11 +634,306 @@ class DeliveryPackageTests(unittest.TestCase):
             package = Path(result["packagePath"])
             info = package / "Info.fcpxml"
             info.write_bytes(b"corrupt")
+            manifest_path = root / "animation-manifest.json"
+            manifest_before = manifest_path.read_bytes()
 
             with self.assertRaisesRegex(ValueError, "existing delivery package is invalid"):
                 build_delivery_package(root)
 
             self.assertEqual(info.read_bytes(), b"corrupt")
+            self.assertEqual(manifest_path.read_bytes(), manifest_before)
+
+    def test_reuse_preserves_manifest_bytes_and_acceptance_at_every_delivery_stage(self) -> None:
+        from scripts.workflow_review import record_fcp_acceptance
+        from scripts.workflow_status import resolve_stage_status
+
+        for phase, expected_blocker in (
+            ("d4-published", "D5"),
+            ("d5-accepted", "D6"),
+            ("d6-verified", None),
+            ("d6-not-applicable", None),
+        ):
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as directory:
+                root, _, _ = self.make_package_version(directory)
+                published = build_delivery_package(root)
+                package = Path(published["packagePath"])
+                manifest_path = root / "animation-manifest.json"
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                manifest["workflow"]["stageEvidence"]["D4"]["auditNote"] = "keep original publication evidence"
+                write_json(manifest_path, manifest)
+                if phase != "d4-published":
+                    record_fcp_acceptance(root, actor="user")
+                if phase == "d6-verified":
+                    reexported = Path(directory) / "reexported.fcpxml"
+                    reexported.write_bytes((package / "Info.fcpxml").read_bytes())
+                    register_roundtrip(root, reexported)
+                elif phase == "d6-not-applicable":
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    manifest["workflow"]["roundTripRequired"] = False
+                    write_json(manifest_path, manifest)
+                before_status = resolve_stage_status(root)
+                self.assertEqual(before_status["blockingStage"], expected_blocker)
+                manifest_before = manifest_path.read_bytes()
+                stat_before = manifest_path.stat()
+                package_before = {path.name: path.read_bytes() for path in package.iterdir()}
+
+                try:
+                    reused = build_delivery_package(root)
+                except ValueError as error:
+                    self.fail(f"valid registered delivery must remain reusable at {phase}: {error}")
+
+                self.assertEqual(reused["status"], "reused")
+                self.assertEqual(reused["packagePath"], str(package))
+                self.assertEqual(reused["deliveryFingerprint"], published["deliveryFingerprint"])
+                self.assertEqual(manifest_path.read_bytes(), manifest_before)
+                self.assertEqual(manifest_path.stat().st_ino, stat_before.st_ino)
+                self.assertEqual(manifest_path.stat().st_mtime_ns, stat_before.st_mtime_ns)
+                self.assertEqual({path.name: path.read_bytes() for path in package.iterdir()}, package_before)
+                self.assertEqual(resolve_stage_status(root), before_status)
+
+    def test_reuse_recovers_missing_d4_without_creating_user_acceptance(self) -> None:
+        from scripts.workflow_status import resolve_stage_status
+
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_package_version(directory)
+            published = build_delivery_package(root)
+            package = Path(published["packagePath"])
+            manifest_path = root / "animation-manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            del manifest["workflow"]["stageEvidence"]["D4"]
+            write_json(manifest_path, manifest)
+            package_before = {path.name: path.read_bytes() for path in package.iterdir()}
+            self.assertEqual(resolve_stage_status(root)["blockingStage"], "D4")
+
+            reused = build_delivery_package(root)
+
+            self.assertEqual(reused["status"], "reused")
+            recovered = json.loads(manifest_path.read_text(encoding="utf-8"))
+            evidence = recovered["workflow"]["stageEvidence"]
+            d4 = evidence.pop("D4")
+            self.assertEqual(d4["status"], "published")
+            self.assertEqual(d4["packageName"], package.name)
+            self.assertEqual(d4["deliveryFingerprint"], published["deliveryFingerprint"])
+            self.assertNotIn("D5", evidence)
+            self.assertNotIn("D6", evidence)
+            self.assertEqual(recovered, manifest)
+            self.assertEqual({path.name: path.read_bytes() for path in package.iterdir()}, package_before)
+            self.assertEqual(resolve_stage_status(root)["blockingStage"], "D5")
+
+    def test_reuse_accepts_semantically_compatible_d3_and_preserves_historical_d4(self) -> None:
+        from scripts.workflow_stages import load_stage_contract
+        from scripts.workflow_status import resolve_stage_status
+
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_package_version(directory)
+            published = build_delivery_package(root)
+            manifest_path = root / "animation-manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            for stage_id in ("D3", "D4"):
+                manifest["workflow"]["stageEvidence"][stage_id]["contractVersion"] = "0.9.0"
+            write_json(manifest_path, manifest)
+            manifest_before = manifest_path.read_bytes()
+            contract = load_stage_contract()
+            for stage in contract["stages"]:
+                if stage["id"] in {"D3", "D4"}:
+                    stage["compatibleEvidence"] = [{"contractVersion": "0.9.0", "semanticVersion": 1}]
+
+            with patch("scripts.workflow_status.load_stage_contract", return_value=contract):
+                status = resolve_stage_status(root)
+                self.assertEqual(status["evidence"]["D3"], "compatible-historical")
+                self.assertEqual(status["evidence"]["D4"], "compatible-historical")
+                reused = build_delivery_package(root)
+
+            self.assertEqual(reused["status"], "reused")
+            self.assertEqual(reused["deliveryFingerprint"], published["deliveryFingerprint"])
+            self.assertEqual(manifest_path.read_bytes(), manifest_before)
+
+    def test_reuse_rejects_stale_upstream_evidence_without_mutation(self) -> None:
+        from scripts.workflow_status import resolve_stage_status
+
+        for stage_id in ("A11", "A12", "A13", "A14", "D2", "D3"):
+            with self.subTest(stage_id=stage_id), tempfile.TemporaryDirectory() as directory:
+                root, _, _ = self.make_package_version(directory)
+                published = build_delivery_package(root)
+                package = Path(published["packagePath"])
+                manifest_path = root / "animation-manifest.json"
+                if stage_id == "D2":
+                    ledger_path = root / "delivery/render-ledger.json"
+                    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+                    ledger["status"] = "invalidated"
+                    write_json(ledger_path, ledger)
+                else:
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    manifest["workflow"]["stageEvidence"][stage_id]["status"] = "invalidated"
+                    write_json(manifest_path, manifest)
+                self.assertEqual(resolve_stage_status(root)["blockingStage"], stage_id)
+                manifest_before = manifest_path.read_bytes()
+                package_before = {path.name: path.read_bytes() for path in package.iterdir()}
+
+                with self.assertRaisesRegex(ValueError, "requires current D3 registration evidence"):
+                    build_delivery_package(root)
+
+                self.assertEqual(manifest_path.read_bytes(), manifest_before)
+                self.assertEqual({path.name: path.read_bytes() for path in package.iterdir()}, package_before)
+
+    def use_legacy_input_evidence(self, root: Path) -> None:
+        manifest_path = root / "animation-manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        fingerprint = input_fingerprint(root, manifest, version=1)
+        evidence = manifest["workflow"]["stageEvidence"]
+        for stage_id in ("A12", "A13", "A14"):
+            evidence[stage_id].pop("inputFingerprintVersion", None)
+            evidence[stage_id]["inputFingerprint"] = fingerprint
+        ledger_path = root / "delivery/render-ledger.json"
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+        ledger.pop("inputFingerprintVersion", None)
+        ledger["inputFingerprint"] = fingerprint
+        ledger["authorizationFingerprint"] = evidence_fingerprint(evidence["A14"])
+        write_json(ledger_path, ledger)
+        evidence["D3"]["renderLedgerSha256"] = hashlib.sha256(ledger_path.read_bytes()).hexdigest()
+        write_json(manifest_path, manifest)
+
+    def test_completed_legacy_input_evidence_can_reuse_without_rebinding(self) -> None:
+        from scripts.workflow_review import record_fcp_acceptance
+        from scripts.workflow_status import resolve_stage_status
+
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, _ = self.make_package_version(directory)
+            published = build_delivery_package(root)
+            record_fcp_acceptance(root, actor="user")
+            manifest_path = root / "animation-manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["workflow"]["roundTripRequired"] = False
+            write_json(manifest_path, manifest)
+            self.use_legacy_input_evidence(root)
+            before = manifest_path.read_bytes()
+            before_status = resolve_stage_status(root)
+            self.assertIsNone(before_status["blockingStage"])
+            self.assertEqual(before_status["evidence"]["A12"], "compatible-historical")
+
+            reused = build_delivery_package(root)
+
+            self.assertEqual(reused["status"], "reused")
+            self.assertEqual(reused["deliveryFingerprint"], published["deliveryFingerprint"])
+            self.assertEqual(manifest_path.read_bytes(), before)
+            self.assertEqual(resolve_stage_status(root), before_status)
+
+    def test_legacy_input_evidence_cannot_publish_or_restore_d4(self) -> None:
+        from scripts.workflow_status import resolve_stage_status
+
+        for operation in ("publish", "restore-d4"):
+            with self.subTest(operation=operation), tempfile.TemporaryDirectory() as directory:
+                root, _, _ = self.make_package_version(directory)
+                manifest_path = root / "animation-manifest.json"
+                if operation == "restore-d4":
+                    build_delivery_package(root)
+                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    del manifest["workflow"]["stageEvidence"]["D4"]
+                    write_json(manifest_path, manifest)
+                self.use_legacy_input_evidence(root)
+                status = resolve_stage_status(root)
+                self.assertEqual(status["blockingStage"], "A12")
+                self.assertEqual(status["evidence"]["D3"], "current")
+                before = manifest_path.read_bytes()
+                packages_before = {
+                    path.name: {item.name: item.read_bytes() for item in path.iterdir()}
+                    for path in root.parent.glob("*.fcpxmld")
+                }
+
+                with self.assertRaisesRegex(ValueError, "requires current input fingerprint evidence"):
+                    build_delivery_package(root)
+
+                self.assertEqual(manifest_path.read_bytes(), before)
+                self.assertEqual(
+                    {
+                        path.name: {item.name: item.read_bytes() for item in path.iterdir()}
+                        for path in root.parent.glob("*.fcpxmld")
+                    },
+                    packages_before,
+                )
+
+    def test_concurrent_review_update_blocks_obsolete_publication_and_reuse(self) -> None:
+        from scripts import build_delivery_package as builder
+        from scripts.workflow_review import add_review_comment
+
+        for operation in ("publish", "reuse"):
+            with self.subTest(operation=operation), tempfile.TemporaryDirectory() as directory:
+                root, _, _ = self.make_package_version(directory)
+                if operation == "reuse":
+                    build_delivery_package(root)
+                package_names_before = sorted(path.name for path in root.parent.glob("*.fcpxmld"))
+                real_build_fcpxml = builder.build_delivery_fcpxml
+                expected_manifest = []
+
+                def build_while_user_comments(*args, **kwargs):
+                    document = real_build_fcpxml(*args, **kwargs)
+                    with ThreadPoolExecutor(max_workers=1) as executor:
+                        executor.submit(
+                            add_review_comment,
+                            root,
+                            stage_id="A13",
+                            impact_scopes=["motion"],
+                            body="Keep this concurrent user comment",
+                            actor="user",
+                            time_start="1s",
+                        ).result(timeout=5)
+                    expected_manifest.append((root / "animation-manifest.json").read_bytes())
+                    return document
+
+                with patch.object(builder, "build_delivery_fcpxml", side_effect=build_while_user_comments):
+                    with self.assertRaisesRegex(ValueError, "stale Review state"):
+                        build_delivery_package(root)
+
+                self.assertEqual((root / "animation-manifest.json").read_bytes(), expected_manifest[0])
+                self.assertEqual(
+                    sorted(path.name for path in root.parent.glob("*.fcpxmld")),
+                    package_names_before,
+                )
+                self.assertFalse(any(path.name.startswith(".AfterForge__") for path in root.parent.iterdir()))
+
+    def test_late_input_or_package_changes_block_publication_restoration_and_reuse(self) -> None:
+        from scripts import build_delivery_package as builder
+
+        for operation in ("publish", "restore-d4", "reuse"):
+            for changed_input in ("motion", "source", "ledger", "package-info", "package-movie"):
+                with self.subTest(operation=operation, changed_input=changed_input), tempfile.TemporaryDirectory() as directory:
+                    root, source, _ = self.make_package_version(directory)
+                    if operation != "publish":
+                        build_delivery_package(root)
+                    manifest_path = root / "animation-manifest.json"
+                    manifest = json.loads(manifest_path.read_text())
+                    if operation == "restore-d4":
+                        manifest["workflow"]["stageEvidence"].pop("D4")
+                        write_json(manifest_path, manifest)
+                    before = manifest_path.read_bytes()
+                    packages_before = sorted(path.name for path in root.parent.glob("*.fcpxmld"))
+                    real_validate = builder.validate_delivery_package
+
+                    def validate_then_change_inputs(package, *args, **kwargs):
+                        result = real_validate(package, *args, **kwargs)
+                        if changed_input == "motion":
+                            motion = root / manifest["cues"][0]["renderAdapters"]["hyperframes"]["motionSrc"]
+                            motion.write_text(motion.read_text() + "\n// changed during validation\n")
+                        elif changed_input == "source":
+                            source.write_bytes(source.read_bytes() + b"\n<!-- replaced during validation -->\n")
+                        elif changed_input == "ledger":
+                            ledger_path = root / "delivery/render-ledger.json"
+                            ledger = json.loads(ledger_path.read_text())
+                            ledger["status"] = "invalidated"
+                            write_json(ledger_path, ledger)
+                        elif changed_input == "package-info":
+                            (package / "Info.fcpxml").write_bytes(b"replaced after successful validation")
+                        else:
+                            next(package.glob("*.mov")).write_bytes(b"replaced after successful validation")
+                        return result
+
+                    with patch.object(builder, "validate_delivery_package", side_effect=validate_then_change_inputs):
+                        with self.assertRaises(ValueError):
+                            build_delivery_package(root)
+
+                    self.assertEqual(manifest_path.read_bytes(), before)
+                    self.assertEqual(sorted(path.name for path in root.parent.glob("*.fcpxmld")), packages_before)
+                    self.assertFalse(any(path.name.startswith(".AfterForge__") for path in root.parent.iterdir()))
 
     def test_validator_detects_source_story_mutation_and_lane_collision(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -659,6 +997,33 @@ class RoundTripTests(unittest.TestCase):
             self.assertIsNone(status["blockingStage"])
             self.assertIsNone(status["nextEligibleStage"])
             self.assertIn("D6", status["completedStages"])
+
+    def test_roundtrip_registration_rejects_files_or_d5_inputs_changed_after_comparison(self) -> None:
+        from scripts import compare_fcpxml_roundtrip as roundtrip
+
+        for changed_input in ("delivered", "reexported", "motion"):
+            with self.subTest(changed_input=changed_input), tempfile.TemporaryDirectory() as directory:
+                delivered, reexported, manifest = self.make_roundtrip_fixture(directory)
+                root = delivered.parent.parent / manifest["sourceVersion"]
+                manifest_path = root / "animation-manifest.json"
+                before = manifest_path.read_bytes()
+                real_compare = roundtrip.compare_roundtrip
+
+                def compare_then_change_inputs(*args, **kwargs):
+                    result = real_compare(*args, **kwargs)
+                    if changed_input == "motion":
+                        motion = root / manifest["cues"][0]["renderAdapters"]["hyperframes"]["motionSrc"]
+                        motion.write_text(motion.read_text() + "\n// changed while comparing\n")
+                    else:
+                        (delivered if changed_input == "delivered" else reexported).write_bytes(b"not XML: changed after comparison")
+                    return result
+
+                with patch.object(roundtrip, "compare_roundtrip", side_effect=compare_then_change_inputs):
+                    with self.assertRaisesRegex(ValueError, "changed|current D5"):
+                        register_roundtrip(root, reexported)
+
+                self.assertEqual(manifest_path.read_bytes(), before)
+                self.assertNotIn("D6", json.loads(manifest_path.read_text())["workflow"]["stageEvidence"])
 
     def test_accepts_fcp_identity_formatting_and_absolute_prefix_normalization(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

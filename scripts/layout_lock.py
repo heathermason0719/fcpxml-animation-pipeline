@@ -3,6 +3,11 @@
 
 from __future__ import annotations
 
+try:
+    from scripts.manifest_transaction import manifest_mutation
+except ModuleNotFoundError:  # direct script execution
+    from manifest_transaction import manifest_mutation
+
 import argparse
 import hashlib
 import json
@@ -116,6 +121,7 @@ def _copy_review_frame(
     }
 
 
+@manifest_mutation
 def freeze_layout(
     version_root: Path,
     cue_id: str,
@@ -192,6 +198,7 @@ def _approve_a11_if_complete(manifest: dict[str, Any]) -> bool:
     return True
 
 
+@manifest_mutation
 def approve_a11(version_root: Path) -> dict[str, Any]:
     root = version_root.expanduser().resolve()
     manifest = load_manifest(root)

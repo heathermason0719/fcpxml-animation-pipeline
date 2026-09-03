@@ -93,6 +93,16 @@ def delivery_projection_src(adapter: dict[str, Any]) -> str:
 
 
 def save_manifest(version_root: Path, manifest: dict[str, Any]) -> None:
+    try:
+        from scripts.manifest_transaction import manifest_commit, note_manifest_write
+    except ModuleNotFoundError:
+        from manifest_transaction import manifest_commit, note_manifest_write
+    with manifest_commit(version_root):
+        _save_manifest_atomic(version_root, manifest)
+        note_manifest_write(version_root)
+
+
+def _save_manifest_atomic(version_root: Path, manifest: dict[str, Any]) -> None:
     root = version_root.expanduser().resolve()
     target = root / MANIFEST_NAME
     serialized = json.dumps(manifest, ensure_ascii=False, indent=2) + "\n"
