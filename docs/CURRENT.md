@@ -60,19 +60,22 @@
 - 已将原生 renderer、资产注册器、FCPXMLD builder 和 round-trip registrar 接入 D-stage 哈希链：A11/A13/A14 或输入不匹配时在启动 renderer 前阻断，后续 D2–D6 不以产物文件单独存在判断完成；
 - 首次 round-trip 证实 FCP 会重排 resource ID、改写媒体路径前缀与等价有理数，并可能产生微秒以下 `timeMap` 规范化和不超过一帧的 MOV resource 物理尾差；比较器已在不放宽 connected clip 时长、语义位置、音频属性或主故事线约束的前提下规范化这些非语义差异；
 - 已移除旧版 HyperFrames marketplace plugin，并在软件重启后确认源码安装的新版 HyperFrames 技能可用；
+- 真实 `2026-09-01_v1` 已由用户在 Review 完成 A13 整片批准和独立 A14 授权，十条 A11 comment、八条 A13 comment 均为 `accepted`。随后在 pin `0.8.26` 下完成五条原生 1920×1080、24 fps、ProRes 4444 MOV，逐条通过 alpha、精确帧数、时长、无音轨和完整解码校验；第 4 镜长素材持续播放抽检通过，原生输出抽帧与获批单镜预览对照保存在 `qa/delivery-native-20260903/verification.json` 及同目录图片。D3 注册和 D4 构建后发布根层平铺包 `AfterForge__2026-09-01_v1__d-95d8b8d34ca7d8931f3087cf3fbe84d0e06973ab85c1c95239d2325a47e62acc.fcpxmld`，包内只有 `Info.fcpxml` 与五条 MOV；源 XML 不变、媒体哈希、时间/lane、引用、sequence 不变性、FCPXML 1.14 DTD 与第二次同指纹完整复用验证通过，`deliveryProtocolVersion = 1` 未变。149 项仓库回归再次通过，HyperFrames check 为 0 错误/警告、1 条已接受镜头重叠的信息级遮挡提示，15/15 对比度检查通过；用户随后完成 D5 实际导入验收，D6 本轮按用户明确决定不要求执行（未执行，不记为通过）；
 - Git 仓库已经初始化。
 
 ## 尚未开始
 
 - 尚未实现参考视频内容理解或语音转写；
 - 尚未把本次人工完成的旁白对齐和初始 `animation-manifest.json` 内容生成整理为仓库内可复用的确定性流水线；HyperFrames 单一布局源装配、review projection、layout lock、adapter 验证和旧 Vn 迁移已经脚本化；
-- 新 Stage Contract、Review 与 D-stage evidence chain 尚未在当前真实 `2026-09-01_v1` 完整走完 A11→D6；该 Vn runtime 保持精确 pin `0.8.26`，`meta.json` 已分离创建版本 `0.8.16`，`HF-M0001` 分别记录 package pin、HyperFrames check、adapter validation，五个 A11 cue evidence 已重绑至 0.8.26；五镜七张审核帧锁定有效，十条 A11 comment 已全部由用户接受。当前 Demo 为 `previews/2026-09-01_v1-A12-demo-0ccd41e268bd.mp4`，854×480、24 fps、54.875 秒 H.264/AAC，输入指纹 `0ccd41e268bd…`、SHA-256 `3ea80e21655f…`；在用户已认可的舒展动势基础上，本轮按粗剪原声的本地词级转写估计与脚本/SRT 对照调整动作时机：身份被念到时就位、监控框在“不太干净”处闭合、五 CAM 在首次硬切前同时到位、凭证在“观看授权”起句时刚落稳、标题与下划线分别对应“片头”和“剥夺了我作为观众”。词级估计、选定锚点及 13 项实际 GSAP 检查保存在 Vn `qa/a13-narration-alignment-v1/`；这些是本轮待 A13 验收的时序设计，不等同于已获用户批准或音素级精确对齐。静态布局、七张审核帧、A11 evidence、原片 1 倍速、瞬间切源、FCPXML 时间范围和原声音轨均保持；旧版 Demo 分文件保留，第 3、5 镜的旁白字段已从概括句纠正为实际口播。“不漂浮”仍只在本轮暂不执行，canonical frame.md 与 snapshot 未改；HyperFrames check 无错误或警告，旧 A12 因时序输入变化失效，新 Demo 登记后 A1–A12 完成、停在 A13 用户审核，A14 未授权；D-stage 最终边界仍待完整闭环证据复盘；
+- 当前真实 `2026-09-01_v1` 已完成 A1–A14、D1–D5；D6 按用户明确决定为本轮不适用，新 D6 evidence 登记链尚未在本轮执行真实 round-trip。runtime 保持精确 pin `0.8.26`，创建版本仍为 `0.8.16`，既有 `HF-M0001` 记录不变。当前五镜 lock revision 为 4/5/5/6/5，七张审核帧有效；正式渲染未改动已批准 cue、motion、时间位置或 Demo。A12 仍为 `previews/2026-09-01_v1-A12-feedback-v2.mp4`，SHA-256 `783e9926a6e39d111f556d354f6d49b10088708f4bebb76d860a31afe26c4583`；第 2 镜补充完整预览与第 4 镜已确认替换版的单镜审核证据继续保留。静态备份位于 `qa/a13-feedback-20260903-v1/`，此前运动、渲染、音画核验及注册证据位于 `qa/a12-feedback-20260903-v2/`，不把历史 `awaiting-user` 实现记录当作当前批准状态。
 - 当前没有 build 或 lint 命令。
 
 ## 已知问题与阻塞
 
-当前真实 Vn 的 A13 已收到 8 条开放反馈，尚未修改动画或标为已处理；部分意见涉及静态内容，需由用户确认影响范围后按依赖重新审核。第 3 镜 CAM05 卡住已定位为 composition 播放 2.82 秒后切成静帧，并非播放器故障；新投放 `05-日常互动加长版.mov` 已探测为 37.333 秒、1920×1080、24 fps、H.264，尚未替换入工程。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。新三段审核契约和 D2–D6 evidence chain 已通过合成测试；真实 `2026-09-01_v1` 已迁移并完成 A11 Storyboard 静态审核与 A12 Demo 构建，尚待 A13 用户运动审核、A14 原生渲染授权与 Delivery，因而当前仍不能把这次架构升级描述为已通过真实 invocation 验证。
+第 4 镜 CAM05 遗漏已按用户确认接入：`previews/2026-09-01_v1-cue04-cam05-fixed-480p-v3.mp4`（854×480、24 fps、12.5 秒，SHA-256 `d35380248de7631cbbab1dd584bd3b4ef1d35306efab44a9843ee03a026c61f6`）已获用户单镜确认，正式 cue 与该获批候选逐字节一致，大 PGM 从长素材本地 6.56 秒原速接续播放；第 5 镜、全部运动和时间位置未改。第 4 镜媒体依赖已加入 lock，主审帧直接取获批 MP4 的本地 7.5 秒第 180 帧；A11 revision 更新为 6，并保存聊天确认与单镜哈希的明确来源，其他四镜 lock/approval 和全部 comment 原样保留。当前输入指纹为 `d95628f66631b6c246bb24b188e37f83c1bb55ca2c2c60ec4a9f236f2dd09af1`。按用户要求未重渲整片：A12 的 `reviewBasis` 保留整片实际生成时的旧输入指纹、原始生成 evidence 和单镜替换确认，当前审核绑定以该已核验局部差异接续；不能称旧整片已包含修复画面。这是本轮人工核验的局部替换记录，不是新 artifact-set validator，通用自动补审/集合指纹架构仍未实施。接入前备份、四项接入校验及隔离的失效/硬门负向校验保存在 `qa/cue04-cam05-replacement-v3/`；之后用户已亲自在 Review 完成 A13 总批准与 A14 独立授权，Agent 未代点批准。
+
+当前真实 Vn 的 resolver 为 `blockingStage=null`、`nextEligibleStage=null`；A1–A14、D1–D5 已完成且 evidence 有效，D6 为 `not-applicable`，不进入 `completedStages`。用户确认本轮临时采用完整时长一致摆放：第 2 镜 10.5 秒、第 4 镜 12.5 秒，原时间线起点不动，允许 Demo 与 FCPXML 全长放置产生重叠；整片中被后镜遮住的完整动作通过单镜小样补审，不将已接受重叠冒充新的阻塞。原参考区间及调整依据保留在 cue notes，源 XML 未改。不实现 Handles、sourceIn、初始使用子区间或新 artifact-set 门禁；该架构改造推迟到本轮闭环、合并后另开分支。2026-09-03 用户明确决定本轮不回导：实际导入的可见时间线无问题，既有 `deliveryProtocolVersion = 1` 已有真实往返基线，本轮输出协议未变。因此仅将当前 Vn 的 `roundTripRequired` 从 `true` 改为 `false`，不生成 D6 通过 evidence，其他 manifest 内容原样保留。本轮按已确认适用范围完成交付验收；不能据此宣称新 D6 登记链经过本轮真实验证。后续实施初始使用子区间、改变 XML 时间表达时，需要重新执行 round-trip。迁移器目前仍无条件写入 `roundTripRequired=true`，条件适用规则与默认值的差异留待复盘，不在本次状态收尾中修改生产代码。
 
 ## 下一步
 
-下一步先澄清当前 A13 反馈中会影响最终呈现的多义描述及静态影响范围，再修改动画、替换 CAM05 并生成新 Demo 供用户复核；不自行猜测线框流动语义或印章文字。comment 自动绑定播放器时间与 cue，并由用户选择 static、motion 或二者影响范围。全部意见处理并批准当前完整 Demo 后，仍需用户另行完成 A14 授权，才按 resolver 继续 D2 原生渲染、D3 注册、D4 发布、D5 FCP 导入验收和需要的 D6 round-trip。闭环后依据实际 evidence 复盘 D-stage 边界，再完成最终验证。
+先依据本轮实际交付与用户反馈复盘 D-stage 边界，区分已验证能力、D6 本轮未执行部分及后续改造事项；再检查本轮 diff、运行合并前回归并确认提交范围。当前 `codex/workflow-stage-contract` feature branch/worktree 保持不变，commit、push、merge 需用户当轮明确授权。待用户确认合并且 main 核验妥当后，再从 main 新建分支实施已放到桌面 INBOX 的 Handles / 完整素材与初始使用窗口解耦计划及冒烟，不提前在当前分支施工。
