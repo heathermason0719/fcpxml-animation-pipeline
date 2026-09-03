@@ -17,6 +17,8 @@
 
 开始、恢复、汇报正式 invocation，或判断 stage transition 时，读取生成视图 `references/workflow-stage-contract.md`。Stage ID、正式名称和稳定职责只以 `references/workflow-stage-contract.json` 为 machine canonical；不得根据旧文档、聊天历史或记忆重新发明阶段名称。
 
+处理初始动画设计或后续 Review / 聊天反馈修改时，遵循 `SKILL.md` 的创意歧义澄清与运动默认规则；不得把澄清范围限定在 A11 首次出图，也不新增批准门。
+
 ## 文件职责
 
 - `README.md`：面向使用者的稳定项目入口；

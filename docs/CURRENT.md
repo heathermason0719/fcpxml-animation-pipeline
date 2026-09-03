@@ -51,7 +51,7 @@
 - 用户已将上述正式包实际导入 Final Cut Pro，确认时间线与导出视频均无问题；FCP 再导出的 `round-trip-AfterForge__2026-08-26_V1__00-片头.fcpxmld` 已通过语义 round-trip，六条动画身份、connected clip 精确时长与粗略位置、纯视频属性、source-only 状态、主故事线和总时长均保持有效，`deliveryProtocolVersion = 1` 的首个真实 FCP 交付基线完整成立；
 - 已实现版本化 Workflow Stage Contract：`references/workflow-stage-contract.json` 是 A1–A14 与 D1–D6 的唯一 machine canonical，Markdown 完整表由脚本确定性生成；旧 contract version 不因版本旧而自动失效，resolver 只使用当前语义兼容 evidence；
 - 已实现不保存 `currentStage` 的 `workflow_status.py`：从 layout lock、Demo/输入哈希、comment、用户批准、A14 授权、render ledger、deliveryAsset、FCPXMLD、FCP 验收和 round-trip evidence 推导活动上下文、阻塞点、下一阶段与完成集合；
-- 已实现绑定单个 Vn 的仓库级 Review：A11 cue 卡按对应旁白、锁定的主审帧/必要辅助帧、cue 级 `finalAnimationDescription`、逐帧 comment 与批准操作组织，不展示设计讨论历史；A11 出图前若用户措辞或已确认约束仍有会实质改变最终呈现的合理解释分叉，Agent 必须先用一个聚焦问题澄清，不能把低成本返工或后续 comment 当作自行选义的理由，澄清过程不写入最终动画说明；comment 保存后明确提示成功，只撤销批准证据并保留被评论的静帧，实际受审文件变化才由哈希校验判定 layout lock 失效；缺少最终动画说明、任一审核帧哈希失效或仍有开放 comment 时拒绝批准，批量批准仍保存逐 cue evidence；A13 从播放器自动绑定时间与 cue，可选持续范围，一条 comment 由用户选择 `static`、`motion` 或二者影响范围；静态范围重开受影响 A11 并向下失效，motion-only 保留有效 A11，Demo 页面上下文不被强制切走；同时保留视频级批准、独立 A14 原生渲染授权、D5 FCP 导入验收和 manifest SHA 并发保护；
+- 已实现绑定单个 Vn 的仓库级 Review：A11 cue 卡按对应旁白、锁定的主审帧/必要辅助帧、cue 级 `finalAnimationDescription`、逐帧 comment 与批准操作组织，不展示设计讨论历史；初始设计或后续 Review / 聊天反馈若仍有会实质改变最终呈现的合理解释分叉，Agent 必须在修改受影响 cue 前先用一个聚焦问题澄清，不能把已有批准、赶时间、低成本返工或后续审核当作自行选义的理由；明确结果内的实现细节不重复询问，澄清不新增批准门，过程不写入最终动画说明；comment 保存后明确提示成功，只撤销批准证据并保留被评论的静帧，实际受审文件变化才由哈希校验判定 layout lock 失效；缺少最终动画说明、任一审核帧哈希失效或仍有开放 comment 时拒绝批准，批量批准仍保存逐 cue evidence；A13 从播放器自动绑定时间与 cue，可选持续范围，一条 comment 由用户选择 `static`、`motion` 或二者影响范围；静态范围重开受影响 A11 并向下失效，motion-only 保留有效 A11，Demo 页面上下文不被强制切走；同时保留视频级批准、独立 A14 原生渲染授权、D5 FCP 导入验收和 manifest SHA 并发保护；
 - 已确认 Review shell 与项目级 canonical `frame.md`、Vn `frame.md` 快照解耦：项目视觉规范只影响被审核的动画内容；当前 shell 暂时冻结为仓库级 Review UI 基线，后续 UI/UX 调整必须显式进行，不随项目视觉规范变化；
 - 已修复 Demo 拖动与刷新：Review 媒体响应支持单段 byte Range、HEAD 与 416，并分块读取；状态和资源禁用旧缓存，刷新显示进行中、成功时间或失败原因，按 Demo 哈希识别同路径新视频，未变视频保留播放位置。当前真实 Vn 已在 Codex 内置浏览器验证正向/反向拖动、画面与 cue 同步、刷新反馈及播放位置保持；manifest 与 Demo 文件哈希未变，本次未提交 comment、批准或推进 workflow；
 - 已修复 Demo 区间控件与提交模式不一致：未启用持续范围时真正隐藏端点控件，捕获端点同时启用区间模式，提交按钮明确区分时间点/区间，缺失或倒序端点不提交；评论列表标明区间及两个端点，刷新后仍保留。新增四项客户端回归均先在旧实现失败、修复后通过；当前真实页面已验证开关、端点捕获、刷新与显示，未向真实 Vn 添加测试评论。用户确认 `A13-C0004` 起点约 11 秒、终点 14.420 秒，已在同一 comment 恢复范围，A13 evidence 保留近似起点与修正来源，原正文、其他评论和 approval 不变；
@@ -62,6 +62,8 @@
 - 已移除旧版 HyperFrames marketplace plugin，并在软件重启后确认源码安装的新版 HyperFrames 技能可用；
 - 真实 `2026-09-01_v1` 已由用户在 Review 完成 A13 整片批准和独立 A14 授权，十条 A11 comment、八条 A13 comment 均为 `accepted`。随后在 pin `0.8.26` 下完成五条原生 1920×1080、24 fps、ProRes 4444 MOV，逐条通过 alpha、精确帧数、时长、无音轨和完整解码校验；第 4 镜长素材持续播放抽检通过，原生输出抽帧与获批单镜预览对照保存在 `qa/delivery-native-20260903/verification.json` 及同目录图片。D3 注册和 D4 构建后发布根层平铺包 `AfterForge__2026-09-01_v1__d-95d8b8d34ca7d8931f3087cf3fbe84d0e06973ab85c1c95239d2325a47e62acc.fcpxmld`，包内只有 `Info.fcpxml` 与五条 MOV；源 XML 不变、媒体哈希、时间/lane、引用、sequence 不变性、FCPXML 1.14 DTD 与第二次同指纹完整复用验证通过，`deliveryProtocolVersion = 1` 未变。149 项仓库回归再次通过，HyperFrames check 为 0 错误/警告、1 条已接受镜头重叠的信息级遮挡提示，15/15 对比度检查通过；用户随后完成 D5 实际导入验收，D6 本轮按用户明确决定不要求执行（未执行，不记为通过）；
 - Git 仓库已经初始化。
+
+2026-09-03 本轮复盘的两项规则收尾已落入 `SKILL.md` 及现有文档：歧义澄清覆盖后续反馈修改；新运动默认强调可感知缓动、剪辑空间和有目的的持续运动，不固定秒数或禁止所有漂浮。真实项目 canonical `AfterForge/frame.md` 更新为 v3，仅修订运动与反馈澄清规则；已交付 `2026-09-01_v1` 的 v2 快照、manifest、批准和媒体保持不变。未改 Review/runtime/schema，也未实施第三项 Handles / 初始使用子区间改造。
 
 ## 尚未开始
 
@@ -78,4 +80,4 @@
 
 ## 下一步
 
-先依据本轮实际交付与用户反馈复盘 D-stage 边界，区分已验证能力、D6 本轮未执行部分及后续改造事项；再检查本轮 diff、运行合并前回归并确认提交范围。当前 `codex/workflow-stage-contract` feature branch/worktree 保持不变，commit、push、merge 需用户当轮明确授权。待用户确认合并且 main 核验妥当后，再从 main 新建分支实施已放到桌面 INBOX 的 Handles / 完整素材与初始使用窗口解耦计划及冒烟，不提前在当前分支施工。
+本轮交付复盘及已确认的两项规则修订已完成；下一步在用户要求时检查合并范围并完成合并前回归，D6 本轮未执行和条件默认值差异继续如实保留。当前 `codex/workflow-stage-contract` feature branch/worktree 保持不变，commit、push、merge 需用户当轮明确授权。待用户确认合并且 main 核验妥当后，再从 main 新建分支实施已放到桌面 INBOX 的 Handles / 完整素材与初始使用窗口解耦计划及冒烟，不提前在当前分支施工。

@@ -25,7 +25,7 @@ python3 scripts/build_delivery_package.py "/absolute/project/workspace/AfterForg
 
 上述 `YYYY-MM-DD_Vn` 是命令示例；版本标记同时接受大写 `V` 和小写 `v`。脚手架原样保留用户选定的拼写，并在发现仅大小写不同的既有版本时阻塞，避免跨文件系统产生版本身份碰撞。新 Vn 在创建时解析官方当前 HyperFrames 版本并立刻固定为精确 pin，也可由调用方显式指定精确版本；创建前兼容性检查失败时不发布 Vn。已有 Vn 始终使用自己的 pin，不因官方发布新版自动变化；升级必须通过显式迁移命令完成，并记录实际检查和审核 evidence 的保留、重绑或失效。
 
-前五条命令维持原有项目入口与 Vn 创建边界。A-stage 与 D-stage 的唯一机器定义见 `references/workflow-stage-contract.json`，完整可读表由它确定性生成到 `references/workflow-stage-contract.md`。仓库级 Review shell 绑定单个 Vn：Storyboard 在对应旁白和主审帧/必要辅助帧之后，直接投影 cue 级 `finalAnimationDescription`，再于当前静帧上下文记录 A11 comment 与逐 cue 批准；如果用户措辞仍支持会实质改变最终呈现的多种合理解释，Agent 会在出图前提出一个聚焦问题，澄清后才生成审核帧，不把过程写进最终动画说明。提交 comment 会撤销相应批准并保留被评论的锁定静帧作为待修改版本，只有受审文件实际变化才使 layout lock 失效。缺少最终动画说明、锁定审核帧失效或仍有开放 comment 时不能批准。Demo 从播放器自动绑定时间和 cue，一条 comment 可由用户标记为影响 static、motion 或二者；A14 独立授权仍是单独操作。所有状态写回 manifest，renderer、注册器和包构建器按 resolver 的证据链 fail closed。
+前五条命令维持原有项目入口与 Vn 创建边界。A-stage 与 D-stage 的唯一机器定义见 `references/workflow-stage-contract.json`，完整可读表由它确定性生成到 `references/workflow-stage-contract.md`。仓库级 Review shell 绑定单个 Vn：Storyboard 在对应旁白和主审帧/必要辅助帧之后，直接投影 cue 级 `finalAnimationDescription`，再于当前静帧上下文记录 A11 comment 与逐 cue 批准。初始设计或后续 Review / 聊天反馈若仍支持会实质改变最终呈现的多种合理解释，Agent 会在修改受影响 cue 前提出一个聚焦问题；明确结果内的实现细节不重复询问，澄清不新增批准门，也不把过程写进最终动画说明。提交 comment 会撤销相应批准并保留被评论的锁定静帧作为待修改版本，只有受审文件实际变化才使 layout lock 失效。缺少最终动画说明、锁定审核帧失效或仍有开放 comment 时不能批准。Demo 从播放器自动绑定时间和 cue，一条 comment 可由用户标记为影响 static、motion 或二者；A14 独立授权仍是单独操作。所有状态写回 manifest，renderer、注册器和包构建器按 resolver 的证据链 fail closed。
 
 Demo 支持直接拖动播放条。右上角“刷新”重新读取审核状态并显示成功时间或失败原因；视频未变化时保留播放位置，已登记的 Demo 哈希变化时才切换到新视频，不会把刷新当作批准或推进流程。
 
@@ -34,6 +34,8 @@ Demo 支持直接拖动播放条。右上角“刷新”重新读取审核状态
 需要规范填写动画要求时，可按需使用仓库内的 `assets/animation-script-template.docx`；它不会自动复制进项目，也不是 intake 必填材料。用户填好后自行放入当前 `user-inbox/YYYY-MM-DD_Vn/`，自由格式脚本仍然受支持。
 
 项目级 `frame.md` 和视频级运动气质为各 cue 提供默认风格；动画脚本若对单条镜头明确指定视觉或运动风格，该逐镜要求在其明确范围内优先，未指定部分仍继承项目默认。逐镜要求不会覆盖 FCPXML 时间权威、AfterForge 范围、读写边界、交付协议或渲染后端能力限制。
+
+新制作默认采用流畅、可读、缓入缓停可感知且便于后续剪辑的运动；时长与余量按镜头设计，不固定秒数或退场比例，有叙事用途的持续运动不受“不漂浮”一刀切限制。详细执行规则见 `SKILL.md`；项目默认更新不改写既有 Vn 快照与批准，也不代表已实现素材子区间摆放。
 
 当某条动画需要把两段或以上原片重新排列、回放、裁切、遮罩或组成多画面时，A7 默认要求用户提供独立且带充足余量的片段，不从粗剪中猜测精确取段与顺序。文件名使用 `01-`、`02-` 等顺序前缀，或保留 `animation-source`、“动画素材”关键词，即可与粗剪参考视频确定性分流。此类输入默认接受 1920×1080 H.264、匹配项目的恒定帧率与 Rec.709 SDR；ProRes 和 4K 只在大幅放大裁切、抠像或重度影像处理时按需索取。该规则是 cue 级素材门槛，不会把独立原片升级为全局 intake 必填项。
 
