@@ -6,6 +6,7 @@ from jsonschema import Draft202012Validator
 
 from scripts import workflow_review as review
 from scripts.serve_workflow_review import apply_review_action, review_state
+from tests.test_hyperframes_single_source import write_json
 from tests.test_workflow_review_server import ReviewVersionFixture
 
 
@@ -72,6 +73,15 @@ class ReviewSchemaConsistencyTests(ReviewVersionFixture):
         for end in (None, "14.420s"):
             with self.subTest(end=end), tempfile.TemporaryDirectory() as directory:
                 root = self.make_review_version(directory)
+                manifest_path = root / "animation-manifest.json"
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                manifest["project"]["source"]["duration"] = "360/24s"
+                manifest["cues"][0]["resolvedTimeline"] = {
+                    "start": "17/2s",
+                    "duration": "49/8s",
+                    "authority": "fcpxml",
+                }
+                write_json(manifest_path, manifest)
                 review.approve_storyboard(root, actor="user")
                 (root / "demo.mp4").write_bytes(b"test preview")
                 review.register_demo(root, "demo.mp4")

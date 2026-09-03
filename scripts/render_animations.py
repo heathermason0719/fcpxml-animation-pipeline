@@ -187,6 +187,12 @@ def render_animations(
         unknown = sorted(requested - known)
         if unknown:
             raise ValueError(f"unknown or source-only cue ids: {', '.join(unknown)}")
+        if requested != known:
+            missing = sorted(known - requested)
+            raise ValueError(
+                "formal native rendering requires the complete animated cue set; "
+                f"missing: {', '.join(missing)}"
+            )
         jobs = [job for job in jobs if job.cue_id in requested]
     with manifest_commit(root):
         gate = _assert_final_render_ready(root, jobs)
@@ -237,9 +243,28 @@ def render_animations(
             **gate,
             "items": rendered,
         }
-        for job in jobs:
-            os.replace(partial_root / job.output_name, output_root / job.output_name)
-        _write_json_atomic(root / "delivery/render-ledger.json", ledger)
+        staged_ledger = partial_root / "render-ledger.json"
+        _write_json_atomic(staged_ledger, ledger)
+        published: list[tuple[Path, Path]] = []
+        try:
+            for job in jobs:
+                staged_movie = partial_root / job.output_name
+                official_movie = output_root / job.output_name
+                os.replace(staged_movie, official_movie)
+                published.append((staged_movie, official_movie))
+            os.replace(staged_ledger, root / "delivery/render-ledger.json")
+        except BaseException as publication_error:
+            rollback_errors: list[OSError] = []
+            for staged_movie, official_movie in reversed(published):
+                try:
+                    os.replace(official_movie, staged_movie)
+                except OSError as rollback_error:
+                    rollback_errors.append(rollback_error)
+            if rollback_errors:
+                raise RuntimeError(
+                    "delivery publication failed and official movie rollback was incomplete"
+                ) from publication_error
+            raise
     return ledger
 
 

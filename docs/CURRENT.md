@@ -19,7 +19,7 @@
 - 已在同一真实项目中执行一次性 AfterForge 项目初始化：既有 `AfterForge/` 与 `user-inbox/` 原样复用，只在 `AfterForge/` 根层创建缺失的项目级 `AGENTS.md` 和 `CLAUDE.md`，未创建 canonical `frame.md` 或 Vn；
 - 用户工作目录初始化已在一个真实项目根目录完成验证：首次返回 `created`，重复运行返回 `existing`，目录内未生成其他内容；
 - 入口能以 `ready`/`blocked`、blocker、warning、ambiguity 和最小问题清单表达是否具备后续分析条件；
-- 当前可靠行为已通过 199 个自动化测试（含使用 Node.js 执行实际 Review 页面脚本、跨进程并发、Schema 和交付提交边界的行为回归），并完成 Skill 流程对照场景验证；
+- 当前可靠行为已通过 209 个自动化测试（含使用 Node.js 执行实际 Review 页面脚本、跨进程并发、Schema 和交付提交边界的行为回归），并完成 Skill 流程对照场景验证；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-25_V2` 执行 `--flat` intake：唯一选择 `P1-sence-01-粗剪.fcpxmld` 和 `P1-sence-01 粗剪.m4v`，识别 `P1-sence-01 脚本.docx` 为旁白证据，结果为 `ready`，无 blocker、warning 或 ambiguity；
 - intake 已新增 `materials.animation_guidance`，用于独立保留用户主动提供的动画脚本或逐镜要求；存在 SRT 时不再因旁白来源已经成立而丢弃动画脚本，脚本内时码仍不具备 FCPXML 时间权威；
 - 已冻结 A7 动画脚本可执行性审核：intake 仍只发现并保留可选脚本，A7 才对照口播、原画、FCPXML、产品范围和当前后端给相关 cue 写入可选 `guidanceReview`；审核不新增独立报告或用户验收，不改变 intake 状态，只有真实方向分叉或受影响 cue 无法可靠继续时才询问；
@@ -51,7 +51,7 @@
 - 用户已将上述正式包实际导入 Final Cut Pro，确认时间线与导出视频均无问题；FCP 再导出的 `round-trip-AfterForge__2026-08-26_V1__00-片头.fcpxmld` 已通过语义 round-trip，六条动画身份、connected clip 精确时长与粗略位置、纯视频属性、source-only 状态、主故事线和总时长均保持有效，`deliveryProtocolVersion = 1` 的首个真实 FCP 交付基线完整成立；
 - 已实现版本化 Workflow Stage Contract：`references/workflow-stage-contract.json` 是 A1–A14 与 D1–D6 的唯一 machine canonical，Markdown 完整表由脚本确定性生成；旧 contract version 不因版本旧而自动失效，resolver 只使用当前语义兼容 evidence；
 - 已实现不保存 `currentStage` 的 `workflow_status.py`：从 layout lock、Demo/输入哈希、comment、用户批准、A14 授权、render ledger、deliveryAsset、FCPXMLD、FCP 验收和 round-trip evidence 推导活动上下文、阻塞点、下一阶段与完成集合；
-- 已实现绑定单个 Vn 的仓库级 Review：A11 cue 卡按对应旁白、锁定的主审帧/必要辅助帧、cue 级 `finalAnimationDescription`、逐帧 comment 与批准操作组织，不展示设计讨论历史；初始设计或后续 Review / 聊天反馈若仍有会实质改变最终呈现的合理解释分叉，Agent 必须在修改受影响 cue 前先用一个聚焦问题澄清，不能把已有批准、赶时间、低成本返工或后续审核当作自行选义的理由；明确结果内的实现细节不重复询问，澄清不新增批准门，过程不写入最终动画说明；comment 保存后明确提示成功，只撤销批准证据并保留被评论的静帧，实际受审文件变化才由哈希校验判定 layout lock 失效；缺少最终动画说明、任一审核帧哈希失效或仍有开放 comment 时拒绝批准，批量批准仍保存逐 cue evidence；A13 从播放器自动绑定时间与 cue，可选持续范围，一条 comment 由用户选择 `static`、`motion` 或二者影响范围；静态范围重开受影响 A11 并向下失效，motion-only 保留有效 A11，Demo 页面上下文不被强制切走；同时保留视频级批准、独立 A14 原生渲染授权、D5 FCP 导入验收和 manifest SHA 并发保护；
+- 已实现绑定单个 Vn 的仓库级 Review：A11 cue 卡按对应旁白、锁定的主审帧/必要辅助帧、cue 级 `finalAnimationDescription`、逐帧 comment 与批准操作组织，不展示设计讨论历史；初始设计或后续 Review / 聊天反馈若仍有会实质改变最终呈现的合理解释分叉，Agent 必须在修改受影响 cue 前先用一个聚焦问题澄清，不能把已有批准、赶时间、低成本返工或后续审核当作自行选义的理由；明确结果内的实现细节不重复询问，澄清不新增批准门，过程不写入最终动画说明；comment 保存后明确提示成功，只撤销批准证据并保留被评论的静帧，实际受审文件变化才由哈希校验判定 layout lock 失效；缺少最终动画说明、任一审核帧哈希失效或仍有开放 comment 时拒绝批准，批量批准仍保存逐 cue evidence；A13 从播放器自动绑定时间，可选持续范围；当前时刻只有一个 active cue 时 UI 与服务端都会确定性关联，存在多个重叠 cue 时显示全部候选且不预选，用户明确选择前禁止提交；一条 comment 由用户选择 `static`、`motion` 或二者影响范围；静态范围重开受影响 A11 并向下失效，motion-only 保留有效 A11，Demo 页面上下文不被强制切走；同时保留视频级批准、独立 A14 原生渲染授权、D5 FCP 导入验收和 manifest SHA 并发保护；
 - 已确认 Review shell 与项目级 canonical `frame.md`、Vn `frame.md` 快照解耦：项目视觉规范只影响被审核的动画内容；当前 shell 暂时冻结为仓库级 Review UI 基线，后续 UI/UX 调整必须显式进行，不随项目视觉规范变化；
 - 已修复 Demo 拖动与刷新：Review 媒体响应支持单段 byte Range、HEAD 与 416，并分块读取；状态和资源禁用旧缓存，刷新显示进行中、成功时间或失败原因，按 Demo 哈希识别同路径新视频，未变视频保留播放位置。当前真实 Vn 已在 Codex 内置浏览器验证正向/反向拖动、画面与 cue 同步、刷新反馈及播放位置保持；manifest 与 Demo 文件哈希未变，本次未提交 comment、批准或推进 workflow；
 - 已修复 Demo 区间控件与提交模式不一致：未启用持续范围时真正隐藏端点控件，捕获端点同时启用区间模式，提交按钮明确区分时间点/区间，缺失或倒序端点不提交；评论列表标明区间及两个端点，刷新后仍保留。新增四项客户端回归均先在旧实现失败、修复后通过；当前真实页面已验证开关、端点捕获、刷新与显示，未向真实 Vn 添加测试评论。用户确认 `A13-C0004` 起点约 11 秒、终点 14.420 秒，已在同一 comment 恢复范围，A13 evidence 保留近似起点与修正来源，原正文、其他评论和 approval 不变；
@@ -82,9 +82,11 @@
 
 当前 feature worktree 已落实五项修复：版本化执行输入指纹、HTTP/CLI/迁移共用写入隔离与冲突草稿保护、逐 cue 统一批准 predicate、D3 门禁下的交付包幂等复用、正常 Review 全量 Schema 校验。实现细节集中在 `docs/ARCHITECTURE.md`，安装入口见 README；`requirements.txt` 中的 `jsonschema` 为必需依赖，`PyYAML` 用于 Skill 校验。仅在当前 worktree 建立隔离 `.venv`，未安装到全局环境。
 
+追加的合并前硬化已覆盖五个边界：正式 D2 只能发布完整 animated cue 集，ledger 最后安装且普通发布异常会退回已移动 MOV；D4 resolver 要求包根成员精确等于 `Info.fcpxml` 与声明的 MOV，拒绝额外成员、目录和 symlink；D6 将再导出 connected clip 的全局起点与时长同已交付 XML 作精确有理数比较；A13 在重叠时展示全部 active cue、不预选并要求用户明确选择，唯一候选则由 UI 与服务端共同确定性绑定；旧 `layout_lock.py approve` 假成功入口已从公开 CLI 撤下，A11 用户批准只经 Review 写入正式 evidence。以上行为均有旧实现先失败、修复后通过的回归测试；没有引入 Handles、sourceIn 或初始使用子区间。
+
 只读复核真实 `2026-09-01_v1`：运行 pin 仍为 `0.8.26`，无 blocker，D6 仍为不适用；原 A12/A13/A14/D2 按冻结的输入指纹 v1 显示为 `compatible-historical`，不自动重开已完成交付。上文 `d95628...` 是已交付历史 v1 指纹，不是新算法的当前执行指纹。另确认旧 UI 留下 7 条小数格式的 A13 `timeStart`，不符合 canonical rationalTime Schema；本轮不改真实 manifest，也不把这项历史格式问题当成新写入通过证据。普通 Review 不静默修复旧记录，若未来重新开启该 Vn 的写入，须先显式治理旧数据。新播放器点/区间评论已精确规范化为有理数并覆盖实际 HTTP payload 回归。
 
-本轮最终全套 199 项测试通过，Skill 校验、Stage Contract 生成视图检查和 `git diff --check` 通过。验证入口（首次环境设置须按 README 安装依赖）：
+本轮最终全套 209 项测试通过，Skill 校验、Stage Contract 生成视图检查和 `git diff --check` 通过。验证入口（首次环境设置须按 README 安装依赖）：
 
 ```bash
 .venv/bin/python -B -m unittest discover -s tests -v
@@ -97,4 +99,4 @@ git diff --check
 
 ## 下一步
 
-本轮交付复盘及两项规则修订已完成，合并前五项修复已在当前 `codex/workflow-stage-contract` feature branch 保存并推送，worktree 继续保留；不重开已收工的脚本。D6 本轮未执行、条件默认值差异与历史数据格式限制继续如实保留。尚未 merge、rebase 或修改 main。待用户确认合并且 main 核验妥当后，再从 main 新建分支实施已放到桌面 INBOX 的 Handles / 完整素材与初始使用窗口解耦计划及冒烟，不提前在当前分支施工。
+本轮交付复盘及两项规则修订已完成，先前合并前五项修复已经在 `codex/workflow-stage-contract` feature branch 保存并推送；本次追加硬化仍只存在于同一 feature worktree，尚未 commit 或 push，也未 merge、rebase 或修改 main。D6 本轮未执行、条件默认值差异与历史数据格式限制继续如实保留；不重开已收工的脚本。待追加修复完成最终核验并由用户另行授权 Git 操作后，再决定是否合并；main 核验妥当后才从 main 新建分支实施已放到桌面 INBOX 的 Handles / 完整素材与初始使用窗口解耦计划及冒烟，不提前在当前分支施工。

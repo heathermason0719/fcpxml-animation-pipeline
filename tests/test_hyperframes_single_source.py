@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -272,6 +274,17 @@ class DeliveryProjectionTests(SingleSourceFixture):
 
 
 class LayoutLockTests(SingleSourceFixture):
+    def test_cli_does_not_offer_legacy_a11_approval(self) -> None:
+        script = Path(__file__).resolve().parents[1] / "scripts/layout_lock.py"
+        result = subprocess.run(
+            [sys.executable, str(script), "--help"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertNotIn("approve", result.stdout)
+
     def test_freeze_and_verify_cover_all_storyboard_review_frames(self) -> None:
         self.assertIsNotNone(sync_storyboard, "sync_storyboard implementation is missing")
         self.assertIsNotNone(freeze_layout, "layout_lock implementation is missing")

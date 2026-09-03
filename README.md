@@ -33,13 +33,13 @@ python3 scripts/build_delivery_package.py "/absolute/project/workspace/AfterForg
 
 上述 `YYYY-MM-DD_Vn` 是命令示例；版本标记同时接受大写 `V` 和小写 `v`。脚手架原样保留用户选定的拼写，并在发现仅大小写不同的既有版本时阻塞，避免跨文件系统产生版本身份碰撞。新 Vn 在创建时解析官方当前 HyperFrames 版本并立刻固定为精确 pin，也可由调用方显式指定精确版本；创建前兼容性检查失败时不发布 Vn。已有 Vn 始终使用自己的 pin，不因官方发布新版自动变化；升级必须通过显式迁移命令完成，并记录实际检查和审核 evidence 的保留、重绑或失效。
 
-前五条命令维持原有项目入口与 Vn 创建边界。A-stage 与 D-stage 的唯一机器定义见 `references/workflow-stage-contract.json`，完整可读表由它确定性生成到 `references/workflow-stage-contract.md`。仓库级 Review shell 绑定单个 Vn：Storyboard 在对应旁白和主审帧/必要辅助帧之后，直接投影 cue 级 `finalAnimationDescription`，再于当前静帧上下文记录 A11 comment 与逐 cue 批准。初始设计或后续 Review / 聊天反馈若仍支持会实质改变最终呈现的多种合理解释，Agent 会在修改受影响 cue 前提出一个聚焦问题；明确结果内的实现细节不重复询问，澄清不新增批准门，也不把过程写进最终动画说明。提交 comment 会撤销相应批准并保留被评论的锁定静帧作为待修改版本，只有受审文件实际变化才使 layout lock 失效。缺少最终动画说明、锁定审核帧失效或仍有开放 comment 时不能批准。Demo 从播放器自动绑定时间和 cue，一条 comment 可由用户标记为影响 static、motion 或二者；A14 独立授权仍是单独操作。所有状态写回 manifest，renderer、注册器和包构建器按 resolver 的证据链 fail closed。
+前五条命令维持原有项目入口与 Vn 创建边界。A-stage 与 D-stage 的唯一机器定义见 `references/workflow-stage-contract.json`，完整可读表由它确定性生成到 `references/workflow-stage-contract.md`。仓库级 Review shell 绑定单个 Vn：Storyboard 在对应旁白和主审帧/必要辅助帧之后，直接投影 cue 级 `finalAnimationDescription`，再于当前静帧上下文记录 A11 comment 与逐 cue 批准。初始设计或后续 Review / 聊天反馈若仍支持会实质改变最终呈现的多种合理解释，Agent 会在修改受影响 cue 前提出一个聚焦问题；明确结果内的实现细节不重复询问，澄清不新增批准门，也不把过程写进最终动画说明。提交 comment 会撤销相应批准并保留被评论的锁定静帧作为待修改版本，只有受审文件实际变化才使 layout lock 失效。缺少最终动画说明、锁定审核帧失效或仍有开放 comment 时不能批准。Demo 自动绑定播放器时间；该时刻只有一个 active cue 时自动关联，存在多个重叠 cue 时列出全部候选且不预选，必须由用户明确选择后才能提交。一条 comment 可由用户标记为影响 static、motion 或二者；A14 独立授权仍是单独操作。所有状态写回 manifest，renderer、注册器和包构建器按 resolver 的证据链 fail closed。
 
 Demo 支持直接拖动播放条。右上角“刷新”重新读取审核状态并显示成功时间或失败原因；视频未变化时保留播放位置，已登记的 Demo 哈希变化时才切换到新视频，不会把刷新当作批准或推进流程。
 
 并发冲突或网络失败后，当前页面会话保留未提交的静帧与 Demo 草稿；刷新若发现审核对象已变化，需要用户确认重新绑定，不能把旧意见静默挂到新画面。此处不保证关闭页面或浏览器整页重载后的草稿恢复。旧逐镜批准失效后，只要当前静帧、说明和 comment 满足门槛即可重新批准；未受影响镜头的批准继续保留。
 
-当前执行输入使用 `inputFingerprintVersion=2`，覆盖动画时间位置、时长、叠层顺序和精确帧率等语义。它不是 HyperFrames 版本号。旧指纹按原语义保留历史事实，但新的审核授权或生产写入须重新建立当前输入证据；已完成的旧 Vn 不会被自动重开。同指纹交付包通过完整验证且已登记时，只读复用，不覆盖既有 FCP 验收或 round-trip 状态。
+当前执行输入使用 `inputFingerprintVersion=2`，覆盖动画时间位置、时长、叠层顺序和精确帧率等语义。它不是 HyperFrames 版本号。旧指纹按原语义保留历史事实；新的 A13/A14 写入以及 D2–D4 生产写入须重新建立当前输入证据，A11 仍由逐 cue layout lock 与批准 predicate 约束。已完成的旧 Vn 不会被自动重开。同指纹交付包通过完整验证且已登记时，只读复用，不覆盖既有 FCP 验收或 round-trip 状态。
 
 每条动画的正式 DOM/CSS 只存在于 `compositions/cues/`，运动位于 `compositions/motion/`；`compositions/review/`、`compositions/delivery/`、`STORYBOARD.md` 和 `index.html` 均为生成视图。交付包不会直接修改 Final Cut Pro Library；首次导入后，可将 FCP 再导出的 XML 交给 `compare_fcpxml_roundtrip.py` 与原交付 XML 做语义回归。当前仍不会自动完成初始内容理解或语音转写。
 

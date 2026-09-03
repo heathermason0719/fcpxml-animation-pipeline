@@ -297,8 +297,6 @@ def main() -> int:
     )
     verify = subparsers.add_parser("verify")
     verify.add_argument("version_root", type=Path)
-    approve = subparsers.add_parser("approve")
-    approve.add_argument("version_root", type=Path)
     args = parser.parse_args()
     try:
         if args.command == "freeze":
@@ -318,8 +316,6 @@ def main() -> int:
             )
         elif args.command == "verify":
             result = verify_layouts(args.version_root)
-        else:
-            result = approve_a11(args.version_root)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
         print(json.dumps({"status": "blocked", "error": str(error)}, ensure_ascii=False, indent=2))
         return 2

@@ -180,10 +180,11 @@ def compare_roundtrip(
         raise ValueError("manifest animated cues must all have deliveryAsset")
     cue_ids = {cue["id"] for cue in animated}
     expected_names = {f"AF__{cue_id}" for cue_id in cue_ids}
+    delivered_spine = delivered_sequence.find("spine")
     spine = reexported_sequence.find("spine")
     resources = reexported_root.find("resources")
-    if spine is None or resources is None:
-        raise ValueError("re-exported FCPXML lacks resources or spine")
+    if delivered_spine is None or spine is None or resources is None:
+        raise ValueError("round-trip FCPXML lacks resources or spine")
 
     all_afterforge_names = {
         item.get("name")
@@ -198,6 +199,9 @@ def compare_roundtrip(
     intervals = _global_afterforge_intervals(spine, expected_names)
     if set(intervals) != expected_names:
         raise ValueError("round-trip animation placement set changed")
+    delivered_intervals = _global_afterforge_intervals(delivered_spine, expected_names)
+    if set(delivered_intervals) != expected_names:
+        raise ValueError("delivered animation placement set changed")
 
     for cue in animated:
         cue_id = cue["id"]
@@ -221,6 +225,11 @@ def compare_roundtrip(
         if anchor.get("srcEnable") not in {None, "all", "video"}:
             raise ValueError(f"round-trip animation source enable is invalid: {cue_id}")
         interval = intervals[anchor_name]
+        delivered_interval = delivered_intervals[anchor_name]
+        if interval.start != delivered_interval.start:
+            raise ValueError(f"round-trip animation connected clip position changed: {cue_id}")
+        if interval.duration != delivered_interval.duration:
+            raise ValueError(f"round-trip animation connected clip duration changed: {cue_id}")
         if interval.duration != parse_time(asset["duration"]):
             raise ValueError(f"round-trip animation connected clip duration changed: {cue_id}")
         semantic_start = parse_time(cue["resolvedTimeline"]["start"])

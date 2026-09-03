@@ -161,6 +161,38 @@ async function run() {
     player.currentTime = 10; get('captureEnd').onclick();
     await submit();
     assert.equal(requests.length, before, 'reversed endpoints must not be submitted');
+  } else if (scenario === 'overlap-requires-cue-selection') {
+    get('demoBody').value = '';
+    const overlapping = structuredClone(initial);
+    overlapping.cues.push({
+      ...structuredClone(initial.cues[0]),
+      id: 'cue-03', shotNumber: 3,
+      resolvedTimeline: {start: '9s', duration: '3s'},
+    });
+    respond = async () => ({ok: true, json: async () => overlapping});
+    await get('refresh').onclick();
+    player.currentTime = 10;
+    get('demo').ontimeupdate();
+    get('demoBody').value = '重叠画面里的明确意见';
+
+    assert.match(get('currentCue').textContent, /2 个 cue/);
+    assert.equal(get('cueChoice').hidden, false);
+    const choices = buttonsOf(get('cueOptions'));
+    assert.deepEqual(choices.map(button => button.textContent), ['第 2 镜 · cue-02', '第 3 镜 · cue-03']);
+    assert.equal(choices.some(button => button.classes.has('active')), false, 'overlap must not preselect a cue');
+    assert.equal(get('submitDemoComment').disabled, true);
+    const before = actionRequests().length;
+    await submit();
+    assert.equal(actionRequests().length, before, 'overlap must not submit before explicit cue selection');
+
+    await choices[1].dispatch('click');
+    assert.equal(choices[1].classes.has('active'), true);
+    assert.equal(get('submitDemoComment').disabled, false);
+    respond = async () => actionResponse();
+    await submit();
+    const payload = JSON.parse(actionRequests().at(-1).options.body);
+    assert.equal(payload.timeStart, '10.000s');
+    assert.equal(payload.cueId, 'cue-03');
   } else if (scenario === 'approval-current-stale') {
     const stale = structuredClone(initial.cues[0]);
     stale.approvalStatus = 'stale';

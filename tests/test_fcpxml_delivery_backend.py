@@ -627,6 +627,53 @@ class DeliveryPackageTests(unittest.TestCase):
             self.assertEqual(validation["status"], "valid")
             self.assertEqual(validation["animatedCueIds"], ["p1s01_c01_title", "p1s01_c02_card"])
 
+    def test_d4_resolver_rejects_unsafe_or_nonflat_package_structure(self) -> None:
+        from scripts.workflow_status import resolve_stage_status
+
+        for mutation in (
+            "package-symlink",
+            "extra-file",
+            "extra-directory",
+            "extra-symlink",
+            "info-symlink",
+            "movie-symlink",
+        ):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                root, _, _ = self.make_package_version(directory)
+                published = build_delivery_package(root)
+                package = Path(published["packagePath"])
+
+                if mutation == "package-symlink":
+                    real_package = package.with_name(f"{package.name}.real")
+                    package.rename(real_package)
+                    package.symlink_to(real_package, target_is_directory=True)
+                elif mutation == "extra-file":
+                    (package / "unexpected.txt").write_text("unexpected", encoding="utf-8")
+                elif mutation == "extra-directory":
+                    (package / "unexpected").mkdir()
+                elif mutation == "extra-symlink":
+                    (package / "unexpected-link").symlink_to(package / "Info.fcpxml")
+                elif mutation == "info-symlink":
+                    info = package / "Info.fcpxml"
+                    external_info = root / "linked-Info.fcpxml"
+                    external_info.write_bytes(info.read_bytes())
+                    info.unlink()
+                    info.symlink_to(external_info)
+                elif mutation == "movie-symlink":
+                    manifest = json.loads((root / "animation-manifest.json").read_text(encoding="utf-8"))
+                    file_name = manifest["cues"][0]["deliveryAsset"]["fileName"]
+                    movie = package / file_name
+                    external_movie = root / "linked-movie.mov"
+                    external_movie.write_bytes(movie.read_bytes())
+                    movie.unlink()
+                    movie.symlink_to(external_movie)
+
+                status = resolve_stage_status(root)
+
+                self.assertEqual(status["blockingStage"], "D4")
+                self.assertNotIn("D4", status["completedStages"])
+                self.assertEqual(status["evidence"]["D4"], "package-invalid")
+
     def test_corrupt_existing_same_fingerprint_package_blocks_without_overwrite(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root, _, _ = self.make_package_version(directory)
@@ -1060,6 +1107,43 @@ class RoundTripTests(unittest.TestCase):
 
             self.assertEqual(result["status"], "valid")
             self.assertEqual(result["animatedCueIds"], ["p1s01_c01_title", "p1s01_c02_card"])
+
+    def test_rejects_connected_clip_global_start_or_duration_drift(self) -> None:
+        mutations = {
+            "global start": lambda anchor: anchor.set("offset", "411/4s"),
+            "duration": lambda anchor: anchor.set("duration", "3/2s"),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                delivered, reexported, manifest = self.make_roundtrip_fixture(directory)
+                root = ET.parse(reexported).getroot()
+                anchor = next(
+                    item
+                    for item in root.findall(".//spine/clip/asset-clip")
+                    if item.get("name") == "AF__p1s01_c01_title"
+                )
+                mutate(anchor)
+                ET.ElementTree(root).write(reexported, encoding="utf-8", xml_declaration=True)
+
+                with self.assertRaisesRegex(ValueError, "connected clip (?:position|duration) changed"):
+                    compare_roundtrip(delivered, reexported, manifest)
+
+    def test_accepts_equivalent_rational_connected_clip_placement(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            delivered, reexported, manifest = self.make_roundtrip_fixture(directory)
+            root = ET.parse(reexported).getroot()
+            anchor = next(
+                item
+                for item in root.findall(".//spine/clip/asset-clip")
+                if item.get("name") == "AF__p1s01_c01_title"
+            )
+            anchor.set("offset", "410/4s")
+            anchor.set("duration", "4/2s")
+            ET.ElementTree(root).write(reexported, encoding="utf-8", xml_declaration=True)
+
+            result = compare_roundtrip(delivered, reexported, manifest)
+
+            self.assertEqual(result["status"], "valid")
 
     def test_rejects_missing_cue_audio_wrong_media_position_duration_and_source_story(self) -> None:
         mutations = {

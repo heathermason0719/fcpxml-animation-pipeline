@@ -110,6 +110,114 @@ class RenderPlanningTests(SingleSourceFixture):
             self.assertEqual(len(ledger["inputFingerprint"]), 64)
             self.assertEqual(len(ledger["items"][0]["sha256"]), 64)
 
+    def test_formal_render_rejects_a_cue_subset_before_any_delivery_write(self) -> None:
+        from scripts.workflow_status import resolve_stage_status
+        from tests.test_fcpxml_delivery_backend import DeliveryPackageTests, valid_asset_probe
+        from tests.test_hyperframes_single_source import write_json
+
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, movies = DeliveryPackageTests().make_package_version(directory)
+            manifest_path = root / "animation-manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            for stage_id in ("D3", "D4"):
+                manifest["workflow"]["stageEvidence"].pop(stage_id, None)
+            write_json(manifest_path, manifest)
+            (root / "delivery/render-ledger.json").unlink()
+            for movie in movies.values():
+                movie.unlink()
+            self.assertEqual(resolve_stage_status(root)["nextEligibleStage"], "D2")
+
+            delivery_root = root / "delivery"
+            before_manifest = manifest_path.read_bytes()
+            before_files = {
+                str(path.relative_to(delivery_root)): path.read_bytes()
+                for path in delivery_root.rglob("*")
+                if path.is_file()
+            }
+            before_directories = {
+                str(path.relative_to(delivery_root))
+                for path in delivery_root.rglob("*")
+                if path.is_dir()
+            }
+            runner_calls = 0
+
+            def runner(command, **kwargs):
+                nonlocal runner_calls
+                runner_calls += 1
+                output = Path(command[command.index("--output") + 1])
+                output.write_bytes(b"must not be rendered")
+
+            with self.assertRaisesRegex(ValueError, "complete animated cue set"):
+                render_animations(
+                    root,
+                    ["p1s01_c01_title"],
+                    runner=runner,
+                    prober=lambda _: valid_asset_probe(),
+                )
+
+            self.assertEqual(runner_calls, 0)
+            self.assertEqual(manifest_path.read_bytes(), before_manifest)
+            self.assertEqual(
+                {
+                    str(path.relative_to(delivery_root)): path.read_bytes()
+                    for path in delivery_root.rglob("*")
+                    if path.is_file()
+                },
+                before_files,
+            )
+            self.assertEqual(
+                {
+                    str(path.relative_to(delivery_root))
+                    for path in delivery_root.rglob("*")
+                    if path.is_dir()
+                },
+                before_directories,
+            )
+
+    def test_ledger_publication_failure_rolls_back_official_movie_and_allows_retry(self) -> None:
+        from unittest.mock import patch
+
+        from scripts import render_animations as renderer
+        from tests.test_fcpxml_delivery_backend import valid_asset_probe
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_locked_version(directory)
+            self.authorize(root)
+
+            def runner(command, **kwargs):
+                output = Path(command[command.index("--output") + 1])
+                output.parent.mkdir(parents=True, exist_ok=True)
+                output.write_bytes(b"native transparent movie")
+
+            official = root / "delivery/prores4444/p1s01-c01-title.mov"
+            ledger = (root / "delivery/render-ledger.json").resolve()
+            real_replace = renderer.os.replace
+
+            def fail_official_ledger(source, destination):
+                if Path(destination).resolve() == ledger:
+                    raise OSError("controlled ledger publication failure")
+                return real_replace(source, destination)
+
+            with patch.object(renderer.os, "replace", side_effect=fail_official_ledger):
+                with self.assertRaisesRegex(OSError, "controlled ledger publication failure"):
+                    renderer.render_animations(
+                        root,
+                        runner=runner,
+                        prober=lambda _: valid_asset_probe(),
+                    )
+
+            self.assertFalse(official.exists())
+            self.assertFalse(ledger.exists())
+
+            result = renderer.render_animations(
+                root,
+                runner=runner,
+                prober=lambda _: valid_asset_probe(),
+            )
+            self.assertEqual(result["status"], "rendered")
+            self.assertEqual(official.read_bytes(), b"native transparent movie")
+            self.assertTrue(ledger.is_file())
+
     def test_inputs_or_review_changed_during_render_cannot_publish_movie_or_ledger(self):
         from scripts.workflow_review import add_review_comment
 

@@ -373,6 +373,26 @@ class WorkflowReviewServerTests(ReviewVersionFixture):
             self.assertEqual(comment["timeEnd"], "3/2s")
             self.assertEqual(refreshed["demo"]["comments"], [comment])
 
+    def test_demo_action_auto_binds_the_only_active_cue_server_side(self) -> None:
+        from scripts.serve_workflow_review import apply_review_action, review_state
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_review_version(directory)
+            state = review_state(root)
+
+            comment = apply_review_action(
+                root,
+                "add-demo-comment",
+                {
+                    "manifestSha256": state["manifestSha256"],
+                    "impactScopes": ["motion"],
+                    "timeStart": "1s",
+                    "body": "服务端也必须确定性绑定唯一候选",
+                },
+            )["result"]
+
+            self.assertEqual(comment["cueId"], "p1s01_c01_title")
+
     def test_demo_action_requires_the_player_time_context(self) -> None:
         from scripts.serve_workflow_review import apply_review_action, review_state
 
@@ -388,6 +408,69 @@ class WorkflowReviewServerTests(ReviewVersionFixture):
                         "manifestSha256": state["manifestSha256"],
                         "impactScopes": ["motion"],
                         "body": "运动问题必须绑定播放器时间",
+                    },
+                )
+
+    def test_demo_overlap_requires_an_explicit_active_cue_selection(self) -> None:
+        from scripts.serve_workflow_review import apply_review_action, review_state
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_review_version(directory)
+            manifest_path = root / "animation-manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            second = json.loads(json.dumps(manifest["cues"][0]))
+            second["id"] = "p1s01_c02_overlap"
+            second["resolvedTimeline"] = {
+                "start": "3/2s",
+                "duration": "1s",
+                "authority": "fcpxml",
+            }
+            manifest["cues"].append(second)
+            write_json(manifest_path, manifest)
+            state = review_state(root)
+
+            with self.assertRaisesRegex(ValueError, "overlapping.*select.*cue"):
+                apply_review_action(
+                    root,
+                    "add-demo-comment",
+                    {
+                        "manifestSha256": state["manifestSha256"],
+                        "impactScopes": ["motion"],
+                        "timeStart": "7/4s",
+                        "body": "必须先明确评论的是哪一镜",
+                    },
+                )
+
+            saved = apply_review_action(
+                root,
+                "add-demo-comment",
+                {
+                    "manifestSha256": state["manifestSha256"],
+                    "impactScopes": ["motion"],
+                    "cueId": "p1s01_c02_overlap",
+                    "timeStart": "7/4s",
+                    "body": "这条明确属于上层镜头",
+                },
+            )["result"]
+            self.assertEqual(saved["cueId"], "p1s01_c02_overlap")
+
+    def test_demo_rejects_a_cue_that_is_not_active_at_the_comment_time(self) -> None:
+        from scripts.serve_workflow_review import apply_review_action, review_state
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = self.make_review_version(directory)
+            state = review_state(root)
+
+            with self.assertRaisesRegex(ValueError, "not active.*comment time"):
+                apply_review_action(
+                    root,
+                    "add-demo-comment",
+                    {
+                        "manifestSha256": state["manifestSha256"],
+                        "impactScopes": ["motion"],
+                        "cueId": "p1s01_c01_title",
+                        "timeStart": "9s",
+                        "body": "不能把九秒处的意见绑定给早已结束的镜头",
                     },
                 )
 
@@ -542,6 +625,9 @@ class ReviewClientTests(unittest.TestCase):
 
     def test_incomplete_or_reversed_range_does_not_submit(self) -> None:
         self.run_client("range-incomplete")
+
+    def test_overlapping_demo_cues_require_explicit_user_selection(self) -> None:
+        self.run_client("overlap-requires-cue-selection")
 
     def test_only_current_approvals_disable_single_and_bulk_buttons(self) -> None:
         self.run_client("approval-current-stale")

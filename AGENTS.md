@@ -70,7 +70,6 @@ python3 scripts/init_afterforge_project.py "/absolute/project/workspace"
 python3 scripts/intake_project.py --flat "/absolute/project/workspace/user-inbox/YYYY-MM-DD_Vn"
 python3 scripts/scaffold_hyperframes.py "/absolute/project/workspace" "YYYY-MM-DD_Vn"
 python3 scripts/sync_storyboard.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
-python3 scripts/layout_lock.py approve "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/layout_lock.py verify "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/assemble_hyperframes.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/sync_delivery.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
@@ -88,7 +87,7 @@ python3 scripts/compare_fcpxml_roundtrip.py "/absolute/project/workspace/AfterFo
 python3 scripts/sync_workflow_stage_contract.py --check
 ```
 
-前三条初始化命令会在各自严格边界内创建缺失目录或文件；`intake_project.py` 是只读检查。命令示例中的版本名使用大写 `V`，但 `scaffold_hyperframes.py` 同时接受小写 `v`，并原样保留用户选定的拼写；若发现仅大小写不同的既有版本则阻塞。脚手架只在 canonical `frame.md` 已存在且目标 Vn 不存在时创建隔离版本工程，在创建瞬间解析或接受一个精确 HyperFrames 版本、于临时目录检查后 pin，失败时不得留下半成品或修改项目级文件。已有 Vn 不随 latest 自动漂移；`migrate_hyperframes_runtime.py` 是唯一正式版本迁移入口，并记录具体兼容性检查与审核 evidence disposition。Stage Contract 迁移显式作用于单个 legacy Vn，保留旧审核记录但不继承用户批准；resolver 从证据推导上下文、阻塞点、下一可执行阶段和完成集合，不维护 `currentStage`。单 Vn Review 负责 A11/A13 comment、批准和 A14 授权。原生渲染、注册、包发布、FCP 验收与 round-trip 依次形成 D2–D6 证据链；详细布局协议见 `references/hyperframes-single-source.md`，FCPXML 交付协议见 `docs/ARCHITECTURE.md`。
+前三条初始化命令会在各自严格边界内创建缺失目录或文件；`intake_project.py` 是只读检查。命令示例中的版本名使用大写 `V`，但 `scaffold_hyperframes.py` 同时接受小写 `v`，并原样保留用户选定的拼写；若发现仅大小写不同的既有版本则阻塞。脚手架只在 canonical `frame.md` 已存在且目标 Vn 不存在时创建隔离版本工程，在创建瞬间解析或接受一个精确 HyperFrames 版本、于临时目录检查后 pin，失败时不得留下半成品或修改项目级文件。已有 Vn 不随 latest 自动漂移；`migrate_hyperframes_runtime.py` 是唯一正式版本迁移入口，并记录具体兼容性检查与审核 evidence disposition。Stage Contract 迁移显式作用于单个 legacy Vn，保留旧审核记录但不继承用户批准；resolver 从证据推导上下文、阻塞点、下一可执行阶段和完成集合，不维护 `currentStage`。单 Vn Review 负责 A11/A13 comment、批准和 A14 授权；Demo 时刻存在多个重叠 cue 时不得替用户预选评论对象。正式 D2 渲染必须覆盖全部 animated cues，不能用 `--cue` 形成部分正式交付。原生渲染、注册、包发布、FCP 验收与 round-trip 依次形成 D2–D6 证据链；详细布局协议见 `references/hyperframes-single-source.md`，FCPXML 交付协议见 `docs/ARCHITECTURE.md`。
 
 引入新的验证命令时，必须同时更新本节和 `docs/CURRENT.md`。
 

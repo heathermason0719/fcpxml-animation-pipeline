@@ -38,7 +38,6 @@ animated cue 的 canonical root 尺寸必须与 `project.delivery` 完全一致�
 python3 scripts/sync_storyboard.py "/absolute/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/layout_lock.py freeze "/absolute/AfterForge/YYYY-MM-DD_Vn" "cue_id" "/absolute/approved-hero.png"
 python3 scripts/layout_lock.py freeze "/absolute/AfterForge/YYYY-MM-DD_Vn" "cue_id" "/absolute/approved-hero.png" --hero-id final --hero-label "最终状态" --auxiliary-frame earlier="较早状态"=/absolute/auxiliary.png
-python3 scripts/layout_lock.py approve "/absolute/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/layout_lock.py verify "/absolute/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/assemble_hyperframes.py "/absolute/AfterForge/YYYY-MM-DD_Vn"
 python3 scripts/sync_delivery.py "/absolute/AfterForge/YYYY-MM-DD_Vn"

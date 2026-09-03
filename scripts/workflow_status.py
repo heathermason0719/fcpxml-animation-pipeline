@@ -239,8 +239,23 @@ def _d4_evidence_status(
     ):
         return "package-identity-invalid"
     package = root.parent / package_name
-    info = package / "Info.fcpxml"
     try:
+        if package.is_symlink() or not package.is_dir():
+            return "package-invalid"
+        expected_names = {"Info.fcpxml"}
+        for cue in manifest["cues"]:
+            if cue.get("productionMode") != "animation":
+                continue
+            file_name = cue.get("deliveryAsset", {}).get("fileName")
+            if not isinstance(file_name, str) or Path(file_name).name != file_name:
+                return "package-invalid"
+            expected_names.add(file_name)
+        members = list(package.iterdir())
+        if {member.name for member in members} != expected_names or any(
+            member.is_symlink() or not member.is_file() for member in members
+        ):
+            return "package-invalid"
+        info = package / "Info.fcpxml"
         if hashlib.sha256(info.read_bytes()).hexdigest() != evidence.get("infoFcpxmlSha256"):
             return "package-hash-mismatch"
         for cue in manifest["cues"]:

@@ -217,18 +217,18 @@ h1{font-size:20px;margin:0}h2{font-size:18px;margin:0}.status,.muted{color:var(-
 .header-actions,.review-nav,.actions,.scope-row,.range-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px}.review-nav button.active{border-color:var(--accent);color:var(--accent)}
 main{max-width:1440px;margin:auto;padding:24px}.view[hidden]{display:none}.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:18px}.section-head p{margin:5px 0 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(410px,1fr));gap:18px}.card{background:var(--panel);border:1px solid var(--line);padding:14px}.cue-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:10px}.cue-head h3{font-size:15px;margin:0}.badge{display:inline-block;border:1px solid var(--line);padding:2px 7px;color:var(--muted);font-size:12px}.badge.open{border-color:#745c37;color:var(--warn)}.badge.addressed{border-color:#39654e;color:var(--ok)}.badge.accepted,.badge.approved{border-color:#39654e;color:var(--ok)}
 .frame{aspect-ratio:16/9;width:100%;background:#06090d;border:0;object-fit:contain}.narration{margin:0 0 12px;color:var(--muted);font-size:13px}.eyebrow{display:block;margin-bottom:4px;color:var(--accent);font-size:11px;font-weight:700;letter-spacing:.08em}.frame-gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.frame-block{margin:0}.frame-block.hero{grid-column:1/-1}.frame-block figcaption{display:flex;gap:8px;align-items:center;margin-top:5px;color:var(--muted);font-size:12px}.final-description{margin:12px 0;padding:12px;border-left:2px solid var(--accent);background:#0d131b}.final-description h4{font-size:12px;margin:0 0 5px;color:var(--accent)}.final-description p{margin:0}.frame-review{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}.frame-review h4{font-size:12px;margin:0;color:var(--muted)}.comment-list{display:grid;gap:8px;margin:10px 0}.comment-item{border-left:2px solid var(--line);padding:7px 9px;background:#0d131b}.comment-meta{display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:12px}.comment-item p{margin:5px 0 0;white-space:pre-wrap}.inline-comment,.demo-comment{display:grid;gap:9px;margin-top:10px}.inline-comment textarea,.demo-comment textarea{min-height:76px;resize:vertical;background:#0d131b;color:var(--text);border:1px solid var(--line);padding:10px}.cue-actions{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px}
-.demo{width:100%;max-height:72vh;background:#000}.player-context{display:flex;justify-content:space-between;gap:16px;padding:10px 12px;background:#0d131b;border:1px solid var(--line);border-top:0}.scope-row label,.range-actions label{display:flex;align-items:center;gap:6px}.range-panel{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px;border:1px solid var(--line);background:#0d131b}.range-value{color:var(--muted)}.context-warning{margin:12px 0;padding:10px 12px;border:1px solid #745c37;color:var(--warn)}.demo-comments{margin-top:18px}.log{white-space:pre-wrap;color:var(--muted);font-size:13px;min-height:20px}.notice{position:fixed;right:22px;bottom:22px;z-index:10;padding:11px 15px;border:1px solid #39654e;background:#11251c;color:var(--ok);box-shadow:0 10px 30px #0008}.notice.error{border-color:#745c37;background:#2a1e10;color:var(--warn)}
-.range-panel[hidden]{display:none}
+.demo{width:100%;max-height:72vh;background:#000}.player-context{display:flex;justify-content:space-between;gap:16px;padding:10px 12px;background:#0d131b;border:1px solid var(--line);border-top:0}.cue-choice{display:grid;gap:8px;padding:10px 12px;border:1px solid #745c37;background:#17130d;color:var(--warn)}.cue-options{display:flex;flex-wrap:wrap;gap:8px}.cue-options button.active{border-color:var(--accent);background:#183142;color:var(--text)}.scope-row label,.range-actions label{display:flex;align-items:center;gap:6px}.range-panel{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:10px;border:1px solid var(--line);background:#0d131b}.range-value{color:var(--muted)}.context-warning{margin:12px 0;padding:10px 12px;border:1px solid #745c37;color:var(--warn)}.demo-comments{margin-top:18px}.log{white-space:pre-wrap;color:var(--muted);font-size:13px;min-height:20px}.notice{position:fixed;right:22px;bottom:22px;z-index:10;padding:11px 15px;border:1px solid #39654e;background:#11251c;color:var(--ok);box-shadow:0 10px 30px #0008}.notice.error{border-color:#745c37;background:#2a1e10;color:var(--warn)}
+.range-panel[hidden],.cue-choice[hidden]{display:none}
 @media(max-width:720px){header,.section-head{align-items:stretch;flex-direction:column}.grid{grid-template-columns:1fr}.range-panel{grid-template-columns:1fr}main{padding:16px}}
 </style></head><body>
 <header><div><h1 id="title">AfterForge Review</h1><div class="status" id="stage"></div></div><div class="header-actions"><nav class="review-nav" aria-label="Review views"><button id="showStoryboard">Storyboard</button><button id="showDemo">480p Demo</button></nav><button id="refresh">刷新</button></div></header>
 <main>
 <section class="view" id="storyboardView"><div class="section-head"><div><h2>Storyboard · 静态设计</h2><p class="muted">在当前镜头和静帧旁直接评论；不需要选择 Stage、cue 或时间码。</p></div><button class="primary" id="approveCleanStoryboard">批准全部可批准镜头</button></div><div class="grid" id="cues"></div></section>
-<section class="view" id="demoView" hidden><div class="section-head"><div><h2>480p Demo · 运动路径</h2><p class="muted">评论自动绑定当前播放时间和对应镜头。</p></div></div><video class="demo" id="demo" controls></video><div class="player-context"><span id="currentTime">00:00.000</span><span id="currentCue">当前镜头：—</span></div><div id="demoReopened" class="context-warning" hidden>这条静态意见已重新打开 A11，但你可以留在 Demo 页面继续审阅。</div><form class="demo-comment" id="demoComment"><textarea id="demoBody" placeholder="完整写下这条创作意见"></textarea><div><strong>影响范围</strong><span class="muted">（可多选，由你判断）</span></div><div class="scope-row"><label><input type="checkbox" id="impactStatic" value="static">静态设计</label><label><input type="checkbox" id="impactMotion" value="motion" checked>动画运动</label><label><input type="checkbox" id="useRange">标记持续范围</label></div><div class="range-panel" id="rangePanel" hidden><div><button type="button" id="captureStart">以当前时间为起点</button> <span class="range-value" id="rangeStart">未设置</span></div><div><button type="button" id="captureEnd">以当前时间为终点</button> <span class="range-value" id="rangeEnd">未设置</span></div></div><div><button class="primary" type="submit" id="submitDemoComment">提交当前时间评论</button></div></form><div class="comment-list demo-comments" id="demoComments"></div><div class="actions"><button class="primary" id="approveDemo">批准完整 Demo</button><button id="authorize">独立授权原生渲染</button><button id="acceptFcp">确认 FCP 导入验收</button></div></section>
+<section class="view" id="demoView" hidden><div class="section-head"><div><h2>480p Demo · 运动路径</h2><p class="muted">评论自动绑定当前播放时间；镜头重叠时由你选择 comment 对象。</p></div></div><video class="demo" id="demo" controls></video><div class="player-context"><span id="currentTime">00:00.000</span><span id="currentCue">当前镜头：—</span></div><div class="cue-choice" id="cueChoice" hidden><strong id="cueChoicePrompt">当前有多个 cue，请选择 comment 对象</strong><div class="cue-options" id="cueOptions"></div></div><div id="demoReopened" class="context-warning" hidden>这条静态意见已重新打开 A11，但你可以留在 Demo 页面继续审阅。</div><form class="demo-comment" id="demoComment"><textarea id="demoBody" placeholder="完整写下这条创作意见"></textarea><div><strong>影响范围</strong><span class="muted">（可多选，由你判断）</span></div><div class="scope-row"><label><input type="checkbox" id="impactStatic" value="static">静态设计</label><label><input type="checkbox" id="impactMotion" value="motion" checked>动画运动</label><label><input type="checkbox" id="useRange">标记持续范围</label></div><div class="range-panel" id="rangePanel" hidden><div><button type="button" id="captureStart">以当前时间为起点</button> <span class="range-value" id="rangeStart">未设置</span></div><div><button type="button" id="captureEnd">以当前时间为终点</button> <span class="range-value" id="rangeEnd">未设置</span></div></div><div><button class="primary" type="submit" id="submitDemoComment">提交当前时间评论</button></div></form><div class="comment-list demo-comments" id="demoComments"></div><div class="actions"><button class="primary" id="approveDemo">批准完整 Demo</button><button id="authorize">独立授权原生渲染</button><button id="acceptFcp">确认 FCP 导入验收</button></div></section>
 <pre class="log" id="log" aria-live="polite"></pre>
 <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
 </main><script>
-let state=null,activeView=null,rangeStartValue=null,rangeEndValue=null,noticeTimer=null,demoAnchor=null;
+let state=null,activeView=null,rangeStartValue=null,rangeEndValue=null,noticeTimer=null,demoAnchor=null,selectedDemoCueId=null,demoCueContextKey=null;
 const storyboardDrafts=new Map(),demoDrafts=new Map();let storyboardForms=[];
 const byId=id=>document.getElementById(id);const vn=p=>'/vn/'+p.split('/').map(encodeURIComponent).join('/');const sec=s=>{const x=s.slice(0,-1).split('/').map(Number);return x.length===1?x[0]:x[0]/x[1]};
 function node(tag,className,text){const element=document.createElement(tag);if(className)element.className=className;if(text!==undefined)element.textContent=text;return element}
@@ -238,8 +238,19 @@ function scopeText(comment){return scopes(comment).map(scope=>scope==='static'?'
 function showNotice(message,isError=false){const notice=byId('notice');notice.textContent=message;notice.classList.toggle('error',isError);notice.hidden=false;if(noticeTimer)clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>{notice.hidden=true},4000)}
 function renderCommentList(target,comments,{showTime=false}={}){target.replaceChildren();if(!comments.length){target.append(node('div','muted','暂无 comment'));return}for(const comment of comments){const item=node('article','comment-item');const meta=node('div','comment-meta');const anchor=showTime&&comment.timeStart?`${comment.timeEnd?'区间':'时间点'} ${formatTime(sec(comment.timeStart))}${comment.timeEnd?`–${formatTime(sec(comment.timeEnd))}`:''} · `:'';meta.append(node('span','',`${anchor}${scopeText(comment)}`),node('span',`badge ${comment.status}`,comment.status));item.append(meta,node('p','',comment.body));target.append(item)}}
 function switchView(name){activeView=name;const storyboard=name==='storyboard';byId('storyboardView').hidden=!storyboard;byId('demoView').hidden=storyboard;byId('showStoryboard').classList.toggle('active',storyboard);byId('showDemo').classList.toggle('active',!storyboard)}
-function cueAt(seconds){return state.cues.find(cue=>{const start=sec(cue.resolvedTimeline.start),end=start+sec(cue.resolvedTimeline.duration);return start<=seconds&&seconds<end})||null}
-function updatePlayerContext(seconds=byId('demo').currentTime||0){const cue=cueAt(seconds);byId('currentTime').textContent=formatTime(seconds);byId('currentCue').textContent=`当前镜头：${cue?(cue.shotNumber?`第 ${cue.shotNumber} 镜 · `:'')+cue.id:'—'}`;return cue}
+function activeCuesAt(seconds){return state.cues.filter(cue=>{const start=sec(cue.resolvedTimeline.start),end=start+sec(cue.resolvedTimeline.duration);return start<=seconds&&seconds<end})}
+function cueLabel(cue){return `${cue.shotNumber?`第 ${cue.shotNumber} 镜 · `:''}${cue.id}`}
+function commentAnchorPoint(){if(demoAnchor?.point!==null&&demoAnchor?.point!==undefined)return demoAnchor.point;return byId('useRange').checked&&rangeStartValue!==null?rangeStartValue:byId('demo').currentTime||0}
+function selectedCueAt(seconds){const cues=activeCuesAt(seconds);if(cues.length===1)return cues[0].id;if(cues.length>1&&cues.some(cue=>cue.id===selectedDemoCueId))return selectedDemoCueId;return null}
+function renderCueChoice(seconds=commentAnchorPoint()){
+  const cues=activeCuesAt(seconds),key=cues.map(cue=>cue.id).join('|');
+  if(key!==demoCueContextKey){demoCueContextKey=key;selectedDemoCueId=demoAnchor&&demoAnchor.point===seconds&&cues.some(cue=>cue.id===demoAnchor.cueId)?demoAnchor.cueId:null}
+  if(cues.length<=1){selectedDemoCueId=cues[0]?.id||null;byId('cueChoice').hidden=true;byId('cueOptions').replaceChildren();return cues}
+  byId('cueChoice').hidden=false;byId('cueChoicePrompt').textContent=`评论锚点有 ${cues.length} 个 cue 重叠，请选择 comment 对象`;
+  const buttons=cues.map(cue=>{const button=node('button','',cueLabel(cue));button.type='button';button.classList.toggle('active',cue.id===selectedDemoCueId);button.addEventListener('click',()=>{selectedDemoCueId=cue.id;if(demoAnchor&&demoAnchor.point===seconds)demoAnchor.cueId=cue.id;for(const option of byId('cueOptions').children)option.classList.toggle('active',option===button);captureDemoDraft();updateDemoDraftNotice()});return button});
+  byId('cueOptions').replaceChildren(...buttons);return cues;
+}
+function updatePlayerContext(seconds=byId('demo').currentTime||0){const cues=activeCuesAt(seconds);byId('currentTime').textContent=formatTime(seconds);byId('currentCue').textContent=cues.length===0?'当前镜头：—':cues.length===1?`当前镜头：${cueLabel(cues[0])}`:`当前画面：${cues.length} 个 cue 重叠 · ${cues.map(cueLabel).join(' / ')}`;renderCueChoice();updateDemoDraftNotice();return cues}
 function frameKey(cue,frame){return JSON.stringify([state.sourceVersion,cue.id,frame.id])}
 function frameAnchor(cue,frame){return JSON.stringify([cue.layoutRevision,frame.id,frame.role,frame.src,frame.sha256])}
 function demoIdentity(){return JSON.stringify([state.sourceVersion,state.demo?.src,state.demo?.sha256])}
@@ -253,19 +264,20 @@ function captureDemoDraft(){
   if(!state)return;
   const body=byId('demoBody').value,ranged=byId('useRange').checked;
   if(!body)demoAnchor=null;
-  if(body&&!demoAnchor){const point=ranged?rangeStartValue:byId('demo').currentTime;demoAnchor={identity:demoIdentity(),point,cueId:point===null?null:cueAt(point)?.id||null}}
+  if(body&&!demoAnchor){const point=ranged?rangeStartValue:byId('demo').currentTime;demoAnchor={identity:demoIdentity(),point,cueId:point===null?null:selectedCueAt(point)}}
+  if(body&&demoAnchor&&!demoAnchor.cueId)demoAnchor.cueId=selectedCueAt(demoAnchor.point);
   demoDrafts.set(state.sourceVersion,{body,anchor:demoAnchor,ranged,start:rangeStartValue,end:rangeEndValue,static:byId('impactStatic').checked,motion:byId('impactMotion').checked});
 }
 function captureDrafts(){captureStoryboardDrafts();captureDemoDraft()}
-function demoAnchorChanged(){return !!demoAnchor&&(demoAnchor.identity!==demoIdentity()||(demoAnchor.point!==null&&(cueAt(demoAnchor.point)?.id||null)!==demoAnchor.cueId))}
+function demoAnchorChanged(){if(!demoAnchor)return false;if(demoAnchor.identity!==demoIdentity())return true;if(demoAnchor.point===null)return false;const active=activeCuesAt(demoAnchor.point);return demoAnchor.cueId?(!active.some(cue=>cue.id===demoAnchor.cueId)):active.length===1}
 function updateDemoDraftNotice(){
-  const changed=demoAnchorChanged(),notice=byId('demoDraftNotice');
-  notice.hidden=!demoAnchor;notice.textContent=demoAnchor?(changed?'Demo 或镜头锚点已更新；草稿保留在旧锚点，请核对后重新绑定。':`草稿锚点：${byId('useRange').checked?'区间起点':'时间点'} ${demoAnchor.point===null?'未设置':formatTime(demoAnchor.point)}`):'';
-  byId('rebindDemoDraft').hidden=!demoAnchor;byId('submitDemoComment').disabled=changed;
+  const changed=demoAnchorChanged(),notice=byId('demoDraftNotice'),point=demoAnchor?.point??commentAnchorPoint(),active=activeCuesAt(point),cueId=demoAnchor?.cueId||selectedCueAt(point),needsChoice=active.length>1&&!cueId;
+  notice.hidden=!demoAnchor;notice.textContent=demoAnchor?(changed?'Demo 或镜头锚点已更新；草稿保留在旧锚点，请核对后重新绑定。':needsChoice?`草稿锚点：${formatTime(point)}；请选择 comment 对象。`:`草稿锚点：${byId('useRange').checked?'区间起点':'时间点'} ${demoAnchor.point===null?'未设置':formatTime(demoAnchor.point)}`):'';
+  byId('rebindDemoDraft').hidden=!demoAnchor;byId('submitDemoComment').disabled=changed||needsChoice;
 }
 function restoreDemoDraft(){
   const draft=demoDrafts.get(state.sourceVersion)||{body:'',anchor:null,ranged:false,start:null,end:null,static:false,motion:true};
-  byId('demoBody').value=draft.body;demoAnchor=draft.anchor;rangeStartValue=draft.start;rangeEndValue=draft.end;
+  byId('demoBody').value=draft.body;demoAnchor=draft.anchor;selectedDemoCueId=draft.anchor?.cueId||null;demoCueContextKey=null;rangeStartValue=draft.start;rangeEndValue=draft.end;
   byId('impactStatic').checked=draft.static;byId('impactMotion').checked=draft.motion;byId('useRange').checked=draft.ranged;
   byId('rangePanel').hidden=!draft.ranged;byId('submitDemoComment').textContent=draft.ranged?'提交区间评论':'提交当前时间评论';
   byId('rangeStart').textContent=draft.start===null?'未设置':formatTime(draft.start);byId('rangeEnd').textContent=draft.end===null?'未设置':formatTime(draft.end);updateDemoDraftNotice();
@@ -344,19 +356,19 @@ async function act(name,data={},onSaved=null){
   }catch(error){const message='提交结果未确认：'+error.message+'；草稿已保留，请刷新核对后再提交';byId('log').textContent=message;showNotice(message,true);return false}
 }
 function setRangeMode(enabled){
-  demoAnchor=null;
+  demoAnchor=null;selectedDemoCueId=null;demoCueContextKey=null;
   byId('useRange').checked=enabled;byId('rangePanel').hidden=!enabled;
   byId('submitDemoComment').textContent=enabled?'提交区间评论':'提交当前时间评论';
-  if(!enabled){rangeStartValue=null;rangeEndValue=null;byId('rangeStart').textContent='未设置';byId('rangeEnd').textContent='未设置'}
+  if(!enabled){rangeStartValue=null;rangeEndValue=null;byId('rangeStart').textContent='未设置';byId('rangeEnd').textContent='未设置'}renderCueChoice();updateDemoDraftNotice();
 }
 byId('showStoryboard').onclick=()=>switchView('storyboard');byId('showDemo').onclick=()=>switchView('demo');byId('refresh').onclick=()=>load({notify:true});byId('demo').ontimeupdate=()=>updatePlayerContext();
 byId('useRange').onchange=event=>setRangeMode(event.target.checked);
-byId('captureStart').onclick=()=>{setRangeMode(true);rangeStartValue=byId('demo').currentTime;byId('rangeStart').textContent=formatTime(rangeStartValue)};
-byId('captureEnd').onclick=()=>{setRangeMode(true);rangeEndValue=byId('demo').currentTime;byId('rangeEnd').textContent=formatTime(rangeEndValue)};
+byId('captureStart').onclick=()=>{if(!byId('useRange').checked)setRangeMode(true);rangeStartValue=byId('demo').currentTime;demoAnchor=null;selectedDemoCueId=null;demoCueContextKey=null;byId('rangeStart').textContent=formatTime(rangeStartValue);renderCueChoice();updateDemoDraftNotice()};
+byId('captureEnd').onclick=()=>{if(!byId('useRange').checked)setRangeMode(true);rangeEndValue=byId('demo').currentTime;byId('rangeEnd').textContent=formatTime(rangeEndValue);updateDemoDraftNotice()};
 const demoDraftNotice=node('div','muted');demoDraftNotice.id='demoDraftNotice';demoDraftNotice.hidden=true;
 const rebindDemoDraft=node('button','','已核对，使用当前画面或范围');rebindDemoDraft.id='rebindDemoDraft';rebindDemoDraft.type='button';rebindDemoDraft.hidden=true;
 byId('demoComment').append(demoDraftNotice,rebindDemoDraft);
-rebindDemoDraft.onclick=()=>{demoAnchor=null;captureDemoDraft();updateDemoDraftNotice()};
+rebindDemoDraft.onclick=()=>{demoAnchor=null;selectedDemoCueId=null;demoCueContextKey=null;renderCueChoice();captureDemoDraft();updateDemoDraftNotice()};
 byId('demoComment').onsubmit=async event=>{
   event.preventDefault();const impacts=[byId('impactStatic'),byId('impactMotion')].filter(input=>input.checked).map(input=>input.value);
   if(!impacts.length){byId('log').textContent='请选择至少一个影响范围';return}
@@ -364,6 +376,7 @@ byId('demoComment').onsubmit=async event=>{
   const ranged=byId('useRange').checked;if(ranged&&(rangeStartValue===null||rangeEndValue===null||rangeEndValue<rangeStartValue)){byId('log').textContent='持续范围需要有效的起点和终点';return}
   captureDemoDraft();updateDemoDraftNotice();if(demoAnchorChanged()){showNotice('草稿仍属于旧 Demo 锚点，请先核对并重新绑定',true);return}
   const anchor=demoAnchor.point,cueId=demoAnchor.cueId;
+  if(activeCuesAt(anchor).length>1&&!cueId){byId('log').textContent='当前时间有多个重叠 cue，请先选择 comment 对象';return}
   if(impacts.includes('static')&&!cueId){byId('log').textContent='静态影响需要落在一个具体镜头内';return}
   const version=state.sourceVersion,submitted=JSON.stringify(demoDrafts.get(version));
   await act('add-demo-comment',{impactScopes:impacts,cueId,timeStart:`${anchor.toFixed(3)}s`,timeEnd:ranged?`${rangeEndValue.toFixed(3)}s`:null,body:byId('demoBody').value},()=>{

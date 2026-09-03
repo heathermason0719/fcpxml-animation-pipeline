@@ -93,6 +93,21 @@ def _normalize_impact_scopes(
     return normalized
 
 
+def _active_animation_cue_ids(manifest: dict[str, Any], at_time: Any) -> list[str]:
+    active: list[str] = []
+    for cue in manifest.get("cues", []):
+        if not isinstance(cue, dict) or cue.get("productionMode") != "animation":
+            continue
+        timeline = cue.get("resolvedTimeline")
+        if not isinstance(timeline, dict):
+            continue
+        start = parse_time(timeline.get("start"))
+        duration = parse_time(timeline.get("duration"))
+        if start <= at_time < start + duration:
+            active.append(cue["id"])
+    return active
+
+
 @manifest_mutation
 def add_review_comment(
     version_root: Path,
@@ -128,6 +143,14 @@ def add_review_comment(
     manifest = load_manifest(root)
     if cue_id is not None:
         find_cue(manifest, cue_id)
+    if stage_id == "A13":
+        active_cue_ids = _active_animation_cue_ids(manifest, parse_time(time_start))
+        if len(active_cue_ids) > 1 and cue_id is None:
+            raise ValueError("overlapping Demo cues require the user to select a cue")
+        if len(active_cue_ids) == 1 and cue_id is None:
+            cue_id = active_cue_ids[0]
+        if cue_id is not None and cue_id not in active_cue_ids:
+            raise ValueError("selected cue is not active at the comment time")
     stage = _stage_evidence(manifest, stage_id)
     comments = stage.setdefault("comments", [])
     if not isinstance(comments, list):
