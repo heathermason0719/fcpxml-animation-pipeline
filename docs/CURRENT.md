@@ -99,4 +99,4 @@ git diff --check
 
 ## 下一步
 
-本轮交付复盘及两项规则修订已完成，先前合并前五项修复已经在 `codex/workflow-stage-contract` feature branch 保存并推送；本次追加硬化仍只存在于同一 feature worktree，尚未 commit 或 push，也未 merge、rebase 或修改 main。D6 本轮未执行、条件默认值差异与历史数据格式限制继续如实保留；不重开已收工的脚本。待追加修复完成最终核验并由用户另行授权 Git 操作后，再决定是否合并；main 核验妥当后才从 main 新建分支实施已放到桌面 INBOX 的 Handles / 完整素材与初始使用窗口解耦计划及冒烟，不提前在当前分支施工。
+本轮交付复盘、两项规则修订、合并前五项一致性修复及追加硬化均已完成；业务实现截至 `d8f88c0` 已在 `codex/workflow-stage-contract` feature branch 保存并推送，本次状态修正只校正 Git 事实，不改变实现。合并前只读检查确认本地 `main` 是 feature 的精确祖先，可执行 fast-forward；feature 尚未 merge、rebase 或修改 main。D6 本轮未执行、条件默认值差异与历史数据格式限制继续如实保留；不重开已收工的脚本。待用户另行授权合并；main 合并后核验妥当，才从 main 新建分支实施已放到桌面 INBOX 的 Handles / 完整素材与初始使用窗口解耦计划及冒烟，不提前在当前分支施工。
