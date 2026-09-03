@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import json
+import http.client
+import shutil
+import subprocess
 import tempfile
+import threading
 import unittest
+from http.server import ThreadingHTTPServer
+from pathlib import Path
 
 from scripts.layout_lock import freeze_layout
 from scripts.sync_storyboard import sync_storyboard
@@ -10,7 +16,7 @@ from scripts.workflow_review import register_demo
 from tests.test_hyperframes_single_source import SingleSourceFixture, write_json
 
 
-class WorkflowReviewServerTests(SingleSourceFixture):
+class ReviewVersionFixture(SingleSourceFixture):
     def make_review_version(self, directory: str):
         root = self.make_version(directory)
         sync_storyboard(root)
@@ -23,6 +29,8 @@ class WorkflowReviewServerTests(SingleSourceFixture):
         write_json(manifest_path, manifest)
         return root
 
+
+class WorkflowReviewServerTests(ReviewVersionFixture):
     def test_state_is_bound_to_one_vn_and_exposes_storyboard_assets(self) -> None:
         try:
             from scripts.serve_workflow_review import review_state
@@ -291,6 +299,128 @@ class WorkflowReviewServerTests(SingleSourceFixture):
             self.assertEqual(state["demo"]["src"], "previews/demo.mp4")
             self.assertEqual(result["result"]["impactScopes"], ["motion"])
             self.assertEqual(review_state(root)["comments"][0]["status"], "open")
+
+
+class ReviewTransportTests(ReviewVersionFixture):
+    def setUp(self) -> None:
+        from scripts.serve_workflow_review import make_handler
+
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = self.make_review_version(self.directory.name)
+        (self.root / "demo.mp4").write_bytes(b"0123456789")
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(self.root))
+        self.addCleanup(self.server.server_close)
+        thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01})
+        thread.start()
+        self.addCleanup(thread.join)
+        self.addCleanup(self.server.shutdown)
+
+    def request(self, method="GET", path="/vn/demo.mp4", headers=None):
+        connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+        try:
+            connection.request(method, path, headers=headers or {})
+            response = connection.getresponse()
+            return response.status, dict(response.getheaders()), response.read()
+        finally:
+            connection.close()
+
+    def test_media_supports_browser_byte_ranges(self) -> None:
+        for requested, expected_range, expected_body in [
+            ("bytes=0-1", "bytes 0-1/10", b"01"),
+            ("bytes=3-6", "bytes 3-6/10", b"3456"),
+            ("bytes=7-", "bytes 7-9/10", b"789"),
+            ("bytes=-3", "bytes 7-9/10", b"789"),
+            ("bytes=8-99", "bytes 8-9/10", b"89"),
+        ]:
+            with self.subTest(requested=requested):
+                status, headers, body = self.request(headers={"Range": requested})
+                self.assertEqual(status, 206)
+                self.assertEqual(headers["content-range"], expected_range)
+                self.assertEqual(headers["accept-ranges"], "bytes")
+                self.assertEqual(int(headers["content-length"]), len(expected_body))
+                self.assertEqual(headers["content-type"], "video/mp4")
+                self.assertEqual(body, expected_body)
+
+    def test_unsatisfiable_ranges_are_reported_without_video_body(self) -> None:
+        for requested in ["bytes=10-", "bytes=9-2", "bytes=-0"]:
+            with self.subTest(requested=requested):
+                status, headers, body = self.request(headers={"Range": requested})
+                self.assertEqual(status, 416)
+                self.assertEqual(headers["content-range"], "bytes */10")
+                self.assertEqual(body, b"")
+
+    def test_head_reports_full_media_length_without_a_body(self) -> None:
+        status, headers, body = self.request("HEAD", headers={"Range": "bytes=0-1"})
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["content-length"], "10")
+        self.assertEqual(headers["accept-ranges"], "bytes")
+        self.assertEqual(body, b"")
+
+    def test_full_download_and_unsupported_ranges_remain_readable(self) -> None:
+        for requested in [None, "items=0-1", "bytes=0-1,4-5", "bytes=oops"]:
+            with self.subTest(requested=requested):
+                status, _, body = self.request(headers={"Range": requested} if requested else {})
+                self.assertEqual(status, 200)
+                self.assertEqual(body, b"0123456789")
+
+    def test_refresh_reads_current_state_without_caching_or_writing_evidence(self) -> None:
+        manifest_path = self.root / "animation-manifest.json"
+        before = manifest_path.read_bytes()
+        for path in ["/", "/api/state", "/vn/demo.mp4?v=content-hash"]:
+            status, headers, _ = self.request(path=path)
+            self.assertEqual(status, 200)
+            self.assertEqual(headers.get("cache-control"), "no-store")
+        self.assertEqual(manifest_path.read_bytes(), before)
+
+    def test_media_range_does_not_bypass_vn_path_boundary(self) -> None:
+        for path in ["/vn/../outside.mp4", "/vn/%2e%2e/outside.mp4", "/vn/missing.mp4"]:
+            status, _, _ = self.request(path=path, headers={"Range": "bytes=0-1"})
+            self.assertEqual(status, 404)
+
+    def test_state_read_failure_is_an_explicit_http_error(self) -> None:
+        (self.root / "animation-manifest.json").write_text("{broken", encoding="utf-8")
+        try:
+            status, _, body = self.request(path="/api/state")
+        except http.client.RemoteDisconnected:
+            self.fail("state read errors must return a response, not disconnect the refresh request")
+        self.assertEqual(status, 500)
+        self.assertTrue(json.loads(body)["error"])
+
+
+@unittest.skipUnless(shutil.which("node"), "Review client behavior tests require Node.js")
+class ReviewClientTests(unittest.TestCase):
+    def run_client(self, scenario: str) -> None:
+        from scripts.serve_workflow_review import INDEX_HTML
+
+        result = subprocess.run(
+            ["node", str(Path(__file__).with_name("review_client_harness.cjs")), scenario],
+            input=INDEX_HTML,
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_refresh_reports_success_and_preserves_unchanged_video_context(self) -> None:
+        self.run_client("refresh-success")
+
+    def test_refresh_reports_network_and_http_errors_without_losing_current_state(self) -> None:
+        self.run_client("refresh-errors")
+
+    def test_refresh_replaces_same_path_video_when_content_hash_changes(self) -> None:
+        self.run_client("refresh-media")
+
+    def test_captured_range_submits_both_endpoints_and_start_cue(self) -> None:
+        self.run_client("range-submit")
+
+    def test_refreshed_range_comment_displays_explicit_interval(self) -> None:
+        self.run_client("range-refresh")
+
+    def test_disabling_range_clears_anchors_and_returns_to_point_comment(self) -> None:
+        self.run_client("range-disable")
+
+    def test_incomplete_or_reversed_range_does_not_submit(self) -> None:
+        self.run_client("range-incomplete")
 
 
 if __name__ == "__main__":

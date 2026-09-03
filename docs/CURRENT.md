@@ -19,7 +19,7 @@
 - 已在同一真实项目中执行一次性 AfterForge 项目初始化：既有 `AfterForge/` 与 `user-inbox/` 原样复用，只在 `AfterForge/` 根层创建缺失的项目级 `AGENTS.md` 和 `CLAUDE.md`，未创建 canonical `frame.md` 或 Vn；
 - 用户工作目录初始化已在一个真实项目根目录完成验证：首次返回 `created`，重复运行返回 `existing`，目录内未生成其他内容；
 - 入口能以 `ready`/`blocked`、blocker、warning、ambiguity 和最小问题清单表达是否具备后续分析条件；
-- 当前可靠行为已通过 135 个合成工作区自动化测试，并完成 Skill 流程对照场景验证；
+- 当前可靠行为已通过 149 个自动化测试（含使用 Node.js 执行实际 Review 页面脚本的行为回归），并完成 Skill 流程对照场景验证；
 - 已对真实投放版本 `/Users/xiaobaimac/Movies/trumen/user-inbox/2026-08-25_V2` 执行 `--flat` intake：唯一选择 `P1-sence-01-粗剪.fcpxmld` 和 `P1-sence-01 粗剪.m4v`，识别 `P1-sence-01 脚本.docx` 为旁白证据，结果为 `ready`，无 blocker、warning 或 ambiguity；
 - intake 已新增 `materials.animation_guidance`，用于独立保留用户主动提供的动画脚本或逐镜要求；存在 SRT 时不再因旁白来源已经成立而丢弃动画脚本，脚本内时码仍不具备 FCPXML 时间权威；
 - 已冻结 A7 动画脚本可执行性审核：intake 仍只发现并保留可选脚本，A7 才对照口播、原画、FCPXML、产品范围和当前后端给相关 cue 写入可选 `guidanceReview`；审核不新增独立报告或用户验收，不改变 intake 状态，只有真实方向分叉或受影响 cue 无法可靠继续时才询问；
@@ -53,6 +53,8 @@
 - 已实现不保存 `currentStage` 的 `workflow_status.py`：从 layout lock、Demo/输入哈希、comment、用户批准、A14 授权、render ledger、deliveryAsset、FCPXMLD、FCP 验收和 round-trip evidence 推导活动上下文、阻塞点、下一阶段与完成集合；
 - 已实现绑定单个 Vn 的仓库级 Review：A11 cue 卡按对应旁白、锁定的主审帧/必要辅助帧、cue 级 `finalAnimationDescription`、逐帧 comment 与批准操作组织，不展示设计讨论历史；A11 出图前若用户措辞或已确认约束仍有会实质改变最终呈现的合理解释分叉，Agent 必须先用一个聚焦问题澄清，不能把低成本返工或后续 comment 当作自行选义的理由，澄清过程不写入最终动画说明；comment 保存后明确提示成功，只撤销批准证据并保留被评论的静帧，实际受审文件变化才由哈希校验判定 layout lock 失效；缺少最终动画说明、任一审核帧哈希失效或仍有开放 comment 时拒绝批准，批量批准仍保存逐 cue evidence；A13 从播放器自动绑定时间与 cue，可选持续范围，一条 comment 由用户选择 `static`、`motion` 或二者影响范围；静态范围重开受影响 A11 并向下失效，motion-only 保留有效 A11，Demo 页面上下文不被强制切走；同时保留视频级批准、独立 A14 原生渲染授权、D5 FCP 导入验收和 manifest SHA 并发保护；
 - 已确认 Review shell 与项目级 canonical `frame.md`、Vn `frame.md` 快照解耦：项目视觉规范只影响被审核的动画内容；当前 shell 暂时冻结为仓库级 Review UI 基线，后续 UI/UX 调整必须显式进行，不随项目视觉规范变化；
+- 已修复 Demo 拖动与刷新：Review 媒体响应支持单段 byte Range、HEAD 与 416，并分块读取；状态和资源禁用旧缓存，刷新显示进行中、成功时间或失败原因，按 Demo 哈希识别同路径新视频，未变视频保留播放位置。当前真实 Vn 已在 Codex 内置浏览器验证正向/反向拖动、画面与 cue 同步、刷新反馈及播放位置保持；manifest 与 Demo 文件哈希未变，本次未提交 comment、批准或推进 workflow；
+- 已修复 Demo 区间控件与提交模式不一致：未启用持续范围时真正隐藏端点控件，捕获端点同时启用区间模式，提交按钮明确区分时间点/区间，缺失或倒序端点不提交；评论列表标明区间及两个端点，刷新后仍保留。新增四项客户端回归均先在旧实现失败、修复后通过；当前真实页面已验证开关、端点捕获、刷新与显示，未向真实 Vn 添加测试评论。用户确认 `A13-C0004` 起点约 11 秒、终点 14.420 秒，已在同一 comment 恢复范围，A13 evidence 保留近似起点与修正来源，原正文、其他评论和 approval 不变；
 - 已实现显式 legacy Vn 合同迁移：原样保留旧 `reviews`，不把旧 approval 升格为新合同批准；可核验且输入未变的旧 480p Demo 可作为 A12 artifact evidence 保留；
 - 已实现 HyperFrames runtime 最小治理：`package.json` 统一精确 pin 是 Vn 当前运行版本唯一权威，`meta.json` 分离不可变创建版本和显式迁移历史；普通恢复不再探测或采用 latest，`migrate_hyperframes_runtime.py` 才能迁移既有 Vn，并逐项记录兼容性检查与审核 evidence 的 preserved、rebound、invalidated 结果；runtime pin 已进入 A11 lock、cue approval 与 A12 下游输入指纹；
 - 已将原生 renderer、资产注册器、FCPXMLD builder 和 round-trip registrar 接入 D-stage 哈希链：A11/A13/A14 或输入不匹配时在启动 renderer 前阻断，后续 D2–D6 不以产物文件单独存在判断完成；
@@ -64,13 +66,13 @@
 
 - 尚未实现参考视频内容理解或语音转写；
 - 尚未把本次人工完成的旁白对齐和初始 `animation-manifest.json` 内容生成整理为仓库内可复用的确定性流水线；HyperFrames 单一布局源装配、review projection、layout lock、adapter 验证和旧 Vn 迁移已经脚本化；
-- 新 Stage Contract、Review 与 D-stage evidence chain 尚未在当前真实 `2026-09-01_v1` 完整走完 A11→D6；该 Vn runtime 保持精确 pin `0.8.26`，`meta.json` 已将创建版本 `0.8.16` 与当前 runtime 语义拆分，`HF-M0001` 核对迁移分别记录 package pin、HyperFrames check、adapter validation，五个 A11 cue evidence 已重绑至 0.8.26，旧 A12 artifact evidence 已明确失效；五个镜头共七张审核帧锁定有效，十条 A11 comment 已全部由用户接受；resolver 已确认 A1–A11 完成并阻塞在 A12；D-stage 最终边界仍待本次真实闭环证据复盘；
+- 新 Stage Contract、Review 与 D-stage evidence chain 尚未在当前真实 `2026-09-01_v1` 完整走完 A11→D6；该 Vn runtime 保持精确 pin `0.8.26`，`meta.json` 已分离创建版本 `0.8.16`，`HF-M0001` 分别记录 package pin、HyperFrames check、adapter validation，五个 A11 cue evidence 已重绑至 0.8.26；五镜七张审核帧锁定有效，十条 A11 comment 已全部由用户接受。当前 Demo 为 `previews/2026-09-01_v1-A12-demo-0ccd41e268bd.mp4`，854×480、24 fps、54.875 秒 H.264/AAC，输入指纹 `0ccd41e268bd…`、SHA-256 `3ea80e21655f…`；在用户已认可的舒展动势基础上，本轮按粗剪原声的本地词级转写估计与脚本/SRT 对照调整动作时机：身份被念到时就位、监控框在“不太干净”处闭合、五 CAM 在首次硬切前同时到位、凭证在“观看授权”起句时刚落稳、标题与下划线分别对应“片头”和“剥夺了我作为观众”。词级估计、选定锚点及 13 项实际 GSAP 检查保存在 Vn `qa/a13-narration-alignment-v1/`；这些是本轮待 A13 验收的时序设计，不等同于已获用户批准或音素级精确对齐。静态布局、七张审核帧、A11 evidence、原片 1 倍速、瞬间切源、FCPXML 时间范围和原声音轨均保持；旧版 Demo 分文件保留，第 3、5 镜的旁白字段已从概括句纠正为实际口播。“不漂浮”仍只在本轮暂不执行，canonical frame.md 与 snapshot 未改；HyperFrames check 无错误或警告，旧 A12 因时序输入变化失效，新 Demo 登记后 A1–A12 完成、停在 A13 用户审核，A14 未授权；D-stage 最终边界仍待完整闭环证据复盘；
 - 当前没有 build 或 lint 命令。
 
 ## 已知问题与阻塞
 
-当前没有已知技术阻塞。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。新三段审核契约和 D2–D6 evidence chain 已通过合成测试；真实 `2026-09-01_v1` 已迁移并完成 A11 Storyboard 静态审核，尚待完成 A12 Demo 构建、A13 运动审核、A14 原生渲染授权与 Delivery，因而当前仍不能把这次架构升级描述为已通过真实 invocation 验证。
+当前真实 Vn 的 A13 已收到 8 条开放反馈，尚未修改动画或标为已处理；部分意见涉及静态内容，需由用户确认影响范围后按依赖重新审核。第 3 镜 CAM05 卡住已定位为 composition 播放 2.82 秒后切成静帧，并非播放器故障；新投放 `05-日常互动加长版.mov` 已探测为 37.333 秒、1920×1080、24 fps、H.264，尚未替换入工程。V2 仍是未迁移的一次性旧结构，不代表正式资产布局。新三段审核契约和 D2–D6 evidence chain 已通过合成测试；真实 `2026-09-01_v1` 已迁移并完成 A11 Storyboard 静态审核与 A12 Demo 构建，尚待 A13 用户运动审核、A14 原生渲染授权与 Delivery，因而当前仍不能把这次架构升级描述为已通过真实 invocation 验证。
 
 ## 下一步
 
-下一步在当前真实 `2026-09-01_v1` 从已批准且锁定有效的 A11 composition 构建 854×480 Demo，进入 A13 运动审核；用户另行完成 A14 授权后，再按 resolver 继续 D2 原生渲染、D3 注册、D4 发布、D5 FCP 导入验收和需要的 D6 round-trip。闭环后依据实际 evidence 复盘 D-stage 边界，再完成最终验证。
+下一步先澄清当前 A13 反馈中会影响最终呈现的多义描述及静态影响范围，再修改动画、替换 CAM05 并生成新 Demo 供用户复核；不自行猜测线框流动语义或印章文字。comment 自动绑定播放器时间与 cue，并由用户选择 static、motion 或二者影响范围。全部意见处理并批准当前完整 Demo 后，仍需用户另行完成 A14 授权，才按 resolver 继续 D2 原生渲染、D3 注册、D4 发布、D5 FCP 导入验收和需要的 D6 round-trip。闭环后依据实际 evidence 复盘 D-stage 边界，再完成最终验证。

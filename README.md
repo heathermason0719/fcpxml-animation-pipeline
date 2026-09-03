@@ -27,6 +27,8 @@ python3 scripts/build_delivery_package.py "/absolute/project/workspace/AfterForg
 
 前五条命令维持原有项目入口与 Vn 创建边界。A-stage 与 D-stage 的唯一机器定义见 `references/workflow-stage-contract.json`，完整可读表由它确定性生成到 `references/workflow-stage-contract.md`。仓库级 Review shell 绑定单个 Vn：Storyboard 在对应旁白和主审帧/必要辅助帧之后，直接投影 cue 级 `finalAnimationDescription`，再于当前静帧上下文记录 A11 comment 与逐 cue 批准；如果用户措辞仍支持会实质改变最终呈现的多种合理解释，Agent 会在出图前提出一个聚焦问题，澄清后才生成审核帧，不把过程写进最终动画说明。提交 comment 会撤销相应批准并保留被评论的锁定静帧作为待修改版本，只有受审文件实际变化才使 layout lock 失效。缺少最终动画说明、锁定审核帧失效或仍有开放 comment 时不能批准。Demo 从播放器自动绑定时间和 cue，一条 comment 可由用户标记为影响 static、motion 或二者；A14 独立授权仍是单独操作。所有状态写回 manifest，renderer、注册器和包构建器按 resolver 的证据链 fail closed。
 
+Demo 支持直接拖动播放条。右上角“刷新”重新读取审核状态并显示成功时间或失败原因；视频未变化时保留播放位置，已登记的 Demo 哈希变化时才切换到新视频，不会把刷新当作批准或推进流程。
+
 每条动画的正式 DOM/CSS 只存在于 `compositions/cues/`，运动位于 `compositions/motion/`；`compositions/review/`、`compositions/delivery/`、`STORYBOARD.md` 和 `index.html` 均为生成视图。交付包不会直接修改 Final Cut Pro Library；首次导入后，可将 FCP 再导出的 XML 交给 `compare_fcpxml_roundtrip.py` 与原交付 XML 做语义回归。当前仍不会自动完成初始内容理解或语音转写。
 
 需要规范填写动画要求时，可按需使用仓库内的 `assets/animation-script-template.docx`；它不会自动复制进项目，也不是 intake 必填材料。用户填好后自行放入当前 `user-inbox/YYYY-MM-DD_Vn/`，自由格式脚本仍然受支持。
