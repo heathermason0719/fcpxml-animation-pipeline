@@ -78,9 +78,9 @@
 
 当前真实 Vn 的 resolver 为 `blockingStage=null`、`nextEligibleStage=null`；A1–A14、D1–D5 已完成且 evidence 有效，D6 为 `not-applicable`，不进入 `completedStages`。用户确认本轮临时采用完整时长一致摆放：第 2 镜 10.5 秒、第 4 镜 12.5 秒，原时间线起点不动，允许 Demo 与 FCPXML 全长放置产生重叠；整片中被后镜遮住的完整动作通过单镜小样补审，不将已接受重叠冒充新的阻塞。原参考区间及调整依据保留在 cue notes，源 XML 未改。不实现 Handles、sourceIn、初始使用子区间或新 artifact-set 门禁；该架构改造推迟到本轮闭环、合并后另开分支。2026-09-03 用户明确决定本轮不回导：实际导入的可见时间线无问题，既有 `deliveryProtocolVersion = 1` 已有真实往返基线，本轮输出协议未变。因此仅将当前 Vn 的 `roundTripRequired` 从 `true` 改为 `false`，不生成 D6 通过 evidence，其他 manifest 内容原样保留。本轮按已确认适用范围完成交付验收；不能据此宣称新 D6 登记链经过本轮真实验证。后续实施初始使用子区间、改变 XML 时间表达时，需要重新执行 round-trip。迁移器目前仍无条件写入 `roundTripRequired=true`，条件适用规则与默认值的差异留待复盘，不在本次状态收尾中修改生产代码。
 
-### 2026-09-04 合并前一致性修复
+### 2026-09-04 一致性修复与合并验证
 
-当前 feature worktree 已落实五项修复：版本化执行输入指纹、HTTP/CLI/迁移共用写入隔离与冲突草稿保护、逐 cue 统一批准 predicate、D3 门禁下的交付包幂等复用、正常 Review 全量 Schema 校验。实现细节集中在 `docs/ARCHITECTURE.md`，安装入口见 README；`requirements.txt` 中的 `jsonschema` 为必需依赖，`PyYAML` 用于 Skill 校验。仅在当前 worktree 建立隔离 `.venv`，未安装到全局环境。
+当前 `main` 已整合五项修复：版本化执行输入指纹、HTTP/CLI/迁移共用写入隔离与冲突草稿保护、逐 cue 统一批准 predicate、D3 门禁下的交付包幂等复用、正常 Review 全量 Schema 校验。实现细节集中在 `docs/ARCHITECTURE.md`，安装入口见 README；`requirements.txt` 中的 `jsonschema` 为必需依赖，`PyYAML` 用于 Skill 校验。本地仓库使用隔离 `.venv`，未安装到全局环境。
 
 追加的合并前硬化已覆盖五个边界：正式 D2 只能发布完整 animated cue 集，ledger 最后安装且普通发布异常会退回已移动 MOV；D4 resolver 要求包根成员精确等于 `Info.fcpxml` 与声明的 MOV，拒绝额外成员、目录和 symlink；D6 将再导出 connected clip 的全局起点与时长同已交付 XML 作精确有理数比较；A13 在重叠时展示全部 active cue、不预选并要求用户明确选择，唯一候选则由 UI 与服务端共同确定性绑定；旧 `layout_lock.py approve` 假成功入口已从公开 CLI 撤下，A11 用户批准只经 Review 写入正式 evidence。以上行为均有旧实现先失败、修复后通过的回归测试；没有引入 Handles、sourceIn 或初始使用子区间。
 
@@ -99,4 +99,4 @@ git diff --check
 
 ## 下一步
 
-本轮交付复盘、两项规则修订、合并前五项一致性修复及追加硬化均已完成；业务实现截至 `d8f88c0` 已在 `codex/workflow-stage-contract` feature branch 保存并推送，本次状态修正只校正 Git 事实，不改变实现。合并前只读检查确认本地 `main` 是 feature 的精确祖先，可执行 fast-forward；feature 尚未 merge、rebase 或修改 main。D6 本轮未执行、条件默认值差异与历史数据格式限制继续如实保留；不重开已收工的脚本。待用户另行授权合并；main 合并后核验妥当，才从 main 新建分支实施已放到桌面 INBOX 的 Handles / 完整素材与初始使用窗口解耦计划及冒烟，不提前在当前分支施工。
+本轮交付复盘、两项规则修订、五项一致性修复及追加硬化均已完成并整合到 `main`；完整 209 项测试、Skill 校验、Stage Contract 生成视图检查和差异格式检查均已在合并后的 `main` 通过。D6 本轮未执行、条件默认值差异与历史数据格式限制继续如实保留；不重开已收工的脚本。后续从 `main` 新建分支实施已放到桌面 INBOX 的 Handles / 完整素材与初始使用窗口解耦计划及冒烟，不在当前收尾中提前施工。
