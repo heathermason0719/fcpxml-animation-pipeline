@@ -4,9 +4,9 @@
 from __future__ import annotations
 
 try:
-    from scripts.manifest_transaction import manifest_commit, optimistic_operation
+    from scripts.manifest_transaction import manifest_commit, optimistic_operation, require_open_invocation
 except ModuleNotFoundError:  # direct script execution
-    from manifest_transaction import manifest_commit, optimistic_operation
+    from manifest_transaction import manifest_commit, optimistic_operation, require_open_invocation
 
 import argparse
 import hashlib
@@ -16,6 +16,11 @@ import subprocess
 from fractions import Fraction
 from pathlib import Path
 from typing import Any, Callable
+
+try:
+    from scripts.rework_state import render_ledger_path, revision_evidence
+except ModuleNotFoundError:
+    from rework_state import render_ledger_path, revision_evidence
 
 try:
     from scripts.hyperframes_adapter import load_manifest, parse_time, project_dimensions, safe_project_path, save_manifest
@@ -93,6 +98,7 @@ def register_delivery_assets(
     prober: Callable[[Path], dict[str, Any]] = probe_delivery_asset,
 ) -> dict[str, Any]:
     root = version_root.expanduser().resolve()
+    require_open_invocation(root)
     manifest = load_manifest(root)
     require_current_input_evidence(root, manifest)
     stage_status = resolve_stage_status(root)
@@ -104,7 +110,7 @@ def register_delivery_assets(
     lock_result = verify_layouts(root)
     if lock_result["status"] != "valid":
         raise ValueError(f"layout locks are invalid: {lock_result['invalidCueIds']}")
-    ledger_path = root / "delivery/render-ledger.json"
+    ledger_path = render_ledger_path(root, manifest)
     if not ledger_path.is_file() or ledger_path.is_symlink():
         raise ValueError(f"missing regular render ledger: {ledger_path}")
     ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
@@ -176,6 +182,7 @@ def register_delivery_assets(
         "contractVersion": workflow["stageContractVersion"],
         "semanticVersion": 1,
         "status": "registered",
+        **revision_evidence(manifest),
         "renderLedgerSha256": _sha256(ledger_path),
         "assetFingerprint": evidence_fingerprint(
             {cue_id: registrations[cue_id] for cue_id in sorted(registrations)}

@@ -348,6 +348,7 @@ class WorkflowReviewServerTests(ReviewVersionFixture):
             preview = root / "previews/demo.mp4"
             preview.parent.mkdir(parents=True, exist_ok=True)
             preview.write_bytes(b"demo")
+            self.write_demo_evidence(root, "previews/demo.mp4")
             register_demo(root, "previews/demo.mp4")
             state = review_state(root)
 
@@ -484,6 +485,7 @@ class WorkflowReviewServerTests(ReviewVersionFixture):
             preview = root / "previews/demo.mp4"
             preview.parent.mkdir(parents=True, exist_ok=True)
             preview.write_bytes(b"demo")
+            self.write_demo_evidence(root, "previews/demo.mp4")
             register_demo(root, "previews/demo.mp4")
             state = review_state(root)
 
@@ -652,6 +654,9 @@ class ReviewClientTests(unittest.TestCase):
 
     def test_drafts_remain_isolated_by_vn_during_refresh(self) -> None:
         self.run_client("draft-vn-isolation")
+
+    def test_drafts_do_not_cross_rework_revision_when_vn_is_unchanged(self) -> None:
+        self.run_client("draft-rework-isolation")
 
 
 if __name__ == "__main__":

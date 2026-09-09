@@ -9,6 +9,11 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from scripts.rework_state import render_ledger_path, delivery_identity, evidence_is_current_revision, rework_revision
+except ModuleNotFoundError:
+    from rework_state import render_ledger_path, delivery_identity, evidence_is_current_revision, rework_revision
+
+try:
     from scripts.hyperframes_adapter import cue_adapter, load_manifest, safe_project_path
     from scripts.layout_lock import verify_layouts
     from scripts.workflow_stages import assess_stage_evidence, load_stage_contract
@@ -35,6 +40,8 @@ def current_input_fingerprint(root: Path, manifest: dict[str, Any]) -> str:
 def _a12_evidence_status(root: Path, manifest: dict[str, Any], evidence: Any) -> str:
     if not isinstance(evidence, dict):
         return "missing"
+    if not evidence_is_current_revision(manifest, evidence):
+        return "rework-revision-mismatch"
     assessment = assess_stage_evidence(load_stage_contract(), "A12", evidence)
     if not assessment["usable"]:
         return assessment["status"]
@@ -54,10 +61,26 @@ def _a12_evidence_status(root: Path, manifest: dict[str, Any], evidence: Any) ->
         return "demo-hash-mismatch"
     if evidence.get("inputFingerprint") != fingerprint:
         return "input-fingerprint-mismatch"
+    if evidence.get("generationEvidence") is not None or rework_revision(manifest):
+        try:
+            try:
+                from scripts.demo_evidence import require_matching_demo_generation_evidence, evidence_path
+            except ModuleNotFoundError:
+                from demo_evidence import require_matching_demo_generation_evidence, evidence_path
+            proof_path = evidence_path(root, evidence["preview"])
+            if evidence.get("generationEvidence") != str(proof_path.relative_to(root)):
+                return "demo-generation-evidence-invalid"
+            if evidence.get("generationEvidenceSha256") != hashlib.sha256(proof_path.read_bytes()).hexdigest():
+                return "demo-generation-evidence-invalid"
+            require_matching_demo_generation_evidence(root, manifest, evidence["preview"])
+        except (ValueError, OSError, KeyError):
+            return "demo-generation-evidence-invalid"
     return "compatible-historical" if version == 1 else assessment["status"]
 
 
 def _linked_input_version_status(upstream: dict[str, Any], evidence: dict[str, Any]) -> str | None:
+    if evidence.get("reworkRevision", 0) != upstream.get("reworkRevision", 0):
+        return "rework-revision-mismatch"
     try:
         if evidence_fingerprint_version(upstream) != evidence_fingerprint_version(evidence):
             return "input-fingerprint-version-mismatch"
@@ -140,7 +163,7 @@ def _d2_evidence_status(
     contract: dict[str, Any],
     a14: dict[str, Any],
 ) -> str:
-    ledger_path = root / "delivery/render-ledger.json"
+    ledger_path = render_ledger_path(root, manifest)
     if not ledger_path.is_file() or ledger_path.is_symlink():
         return "missing"
     try:
@@ -189,12 +212,14 @@ def _d3_evidence_status(
 ) -> str:
     if not isinstance(evidence, dict):
         return "missing"
+    if not evidence_is_current_revision(manifest, evidence):
+        return "rework-revision-mismatch"
     assessment = assess_stage_evidence(contract, "D3", evidence)
     if not assessment["usable"]:
         return assessment["status"]
     if evidence.get("status") != "registered":
         return "pending"
-    ledger_path = root / "delivery/render-ledger.json"
+    ledger_path = render_ledger_path(root, manifest)
     try:
         ledger_hash = hashlib.sha256(ledger_path.read_bytes()).hexdigest()
     except OSError:
@@ -224,6 +249,8 @@ def _d4_evidence_status(
 ) -> str:
     if not isinstance(evidence, dict):
         return "missing"
+    if not evidence_is_current_revision(manifest, evidence):
+        return "rework-revision-mismatch"
     assessment = assess_stage_evidence(contract, "D4", evidence)
     if not assessment["usable"]:
         return assessment["status"]
@@ -235,7 +262,7 @@ def _d4_evidence_status(
         not isinstance(package_name, str)
         or Path(package_name).name != package_name
         or not isinstance(fingerprint, str)
-        or package_name != f"AfterForge__{manifest['sourceVersion']}__d-{fingerprint}.fcpxmld"
+        or package_name != f"{delivery_identity(manifest)}__d-{fingerprint}.fcpxmld"
     ):
         return "package-identity-invalid"
     package = root.parent / package_name
@@ -277,6 +304,8 @@ def _d5_evidence_status(
 ) -> str:
     if not isinstance(evidence, dict):
         return "missing"
+    if evidence.get("reworkRevision", 0) != d4.get("reworkRevision", 0):
+        return "rework-revision-mismatch"
     assessment = assess_stage_evidence(contract, "D5", evidence)
     if not assessment["usable"]:
         return assessment["status"]
@@ -296,6 +325,8 @@ def _d6_evidence_status(
 ) -> str:
     if not isinstance(evidence, dict):
         return "missing"
+    if evidence.get("reworkRevision", 0) != d4.get("reworkRevision", 0):
+        return "rework-revision-mismatch"
     assessment = assess_stage_evidence(contract, "D6", evidence)
     if not assessment["usable"]:
         return assessment["status"]

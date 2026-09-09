@@ -12,6 +12,11 @@ from typing import Any
 from xml.etree import ElementTree as ET
 
 try:
+    from scripts.rework_state import delivery_identity
+except ModuleNotFoundError:
+    from rework_state import delivery_identity
+
+try:
     from scripts.fcpxml_timing import (
         TimelineInterval,
         allocate_lanes,
@@ -169,6 +174,19 @@ def _serialize(root: ET.Element) -> bytes:
     return b'<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE fcpxml>\n' + body + b"\n"
 
 
+def _normalize_source_media_references(resources: ET.Element, manifest: dict[str, Any], source_xml: Path) -> None:
+    """Make copied source resources independent of their original XML location."""
+    raw_base = manifest.get("provenance", {}).get("sourceReferenceBase")
+    base = Path(raw_base).expanduser() if isinstance(raw_base, str) and raw_base else source_xml.parent
+    if not base.is_absolute():
+        base = (source_xml.parent / base).resolve()
+    for media_rep in resources.iter("media-rep"):
+        src = media_rep.get("src")
+        if not isinstance(src, str) or not src or src.startswith("file:") or "://" in src or Path(src).is_absolute():
+            continue
+        media_rep.set("src", (base / src).resolve().as_uri())
+
+
 def build_delivery_fcpxml(source_xml: Path, manifest: dict[str, Any]) -> DeliveryDocument:
     source_xml = Path(source_xml)
     try:
@@ -188,6 +206,8 @@ def build_delivery_fcpxml(source_xml: Path, manifest: dict[str, Any]) -> Deliver
 
     output_root = ET.Element("fcpxml", dict(source_root.attrib))
     resources = copy.deepcopy(source_resources)
+    if manifest.get("schemaVersion") == "3.0":
+        _normalize_source_media_references(resources, manifest, source_xml)
     output_root.append(resources)
     source_library = _source_library(source_root)
     library_attributes = {} if source_library is None else {
@@ -197,12 +217,12 @@ def build_delivery_fcpxml(source_xml: Path, manifest: dict[str, Any]) -> Deliver
     source_version = manifest.get("sourceVersion")
     if not isinstance(source_version, str) or not source_version:
         raise ValueError("manifest sourceVersion is missing")
-    event = ET.SubElement(library, "event", {"name": f"AfterForge__{source_version}"})
+    event = ET.SubElement(library, "event", {"name": delivery_identity(manifest)})
     source_project_name = source_project.get("name") or "Project"
     project = ET.SubElement(
         event,
         "project",
-        {"name": f"AfterForge__{source_version}__{source_project_name}"},
+        {"name": f"{delivery_identity(manifest)}__{source_project_name}"},
     )
     sequence = copy.deepcopy(source_sequence)
     project.append(sequence)
@@ -231,7 +251,28 @@ def build_delivery_fcpxml(source_xml: Path, manifest: dict[str, Any]) -> Deliver
         duration = parse_time(asset["duration"])
         requests.append(TimelineInterval(cue_id, start, duration))
         cue_by_id[cue_id] = cue
-    lanes = allocate_lanes(requests, collect_positive_anchors(spine))
+    preferred_lanes: dict[str, int] = {}
+    occupied = collect_positive_anchors(spine)
+    if manifest.get("schemaVersion") == "3.0":
+        indexed = []
+        for index, cue in enumerate(cues):
+            layer = cue.get("layer", index + 1)
+            if type(layer) is not int or layer <= 0:
+                raise ValueError(f"cue layer must be a positive integer: {cue['id']}")
+            indexed.append((layer, cue["id"]))
+        maximum = max((item.lane for item in occupied), default=0)
+        previous = maximum
+        for layer, cue_id in sorted(indexed):
+            previous = max(maximum + layer, previous + 1)
+            preferred_lanes[cue_id] = previous
+    else:
+        for cue in cues:
+            layer = cue.get("layer")
+            if layer is not None:
+                if type(layer) is not int or layer <= 0:
+                    raise ValueError(f"cue layer must be a positive integer: {cue['id']}")
+                preferred_lanes[cue["id"]] = layer
+    lanes = allocate_lanes(requests, occupied, preferred_lanes=preferred_lanes)
 
     resource_ids: dict[str, str] = {}
     placements: list[dict[str, Any]] = []

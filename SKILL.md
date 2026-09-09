@@ -1,207 +1,81 @@
 ---
 name: fcpxml-animation-pipeline
-description: Use when a user provides a Final Cut Pro rough-cut workspace, FCPXML/FCPXMLD, proxy reference video, narration subtitles or transcript, or asks whether a rough cut is ready for animation analysis.
+description: Plan animation for film-video series from scripts or Final Cut Pro rough cuts, review real stills and motion, apply feedback, and deliver transparent ProRes animations in verified FCPXMLD packages using the AfterForge work model.
 ---
 
-# FCPXML Animation Pipeline
+# AfterForge
 
-## Overview
+Work on the user's current creative goal. A project is a film series; an episode is one video; each episode can have independent production versions. Understand the episode, develop an expression, try it with real pictures and sound, revise, deliver, and retain useful experience. These activities repeat in any order. Do not narrate stage bookkeeping.
 
-Treat the user's actual project workspace as the source of context. Establish the Skill's user-visible work directory, discover and inspect existing materials before asking for files, preserve the rough cut exactly, and ask only for information that blocks reliable continuation.
+## Enter the work
 
-This version implements one-time AfterForge project instructions, project intake and readiness analysis, an isolated HyperFrames Vn scaffold, native transparent delivery rendering, and a deterministic FCPXMLD delivery backend. Never alter a Final Cut Pro library directly. Render, register, or build a new FCPXMLD only in the implemented phase and with the user's current authorization.
+Use the user's workspace and explicit episode/version selection. Inspect existing inputs before asking for files. Default writes stay in `AfterForge/`; `user-inbox/` is user-owned and read-only. Never alter original FCPXML, media, or an FCP library. Do not infer input selection from the newest folder name.
 
-## Use the Canonical Workflow Stage Contract
+Read the concise `AfterForge/工程/创作记忆.md` first when it exists, then only relevant cases. Read this version's `frame.md` for concrete visual defaults. Series memory describes understanding and choices; it does not silently override an existing version's visual source.
 
-At the start or resumption of a formal invocation, and whenever identifying, reporting, or transitioning a workflow stage, read `references/workflow-stage-contract.md`. Treat `references/workflow-stage-contract.json` as the sole machine canonical for stage identity, order, and stable responsibility. Do not infer stage names from chat history or older prose. Use `workflow_status.py` to derive `activeContext`, `blockingStage`, `nextEligibleStage`, and `completedStages`; never persist or manually synchronize a single `currentStage`.
-
-A Vn declares the contract version governing its instance evidence. An older contract version is not invalid merely because it is old: preserve legal historical evidence under its original semantics, and use it for current decisions only when the canonical contract explicitly declares semantic compatibility. Reject unknown, damaged, or current-semantics-incompatible evidence.
-
-## Start From the Workspace
-
-1. Obtain the project workspace directory. If the user already supplied it, do not ask for individual files first.
-2. Create or recognize the user-visible work directory:
-
-   ```bash
-   python3 <skill-directory>/scripts/init_user_workspace.py "/absolute/project/workspace"
-   ```
-
-   The default display name is `AfterForge`. Treat it only as a replaceable directory name. Keep the Skill ID, repository name, schemas, fields, and internal references as `fcpxml-animation-pipeline`. If the command returns `existing`, reuse the directory without changing its contents. If it returns `blocked`, report its concrete error and stop.
-3. Create or recognize the user-maintained input directory:
-
-   ```bash
-   python3 <skill-directory>/scripts/init_user_inbox.py "/absolute/project/workspace"
-   ```
-
-   `user-inbox/` and everything below it are user-owned and Skill-read-only. If the command returns `existing`, leave every existing version and file unchanged. If it returns `blocked`, report its concrete error and stop. Never create, increment, rename, move, or delete a version directory.
-4. Initialize the AfterForge project-level Agent instructions once:
-
-   ```bash
-   python3 <skill-directory>/scripts/init_afterforge_project.py "/absolute/project/workspace"
-   ```
-
-   This command owns only `<display-name>/AGENTS.md` and `<display-name>/CLAUDE.md`. It creates a missing file but preserves every existing file byte-for-byte. It must not create or update canonical `frame.md`, any Vn directory, manifest, storyboard, composition, or media asset. If it returns `blocked`, report its concrete error and stop.
-5. Use the exact `user-inbox/YYYY-MM-DD_Vn/` or `user-inbox/YYYY-MM-DD_vn/` directory identified by the user as the intake source. Uppercase `V` and lowercase `v` are both valid; preserve the selected spelling exactly for the entire invocation. Version directories are flat: read materials from that directory itself, not from generated subdirectories. If the user has not identified a version, ask which existing version to use; do not choose the latest or invent V1.
-6. Run the read-only project intake against that version directory:
-
-   ```bash
-   python3 <skill-directory>/scripts/intake_project.py --flat "/absolute/project/workspace/user-inbox/YYYY-MM-DD_Vn"
-   ```
-
-7. Read `references/project-intake.md` when interpreting the JSON report, diagnosing a blocker, or explaining a text-classification ambiguity.
-8. Treat every discovered input as read-only. The only permitted project mutations in this phase are creating the top-level `AfterForge/` and `user-inbox/` directories and initializing the two project-level Agent instruction files described above. Never write inside `user-inbox/`.
-
-## Offer the Optional Animation Script Template
-
-The Skill bundles `assets/animation-script-template.docx` as an optional user-facing form. Offer or copy this existing asset only when the user asks for a template or asks how to structure animation guidance. Copy it to a destination the user has approved; never regenerate it ad hoc, modify the bundled source during project work, place it automatically in every project, or write it into `user-inbox/` on the user's behalf.
-
-The user may fill the copy and place it in the selected `user-inbox/YYYY-MM-DD_Vn/`. Intake then preserves it as `materials.animation_guidance`, and A7 audits its feasibility. If the user renames the filled copy, require the filename to retain either `animation-script` or `动画脚本` so current intake can classify it deterministically. The template is a convenience rather than a schema requirement: continue to accept free-form animation briefs and proceed without any script when the existing project evidence is sufficient.
-
-## Create an Approved Vn Scaffold
-
-After the user has approved the project's canonical `AfterForge/frame.md` and identified the target `YYYY-MM-DD_Vn` or `YYYY-MM-DD_vn`, create that version with its spelling unchanged:
+Use `scripts/afterforge.py` for normal work-model operations. Read `references/work-model-contract.json` for vocabulary and `references/hyperframes-single-source.md` when authoring/rendering. No Stage Contract or stage resolver is needed for schema 3.0 work.
 
 ```bash
-python3 <skill-directory>/scripts/scaffold_hyperframes.py "/absolute/project/workspace" "YYYY-MM-DD_Vn"
+python3 <skill>/scripts/afterforge.py open "/workspace/AfterForge"
+python3 <skill>/scripts/afterforge.py open "/workspace/AfterForge" --request-file /tmp/open.json
+python3 <skill>/scripts/afterforge.py status "<version-root>"
 ```
 
-The command creates only a previously absent `AfterForge/YYYY-MM-DD_Vn/` or `AfterForge/YYYY-MM-DD_vn/`. It accepts either case, preserves the selected spelling in the directory and metadata, and blocks rather than creating or merging when an existing entry differs only by `V`/`v`. It copies the current canonical `frame.md` and project fonts as version snapshots, resolves the official current HyperFrames version once unless an exact version was explicitly supplied, pins that exact version in every managed local package script, records it as immutable creation provenance, and runs a compatibility check before publishing the staged Vn. Resolution or checking failure blocks without leaving a target Vn; it never falls back to a stale repository default. If canonical `frame.md` is missing or the target already exists, stop on the returned `blocked` result. Never call generic `hyperframes init` as a substitute, merge into an existing Vn, generate or update project-level `AGENTS.md` or `CLAUDE.md`, or write inside `user-inbox/`.
+The first command lists existing episodes/versions. Creation supplies `requestId`, project `expectedRevision`, and `episodeTitle`, or an existing `episodeId`. Optional `brief` allows text-only planning; `inputDirectory` explicitly binds a user's existing input version; `copyFrom` creates a new working copy. IDs and paths are returned by the API. Input folder names, production versions and delivery numbers are different identities.
 
-## Keep Existing Vn Runtime Pins Stable
+Creation never installs a runtime. Before rendering a fresh version, `update` with `operation: "runtime"` and an exact locally cached `version` initializes offline package scripts and local GSAP. If that installation has no GSAP, supply an existing local copy through `.staging/` and `vendorSource`. If unavailable, report the missing dependency; installation requires its own authorization. Production pins never drift. An explicitly requested runtime change uses a new version and requires new review of its render inputs.
 
-When resuming an existing AfterForge Vn, treat its exact, uniform `package.json` HyperFrames pin as the sole current runtime authority. Do not probe npm latest as part of ordinary resume and do not apply the generic `hyperframes upgrade --project` behavior automatically. A newer official release is not permission to alter a Vn already in production.
+## Understand and design
 
-Change an existing pin only after the user explicitly authorizes that runtime migration, and use the repository migration command with an exact target version:
+Start from the whole argument: what should the audience understand differently, what does the original footage show, and what does narration establish? Model meaningful segments in `brief.segments`. A segment may have zero or many animation cues. Do not allocate animation sentence by sentence or impose a fixed percentage.
+
+Read supplied scripts and inspect the actual rough cut. Preserve intent when normalizing outdated timing or example materials. For substantial visual routing, use `references/visual-grammar.md` as an optional reasoning aid, not a required checklist. A cue-specific style has priority within its stated scope; source timing, output safety and implementation limits still apply.
+
+Ask one focused question only when missing information changes creative meaning, material selection, or reliable implementation. Apply this equally to first design and later Review/chat feedback. Do not make the user choose static/motion categories or perform a stage rollback. Continue unaffected work while a necessary clarification is pending.
+
+When a cue recomposes multiple excerpts, require the user's actual selection/order or exact authorized extraction ranges. A rough cut alone does not authorize invented editorial choices. Reuse coherent supplied materials without forcing them to match illustrative filenames. Additional audio production, source recutting and Handles/sourceIn placement remain out of scope.
+
+Motion defaults: readable travel, perceptible easing, useful holding time and editing room, chosen for the cue rather than a universal duration. Purposeful drift or continuous motion is allowed when meaningful. Align the intended visual state to semantic narration anchors; retain rational FCPXML frame time. Never slow original footage without authorization.
+
+## Author once and preview directly
+
+Canonical layout, text, styles and materials live in `compositions/cues/<cue>.html`; motion lives in `compositions/motion/<cue>.js`. The composition links its motion file. Declare dependencies in `renderAdapters.hyperframes.layoutDependencies`; remote or missing assets block rendering. Copy only referenced fonts/materials. Keep needed sources local and reproducible.
+
+Prepare files under the version's `.staging/`, then publish them with one `update` request (`operation: "edit"`, `files: [{path, source}]`, and optional `patch: {brief, cues, project}`). Do not hand-edit live manifests, evidence, jobs or releases. Descriptive changes do not alter media identities; source, duration, screen text or font changes do. Placement-only changes reuse animation MOV and rebuild composition. Existing real samples continue into production rather than being recreated in a second storyboard.
 
 ```bash
-python3 <skill-directory>/scripts/migrate_hyperframes_runtime.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn" "X.Y.Z"
+python3 <skill>/scripts/afterforge.py update "<version-root>" --request-file /tmp/update.json
+python3 <skill>/scripts/afterforge.py preview "<version-root>" --request-file /tmp/preview.json
+python3 <skill>/scripts/serve_workflow_review.py "/workspace/AfterForge"
 ```
 
-The migration must name the compatibility checks it actually ran and report review evidence as preserved, rebound, or invalidated. It must not collapse those facts into a generic `validated` state. Runtime changes participate in A11 layout locks and A12/downstream input fingerprints, so ordinary upgrades reopen affected review stages. Use `--rebind-current-a11` only when existing evidence proves the current A11 frames and approvals were already produced under the unchanged target pin; never use it to preserve evidence across an actual version change.
+Every writing request uses a unique `requestId` and the latest version `expectedRevision`. Retry the identical request to deduplicate. On conflict retain the proposal/comment and original location; reread and reconcile rather than silently retargeting.
 
-## Audit Supplied Animation Guidance at A7
+Preview accepts `scope: "full"`, local `cueIds`/`segmentIds` or explicit rational `range: {start,duration}`, and `scope: "still"` with one cue and optional global `time`. Local ranges include the affected segment plus two seconds of context, clamped and snapped to source frames. Production preview requires bound FCPXML/reference video and enough narration context. Static approval never blocks motion discussion. `allowDraft: true` explicitly records unfinished cues and cannot create a complete review set.
 
-When intake reports one or more files in `materials.animation_guidance`, read their actual content during A7 before proposing the A8 visual direction or designing any cue. Intake only discovers and preserves these optional files; it does not prove that their instructions are executable. When no animation guidance was supplied, omit this audit and continue autonomously. Never turn the absence of a script into an intake blocker.
+HyperFrames renders 480p cue media; FFmpeg composites all overlapping cues with original local times, layer order, rough-cut picture and sound. A complete full-length sample plus full-duration supplements for overlapping cues form the formal review set. A local sample cannot substitute for it. Do not track or claim whether the user watched everything.
 
-Compare each supplied instruction with the reference video's spoken narration and source image, the FCPXML timeline authority, the current AfterForge scope, and the implemented production backend. Classify each affected cue with one `guidanceReview.status`:
+## Feedback and decisions
 
-- `ready`: directly usable;
-- `agent-normalized`: the intent is clear and can be normalized without changing scope;
-- `needs-material`: execution requires specific user-owned image or video assets;
-- `needs-clarification`: an ambiguity would materially change the design direction;
-- `out-of-scope`: the request depends on excluded work such as sound production, recutting the source timeline, or independently editable source clips;
-- `unaligned`: the instruction cannot be reliably matched to the narration or FCPXML timeline evidence.
+Use the same `update` API for chat and page feedback. Preserve original text and `source: {channel: "chat"|"review", text, reference}`. Targets may include version, artifact, segment IDs, multiple cues, or a global interval; do not preselect one overlapping cue. Record clarification and resolution on feedback; `addressed` means the Agent changed it, `accepted` requires a user decision. Keep the resolved animation description concise and separate from discussion history.
 
-When a supplied script explicitly specifies a visual or motion style for one cue, that cue-level requirement is authoritative over conflicting general style defaults in the project `frame.md` or video-level creative direction. Limit the override to the properties and cue the script actually names; all unspecified properties continue to inherit the project defaults. Record the override and its evidence in that cue's `guidanceReview.notes` and carry it into `designRoute` and A11. A cue-level style instruction cannot override the source FCPXML time authority, AfterForge scope, read/write boundaries, delivery contract, or a backend limitation. If the intended override or its scope is ambiguous, classify it as `needs-clarification` instead of guessing.
-
-Record concise evidence and any safe normalization in `guidanceReview.notes` on the existing draft-manifest cue. Do not create a separate audit report or approval state. `ready` and `agent-normalized` continue without a question. For `needs-material`, record the exact asset need at A7 but request and copy the asset only after the Vn exists and the affected cue enters concrete design; store the copied asset inside that Vn and declare it as a layout dependency. Ask about `needs-clarification`, `out-of-scope`, or `unaligned` only when the unresolved issue prevents the affected cue or the project-level A8 direction from continuing reliably. Unaffected cues continue, and all resolved results remain visible through the existing A11 storyboard review rather than a new user gate.
-
-Treat a cue as `needs-material` by default when its animation must replay, reorder, crop, mask, tile, or otherwise recomposite two or more distinct source-footage excerpts inside the generated animation. This applies even when plausible excerpts can be seen in the rough-cut reference or resolved through the source FCPXML: those files prove context, not the user's exact editorial selection. Require one independently exported, sufficiently padded file per semantic excerpt, with its filename order mapping to the intended animation order. Allow source extraction instead only when the user explicitly provides exact source ranges and authorizes the Skill to extract them; never infer either the ranges or ordering.
-
-For these independent source clips, accept 1920×1080 H.264 as the standard input; ProRes and 4K are not default requirements. Require constant frame rate matching the source FCPXML, Rec.709 SDR, visually clean compression, and at least about 0.5 seconds of usable handle before and after the intended action, with 1 second preferred when transitions or selection remain flexible. Audio is optional. Ask the user not to bake in crop, framing, speed changes, borders, or animation. Before marking the cue ready, inspect the actual clips and verify codec, dimensions, frame rate, color context, duration, order, and usable handles. Higher resolution or an intraframe codec is warranted only when the approved cue needs substantial punch-in/cropping, keying, heavy image treatment, or near-full-frame reuse. This source-media acceptance rule does not change the final 1920×1080 transparent ProRes 4444 delivery contract.
-
-For material identity and selection, treat the user's latest explicit description plus the filenames, numeric order, and inspectable contents of the supplied clips as authoritative. A material-type list in animation guidance is a planning reference, not a requirement that may invalidate coherent user-selected files. When the supplied clips and the user's description agree but differ from the script's example material types, preserve the script's narrative purpose, record the substitution as `agent-normalized`, and continue without asking the user to conform the files to the script. Ask only when the user's description, filenames, ordering, or actual clip contents conflict with one another. This material-authority rule does not weaken explicit cue-level requirements for visual style, motion, or narrative effect.
-
-## Route Animation Design Before Choosing Form
-
-When subsequent workflow capabilities turn aligned content into animation proposals, read `references/visual-grammar.md` before proposing the project's visual direction or designing individual cues.
-
-Use two internal passes without adding a user gate. Before A8, identify each candidate cue's information function and relationship to the source image so the project-level visual package is grounded in the video's actual needs. After A8 approves that package, choose useful reference language within the approved `frame.md` and complete the route before designing the concrete cue. Choose one primary function and one primary source relationship; secondary functions and a mixed source relationship are allowed only when they remain subordinate and have a stated reason. Preserving source visibility alone does not make a cue source-led; apply the reference's double-deletion test before using a mixed relationship. Treat both indexes as open vocabularies rather than fixed enums.
-
-Record the resulting route in the draft manifest and expose it through the existing A11 storyboard review together with real copy and static keyframes. Do not add a per-cue approval step. Ask separately when a branch would materially change scope, violate an approved constraint, or create a hard-to-reverse consequence. Do not copy the cross-project grammar into project `frame.md`; that file records only the current video's approved visual package.
-
-### Clarify Creative Ambiguity Before Initial Design or Feedback Changes
-
-Before choosing or implementing an outcome, compare the user's latest request with accumulated confirmed constraints. If two or more reasonable interpretations would materially change composition, required content, motion, or special constraints, ask one focused question before changing the affected cue. This applies to initial design, A11/A13 comments, and later feedback revisions, whether feedback arrives in Review or chat. Prior approval, time pressure, cheap rework, and another review opportunity do not transfer that choice to the Agent. When the intended result is clear and only implementation details remain, proceed without asking. Clarification adds no approval gate and grants no approval itself: keep user-selected impact scopes and the existing review/invalidation rules. Update the resolved cue description when its meaning changes; do not display the clarification history as the final animation description.
-
-### Set Motion Defaults for Viewing and Editing
-
-When establishing a new video's motion direction, default to fluid, readable movement with perceptible ease-in and ease-out, a clear path, and useful settling/holding time for later editing. Choose travel, duration, and usable slack from the cue's content and screen proportions, not a universal number of seconds or a mandatory shorter exit. Prefer enough motion time for the user to tighten in FCP instead of an unnecessarily rushed action; this is not a rule to slow every shot. Explicit cue requirements still govern, including intentional instantaneous cuts. Adjust animation layers rather than slowing embedded source footage without authorization.
-
-Purposeful continuous motion, including drift, breathing, or a flowing outline, is allowed when it conveys the cue's meaning; neither a blanket no-floating rule nor an automatic idle loop is a default. Judge it by intent and readability in the existing review. Align important narration anchors to the intended visual state (starting, moving, just settled, or holding), without requiring word-by-word frame matching for every cue. Edit-friendly slack does not authorize changing source XML, moving timeline starts, or introducing unimplemented source-subrange placement. User-approved changes to project defaults apply to future production; preserve existing Vn snapshots, approved compositions and evidence unless that Vn is explicitly reopened.
-
-## Deliver A8 and A11 for User Review
-
-At A8 and A11, prioritize handing the reviewable result to the user promptly. Run low-cost deterministic checks only when they are immediately available; treat their findings as non-blocking self-checks unless they prove that the user cannot review the result.
-
-Block delivery only for an observable review failure, such as a storyboard that cannot open, a critical referenced asset that is missing, or a page with an obvious runtime error that prevents the intended result from being viewed. A lint/check command failure, browser-automation failure, screenshot mismatch, aesthetic uncertainty, or an Agent's own content/structure/visual review does not block delivery when the user can still inspect the result. Do not repeat checks to decide whether the work is attractive, polished, or visually approved; aesthetic approval belongs to the user. After making an A8 or A11 revision, hand it back for review as soon as the result remains viewable.
-
-## Build A11 and A12 From One Layout Source
-
-Before authoring or revising an A11 storyboard frame or an A12 animation, read `references/hyperframes-single-source.md`. For every animated cue, author the final copy, DOM, layout, and CSS end state only in `compositions/cues/<cue>.html`. Put timing and motion in `compositions/motion/<cue>.js`; motion must not rewrite layout properties. Generate `compositions/review/`, `STORYBOARD.md`, and the composited `index.html` from manifest v2 with the deterministic scripts. Never hand-maintain a second A11 layout or copy its DOM/CSS into A12.
-
-Freeze each canonical cue and its declared styles/fonts with `layout_lock.py freeze` using the proposed hero poster and any necessary auxiliary frames, then serve the Vn-bound Review page with `serve_workflow_review.py`. Before A11, write one concise natural-language `finalAnimationDescription` on every animated cue. It states only the resolved way that cue will finally appear at A11, with whatever details that cue needs; do not force a fixed field checklist, expose clarification or decision history, reconstruct it from chat, or maintain a second copy. The Review card orders the narration, locked hero/auxiliary frames, that final description, and frame-anchored comments. A missing description, invalid locked frame, or open comment blocks approval. Do not ask the user to reselect the stage, cue, or time. Saving a comment invalidates the affected approval evidence and downstream states but keeps the locked review frame visible as the version being discussed; do not clear the layout lock until actual composition, projection, dependency, or frame bytes make verification fail. Show a distinct save confirmation so an approval blocker cannot be mistaken for a failed comment write. The user approval recorded there—not lock existence or legacy `reviews.a11`—completes A11. Allow the user to approve any currently clean, valid cue independently while preserving explicit per-cue evidence. If a later change invalidates the lock, return only the affected cue to A11 review and propagate downstream invalidation instead of silently moving dependent elements. Cues explicitly approved as source-only have no formal composition, motion file, or render slot.
-
-Every new animated canonical cue must declare the exact `project.delivery` dimensions, currently 1920×1080 for horizontal self-media projects. `sync_storyboard.py` and `assemble_hyperframes.py` generate 854×480 projections that scale the delivery-native cue; they never own editable layout. After A11, register the actual 480p Demo with `workflow_review.register_demo` and use the same Review shell for player-context A13 comments and video-level approval. The page must bind the current playback time automatically. When exactly one animated cue is active, bind it automatically; when multiple cues overlap, show every active cue without preselecting one and require the user to choose before submission. An optional range is user-controlled. Keep free-text feedback independent from user-selected `impactScopes`, which may contain `static`, `motion`, or both. Static impact reopens the affected A11 cue and all downstream states; motion-only impact preserves valid A11 evidence and reopens A13/A14. The user remains in Demo context in either case. A13 approval does not imply A14: the user must press the separate native-render authorization action. Before final rendering, run `sync_delivery.py` to generate one renderable 1920×1080 host per animated cue. `render_animations.py` fails closed unless resolver evidence proves current A11, A12, A13, A14 and D1; formal D2 rendering must cover the complete animated cue set, render at composition resolution, and must not use HyperFrames `--resolution` or a post-render resize.
-
-When an older Vn still has 854×480 canonical cues, run `migrate_delivery_layout.py`. The migration wraps the existing layout in a deterministic delivery-native stage, invalidates the old A11 locks, and requires a new 480p equivalence review. Do not freeze revision 2 locks or batch-render delivery files until the user approves that regenerated review.
-
-## Register and Build the FCPXMLD Delivery
-
-After the user approves the full-motion review and native transparent MOV rendering succeeds, register the actual media before FCPXML injection:
+Approval and authorization bind the current verified complete review set. `operation: "decision", kind: "approve"` records picture approval only; `authorize` requires that set already approved. A clear instruction to approve and produce this delivery is supplied as `decision: {kind: "approve-and-deliver", reviewSetId, source}` to `deliver`. Never infer authorization from freezing, successful rendering, historical approval, or a positive reaction to an image.
 
 ```bash
-python3 <skill-directory>/scripts/register_delivery_assets.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
+python3 <skill>/scripts/afterforge.py deliver "<version-root>" --request-file /tmp/deliver.json
+python3 <skill>/scripts/afterforge.py resume "<version-root>" --request-file /tmp/resume.json
 ```
 
-The registrar is the only delivery step allowed to consume `delivery/render-ledger.json`. It verifies every animated MOV again, records stable `deliveryAsset` data in the main manifest, and leaves every `source-only` cue unregistered. Registration must not invalidate or rewrite A11 layout locks.
+Resume uses `jobId` and current `expectedRevision`. Jobs retain verified cue results after failure. Changed inputs require a new request and reuse unaffected media. Final delivery covers every animated cue, verifying native 1920×1080 ProRes 4444, exact source frame rate/duration, decoded alpha, source timeline invariance, placement, references, DTD and package inventory. No-animation episodes return “无需动画交付”.
 
-Then build the formal package:
+## Deliver and learn
 
-```bash
-python3 <skill-directory>/scripts/build_delivery_package.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
-```
+Packages are under `AfterForge/交付/<episode>/交付NNNN/`; independent MOV links appear in Review. `releases/` saves immutable source, review and delivery snapshots outside FCPXMLD. Identical delivery input reuses the verified package. Current drafts can change without rewriting releases or waiting for FCP acceptance.
 
-The builder verifies the source FCPXML hash, complete A11 approval, registered media hashes, exact rational placement, positive lane allocation, source-sequence preservation, flat package contents, references, and the Final Cut Pro bundled DTD. It publishes only a new `AfterForge__<sourceVersion>__d-<fingerprint>.fcpxmld` directly under project-level `AfterForge/`. The package contains only `Info.fcpxml` and the animated MOV files; it never overwrites a package, source FCPXML, canonical MOV, or Final Cut Pro Library. A same-fingerprint package is reusable only after complete validation.
+Record actual import acceptance through `update operation: "decision", kind: "accept-import", deliveryId, source`. Protocol 2 requires a first actual FCP re-export; register via `update operation: "roundtrip", deliveryId, reexportedPath, source`. Only actual verified evidence establishes the series protocol baseline. Automated tests cannot replace FCP import.
 
-The first real import for a protocol version remains a user acceptance gate. Ask the user to import the new Project, verify media/alpha/editability and the absence of source-only placeholders, then export that imported Project as FCPXML. Compare the re-export with:
+When useful after an episode, update the single series memory with a short case: why a choice worked or was abandoned, applicability, and its feedback/finished-work source. Distinguish confirmed preferences from hypotheses. Do not turn one approval into a universal rule, load every old conversation, add mandatory retrospective forms, or use the old “电影解读视觉策划探索沉淀” as default guidance.
 
-```bash
-python3 <skill-directory>/scripts/compare_fcpxml_roundtrip.py "/absolute/project/workspace/AfterForge/AfterForge__YYYY-MM-DD_Vn__d-<fingerprint>.fcpxmld/Info.fcpxml" "/absolute/reexported.fcpxml" "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn/animation-manifest.json"
-```
+## Legacy boundary
 
-Do not describe the FCPXML delivery capability as fully accepted for a new protocol version until this manual import and semantic round-trip pass.
-
-## Decide Whether to Ask
-
-Use the report fields as the decision contract:
-
-- `status: ready`: begin subsequent content analysis with the selected files. Do not ask for an animation brief, storyboard, brand kit, output codec, or duplicate narration format.
-- `status: blocked`: ask only the concrete questions in `questions`. Explain the matching `blockers[].why` and stop until the required input is available or uniquely identified.
-- `ambiguities`: preserve each item and its evidence. Ask about a specific item only when later analysis cannot proceed reliably without resolving it; do not turn the list into generic setup questions.
-- `warnings`: state relevant limitations, then continue. A warning is not permission to request optional material.
-
-## Input Policy
-
-| Material | Intake rule |
-|---|---|
-| FCPXML or FCPXMLD | Required. Discover it in the workspace; request it only when missing or genuinely ambiguous. |
-| Low-bitrate rough-cut reference video | Required. Use it to understand selected shots and adjacent visual context without scanning the full source film. |
-| Narration SRT, timeline captions, transcript, or manuscript | Alternative evidence sources. Reuse whichever existing source is sufficient; never demand duplicate forms. |
-| Marker, timeline text, notes, or design ideas | Optional constraints. Discover and preserve them when present. Their absence is not missing information. |
-| Animation brief or shot-by-shot design | Never a default intake requirement. When supplied, preserve it in `materials.animation_guidance` even when an SRT already exists; its timecodes never override FCPXML. Intake does not validate its feasibility; A7 performs that cue-level audit. |
-| Independent animation source clips | Conditionally required at cue level when two or more source excerpts must be recomposited inside the animation. Files with an ordered numeric prefix such as `01-`, or whose names retain `animation-source` or `动画素材`, are reported in `materials.animation_source_clips` and do not compete with the rough-cut reference video; a numbered file containing an explicit rough-cut keyword remains a reference candidate. Standard acceptance is 1920×1080 H.264, project-matched constant frame rate, Rec.709 SDR, and sufficient handles; this is not a global intake blocker. The user's current description and the supplied files' names, order, and actual contents govern material identity; script material types are references unless explicitly reaffirmed. |
-
-If no narration text is found but the selected reference video can provide narration audio for later transcription, keep intake ready and report the limitation instead of asking preemptively for duplicate text.
-
-## Preserve the Rough Cut
-
-Interpret explicit `<gap>` elements and interior timing holes between primary spine clips as candidate animation spaces. Record their exact timeline offsets and durations. Do not close gaps, move clips, replace shots, or perform creative recutting.
-
-Classify timeline text only from inspectable evidence:
-
-- `narration_subtitle`: caption element, subtitle role/name, or verified external-text match;
-- `design_text`: design-oriented role/name, Marker, note, or instruction-like material;
-- `ambiguous`: insufficient or conflicting evidence.
-
-Keep ambiguous text unchanged and expose the reason. Never infer certainty from typography, placement, or intuition alone.
-
-## Intake Result
-
-At the end of intake, report:
-
-1. selected FCPXML/FCPXMLD and reference video;
-2. narration sources, animation guidance, notes, Markers, timeline text, and detected gaps;
-3. readiness status and any exact blocker;
-4. unresolved text items with evidence and reason;
-5. the unchanged boundary: no animation rendering and no FCPXML write-back in this phase.
+Schema 2.0 data and packages stay in place. New entry points only read them; explicit `open copyFrom` creates a schema 3.0 copy without inherited approvals. Existing root Agent files are never automatically overwritten. Only to interpret historical evidence, read `references/workflow-stage-contract.md`, `references/legacy/production-v2.md`, and relevant legacy references. Old stage definitions and runtime pins retain their original meanings.

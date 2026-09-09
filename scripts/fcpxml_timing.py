@@ -123,12 +123,15 @@ def _overlaps(left: TimelineInterval, right: TimelineInterval) -> bool:
 def allocate_lanes(
     requests: list[TimelineInterval],
     occupied: list[TimelineInterval] | None = None,
+    *,
+    preferred_lanes: dict[str, int] | None = None,
 ) -> dict[str, int]:
     """Assign the lowest available positive lane to each requested interval."""
     existing = list(occupied or [])
     if any(item.lane <= 0 for item in existing):
         raise ValueError("occupied intervals must use positive lanes")
 
+    preferences = preferred_lanes or {}
     assignments: dict[str, int] = {}
     assigned: list[TimelineInterval] = []
     seen: set[str] = set()
@@ -139,8 +142,15 @@ def allocate_lanes(
         if request.duration <= 0:
             raise ValueError(f"timeline interval duration must be positive: {request.key}")
 
-        lane = 1
-        while any(
+        lane = preferences.get(request.key, 1)
+        if type(lane) is not int or lane <= 0:
+            raise ValueError(f"preferred lane must be a positive integer: {request.key}")
+        if request.key in preferences and any(
+            item.lane == lane and _overlaps(request, item)
+            for item in [*existing, *assigned]
+        ):
+            raise ValueError(f"preferred lane overlaps an existing anchor: {request.key}")
+        while request.key not in preferences and any(
             item.lane == lane and _overlaps(request, item)
             for item in [*existing, *assigned]
         ):

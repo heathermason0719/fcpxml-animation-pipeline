@@ -297,9 +297,10 @@ async function run() {
     assert.equal(get('rangeEnd').textContent, '00:14.420');
     assert.equal(get('impactStatic').checked, true);
     assert.equal(get('impactMotion').checked, true);
-  } else if (scenario === 'draft-vn-isolation') {
+  } else if (scenario === 'draft-vn-isolation' || scenario === 'draft-rework-isolation') {
     bodyOf(storyboardForms()[0]).value = 'V1 主审帧草稿';
-    respond = async () => ({ok: true, json: async () => ({...initial, sourceVersion: 'test_V2'})});
+    respond = async () => ({ok: true, json: async () => scenario === 'draft-rework-isolation'
+      ? ({...initial, reworkRevision: 1}) : ({...initial, sourceVersion: 'test_V2'})});
     await get('refresh').onclick();
     assert.equal(bodyOf(storyboardForms()[0]).value, '', 'draft must not cross the Vn boundary');
     assert.equal(get('demoBody').value, '', 'Demo draft must not cross the Vn boundary');

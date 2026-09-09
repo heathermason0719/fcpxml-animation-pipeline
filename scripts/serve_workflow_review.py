@@ -9,15 +9,23 @@ import json
 import mimetypes
 import os
 import re
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+# ``python scripts/serve_workflow_review.py`` places only ``scripts/`` on
+# sys.path.  Keep the documented direct CLI invocation able to import the
+# package-qualified schema-3 work-model modules.
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPOSITORY_ROOT))
+
 try:
-    from scripts.manifest_transaction import manifest_mutation
+    from scripts.manifest_transaction import manifest_mutation, manifest_read
 except ModuleNotFoundError:
-    from manifest_transaction import manifest_mutation
+    from manifest_transaction import manifest_mutation, manifest_read
 
 try:
     from scripts.hyperframes_adapter import cue_adapter, load_manifest, safe_project_path
@@ -60,10 +68,16 @@ def _frame_hash(root: Path, relative: Any) -> str | None:
         return None
 
 
-@manifest_mutation
+@manifest_read
 def review_state(version_root: Path) -> dict[str, Any]:
     root = Path(version_root).expanduser().resolve()
     manifest = load_manifest(root)
+    try:
+        from scripts.rework_state import rework_revision
+    except ModuleNotFoundError:
+        from rework_state import rework_revision
+    status = resolve_stage_status(root)
+    closed = status.get("blockingStage") is None and "D5" in status.get("completedStages", [])
     stage_evidence = manifest.get("workflow", {}).get("stageEvidence", {})
     a11 = stage_evidence.get("A11", {}) if isinstance(stage_evidence, dict) else {}
     a13 = stage_evidence.get("A13", {}) if isinstance(stage_evidence, dict) else {}
@@ -131,7 +145,7 @@ def review_state(version_root: Path) -> dict[str, Any]:
                 ],
                 "comments": cue_comments,
                 "approvalStatus": assessment["approvalStatus"],
-                "canApprove": assessment["canApprove"],
+                "canApprove": assessment["canApprove"] and not closed,
                 "approvalBlockers": assessment["approvalBlockers"],
             }
         )
@@ -146,8 +160,11 @@ def review_state(version_root: Path) -> dict[str, Any]:
         }
     return {
         "sourceVersion": manifest["sourceVersion"],
+        "reworkRevision": rework_revision(manifest),
+        "closed": closed,
+        "reworkArchives": manifest.get("workflow", {}).get("rework", {}).get("archives", []),
         "manifestSha256": _manifest_hash(root),
-        "stageStatus": resolve_stage_status(root),
+        "stageStatus": status,
         "cues": cues,
         "demo": demo,
         "comments": comments,
@@ -251,9 +268,10 @@ function renderCueChoice(seconds=commentAnchorPoint()){
   byId('cueOptions').replaceChildren(...buttons);return cues;
 }
 function updatePlayerContext(seconds=byId('demo').currentTime||0){const cues=activeCuesAt(seconds);byId('currentTime').textContent=formatTime(seconds);byId('currentCue').textContent=cues.length===0?'当前镜头：—':cues.length===1?`当前镜头：${cueLabel(cues[0])}`:`当前画面：${cues.length} 个 cue 重叠 · ${cues.map(cueLabel).join(' / ')}`;renderCueChoice();updateDemoDraftNotice();return cues}
-function frameKey(cue,frame){return JSON.stringify([state.sourceVersion,cue.id,frame.id])}
+function reviewIdentity(){return JSON.stringify([state.sourceVersion,state.reworkRevision??0])}
+function frameKey(cue,frame){return JSON.stringify([reviewIdentity(),cue.id,frame.id])}
 function frameAnchor(cue,frame){return JSON.stringify([cue.layoutRevision,frame.id,frame.role,frame.src,frame.sha256])}
-function demoIdentity(){return JSON.stringify([state.sourceVersion,state.demo?.src,state.demo?.sha256])}
+function demoIdentity(){return JSON.stringify([reviewIdentity(),state.demo?.src,state.demo?.sha256])}
 function captureStoryboardDrafts(){
   for(const entry of storyboardForms){
     if(entry.body.value)storyboardDrafts.set(entry.key,{version:entry.version,cueId:entry.cueId,frameId:entry.frameId,label:entry.label,anchor:entry.anchor,body:entry.body.value});
@@ -266,17 +284,17 @@ function captureDemoDraft(){
   if(!body)demoAnchor=null;
   if(body&&!demoAnchor){const point=ranged?rangeStartValue:byId('demo').currentTime;demoAnchor={identity:demoIdentity(),point,cueId:point===null?null:selectedCueAt(point)}}
   if(body&&demoAnchor&&!demoAnchor.cueId)demoAnchor.cueId=selectedCueAt(demoAnchor.point);
-  demoDrafts.set(state.sourceVersion,{body,anchor:demoAnchor,ranged,start:rangeStartValue,end:rangeEndValue,static:byId('impactStatic').checked,motion:byId('impactMotion').checked});
+  demoDrafts.set(reviewIdentity(),{body,anchor:demoAnchor,ranged,start:rangeStartValue,end:rangeEndValue,static:byId('impactStatic').checked,motion:byId('impactMotion').checked});
 }
 function captureDrafts(){captureStoryboardDrafts();captureDemoDraft()}
 function demoAnchorChanged(){if(!demoAnchor)return false;if(demoAnchor.identity!==demoIdentity())return true;if(demoAnchor.point===null)return false;const active=activeCuesAt(demoAnchor.point);return demoAnchor.cueId?(!active.some(cue=>cue.id===demoAnchor.cueId)):active.length===1}
 function updateDemoDraftNotice(){
   const changed=demoAnchorChanged(),notice=byId('demoDraftNotice'),point=demoAnchor?.point??commentAnchorPoint(),active=activeCuesAt(point),cueId=demoAnchor?.cueId||selectedCueAt(point),needsChoice=active.length>1&&!cueId;
   notice.hidden=!demoAnchor;notice.textContent=demoAnchor?(changed?'Demo 或镜头锚点已更新；草稿保留在旧锚点，请核对后重新绑定。':needsChoice?`草稿锚点：${formatTime(point)}；请选择 comment 对象。`:`草稿锚点：${byId('useRange').checked?'区间起点':'时间点'} ${demoAnchor.point===null?'未设置':formatTime(demoAnchor.point)}`):'';
-  byId('rebindDemoDraft').hidden=!demoAnchor;byId('submitDemoComment').disabled=changed||needsChoice;
+  byId('rebindDemoDraft').hidden=!demoAnchor;byId('submitDemoComment').disabled=!!state.closed||changed||needsChoice;
 }
 function restoreDemoDraft(){
-  const draft=demoDrafts.get(state.sourceVersion)||{body:'',anchor:null,ranged:false,start:null,end:null,static:false,motion:true};
+  const draft=demoDrafts.get(reviewIdentity())||{body:'',anchor:null,ranged:false,start:null,end:null,static:false,motion:true};
   byId('demoBody').value=draft.body;demoAnchor=draft.anchor;selectedDemoCueId=draft.anchor?.cueId||null;demoCueContextKey=null;rangeStartValue=draft.start;rangeEndValue=draft.end;
   byId('impactStatic').checked=draft.static;byId('impactMotion').checked=draft.motion;byId('useRange').checked=draft.ranged;
   byId('rangePanel').hidden=!draft.ranged;byId('submitDemoComment').textContent=draft.ranged?'提交区间评论':'提交当前时间评论';
@@ -285,11 +303,11 @@ function restoreDemoDraft(){
 function makeFrameForm(cue,frame){
   const form=node('form','inline-comment'),body=node('textarea',''),key=frameKey(cue,frame),anchor=frameAnchor(cue,frame),draft=storyboardDrafts.get(key);
   body.placeholder=`针对“${frame.label}”写 comment`;body.value=draft?.body||'';
-  const entry={key,version:state.sourceVersion,cueId:cue.id,frameId:frame.id,label:frame.label,anchor:draft?.anchor||anchor,body};storyboardForms.push(entry);
+  const entry={key,version:reviewIdentity(),cueId:cue.id,frameId:frame.id,label:frame.label,anchor:draft?.anchor||anchor,body};storyboardForms.push(entry);
   const submit=node('button','primary','提交当前静帧评论');submit.type='submit';
   const warning=node('div','context-warning','静帧已更新；草稿仍属于旧静帧。请核对新帧后确认重新绑定。');
   const rebind=node('button','','已核对新静帧，重新绑定草稿');rebind.type='button';
-  const update=()=>{const changed=entry.anchor!==anchor;warning.hidden=!changed;rebind.hidden=!changed;submit.disabled=changed};update();
+  const update=()=>{const changed=entry.anchor!==anchor;warning.hidden=!changed;rebind.hidden=!changed;submit.disabled=!!state.closed||changed;body.disabled=!!state.closed};update();
   rebind.addEventListener('click',()=>{entry.anchor=anchor;captureStoryboardDrafts();update()});
   form.append(body,warning,rebind,submit);
   form.addEventListener('submit',async event=>{
@@ -314,13 +332,18 @@ function makeCueCard(cue){
 function renderOrphanDrafts(){
   const live=new Set(storyboardForms.map(entry=>entry.key));
   for(const [key,draft] of storyboardDrafts){
-    if(draft.version!==state.sourceVersion||live.has(key))continue;
+    if(draft.version!==reviewIdentity()||live.has(key))continue;
     const card=node('article','card'),body=node('textarea','');body.value=draft.body;
     card.append(node('h3','',`${draft.cueId} · ${draft.label} · 已移除锚点草稿`),node('p','context-warning','原镜头或静帧已移除；草稿保留供复制，不会自动绑定到其他静帧。'),body);
     storyboardForms.push({...draft,key,body});byId('cues').append(card);
   }
 }
 function render(){
+  const cycle=state.reworkRevision?`返工第 ${state.reworkRevision} 轮`:'首次制作';
+  byId('title').textContent=`AfterForge Review · ${state.sourceVersion} · ${cycle}`;
+  byId('stage').textContent=state.closed?'已闭环 · 只读查看；修改前请正式重开返工':`阻塞阶段 ${state.stageStatus.blockingStage??'无'} · 下一阶段 ${state.stageStatus.nextEligibleStage??'已完成'}`;
+  if(state.reworkArchives?.length)byId('stage').textContent+=` · 已保留 ${state.reworkArchives.length} 轮闭环记录`;
+  byId('demoBody').disabled=!!state.closed;
   storyboardForms=[];byId('cues').replaceChildren(...state.cues.map(makeCueCard));renderOrphanDrafts();
   const clean=state.cues.filter(cue=>cue.canApprove&&cue.approvalStatus!=='current').map(cue=>cue.id);byId('approveCleanStoryboard').disabled=!clean.length;byId('approveCleanStoryboard').onclick=()=>act('approve-storyboard',{cueIds:clean});
   if(state.demo){byId('showDemo').disabled=false;const source=vn(state.demo.src)+'?v='+encodeURIComponent(state.demo.sha256||'');if(byId('demo').dataset.src!==source){byId('demo').src=source;byId('demo').dataset.src=source}renderCommentList(byId('demoComments'),state.demo.comments,{showTime:true})}else{byId('showDemo').disabled=true;if(activeView==='demo')switchView('storyboard')}
@@ -378,7 +401,7 @@ byId('demoComment').onsubmit=async event=>{
   const anchor=demoAnchor.point,cueId=demoAnchor.cueId;
   if(activeCuesAt(anchor).length>1&&!cueId){byId('log').textContent='当前时间有多个重叠 cue，请先选择 comment 对象';return}
   if(impacts.includes('static')&&!cueId){byId('log').textContent='静态影响需要落在一个具体镜头内';return}
-  const version=state.sourceVersion,submitted=JSON.stringify(demoDrafts.get(version));
+  const version=reviewIdentity(),submitted=JSON.stringify(demoDrafts.get(version));
   await act('add-demo-comment',{impactScopes:impacts,cueId,timeStart:`${anchor.toFixed(3)}s`,timeEnd:ranged?`${rangeEndValue.toFixed(3)}s`:null,body:byId('demoBody').value},()=>{
     const latest=demoDrafts.get(version);if(JSON.stringify(latest)===submitted)demoDrafts.set(version,{...latest,body:'',anchor:null});
   });
@@ -505,6 +528,30 @@ def make_handler(version_root: Path):
     return ReviewHandler
 
 
+def serve_work_model(afterforge_root: Path, host: str = "127.0.0.1", port: int = 8765):
+    """Serve the schema-3 project Review without importing it for legacy Vn."""
+    from scripts.work_model_review import serve
+
+    return serve(afterforge_root, host, port)
+
+
+def _server_for_root(root: Path, host: str, port: int):
+    """Dispatch a project/schema-3 target while retaining the legacy server."""
+    project_marker = root / "工程" / "project.json"
+    if project_marker.is_file():
+        return serve_work_model(root, host, port), "project"
+    manifest_path = root / "animation-manifest.json"
+    if not manifest_path.is_file():
+        raise ValueError("missing animation-manifest.json or work-model project index")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("schemaVersion") == "3.0":
+        from scripts.work_model_store import layout
+        afterforge, _ = layout(root)
+        return serve_work_model(afterforge, host, port), "project"
+    load_manifest(root)
+    return ThreadingHTTPServer((host, port), make_handler(root)), "legacy"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="启动绑定单个 Vn 的本地 AfterForge Review。")
     parser.add_argument("version_root", type=Path)
@@ -512,9 +559,8 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     root = args.version_root.expanduser().resolve()
-    load_manifest(root)
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(root))
-    print(json.dumps({"status": "serving", "url": f"http://{args.host}:{args.port}", "versionRoot": str(root)}, ensure_ascii=False), flush=True)
+    server, mode = _server_for_root(root, args.host, args.port)
+    print(json.dumps({"status": "serving", "url": f"http://{args.host}:{server.server_port}", "root": str(root), "mode": mode}, ensure_ascii=False), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

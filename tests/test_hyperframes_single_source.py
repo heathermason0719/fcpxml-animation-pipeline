@@ -134,6 +134,10 @@ def manifest_fixture() -> dict:
 
 
 class SingleSourceFixture(unittest.TestCase):
+    def write_demo_evidence(self, root: Path, preview_relative: str) -> None:
+        from tests.demo_fixture import write_simulated_demo_evidence
+        write_simulated_demo_evidence(root, preview_relative)
+
     def make_version(self, directory: str) -> Path:
         root = Path(directory)
         for relative in (
@@ -142,6 +146,7 @@ class SingleSourceFixture(unittest.TestCase):
             "compositions/review",
             "compositions/delivery",
             "assets/fonts",
+            "assets/vendor",
             "assets/media",
             "assets/stills",
             "assets/styles",
@@ -154,6 +159,7 @@ class SingleSourceFixture(unittest.TestCase):
         (root / "assets/stills/cue-02.png").write_bytes(b"still two")
         (root / "assets/styles/project-tokens.css").write_text(":root { --ink: #fff; }\n", encoding="utf-8")
         (root / "assets/fonts/test.woff2").write_bytes(b"font")
+        (root / "assets/vendor/gsap.min.js").write_bytes(b"gsap")
         (root / "compositions/cues/p1s01-c01-title.html").write_text(
             """<!doctype html><html><body><template>
 <style>@import url(\"assets/styles/project-tokens.css\"); #root{position:absolute;inset:0}</style>
@@ -182,6 +188,7 @@ class SingleSourceFixture(unittest.TestCase):
                 },
             },
         )
+        write_json(root / "hyperframes.json", {"paths": {"assets": "assets"}})
         write_json(
             root / "meta.json",
             {

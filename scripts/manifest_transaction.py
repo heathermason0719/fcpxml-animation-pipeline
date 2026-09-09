@@ -37,6 +37,8 @@ def _state(name):
 @contextmanager
 def manifest_transaction(root, *, expected_sha256=None, timeout=2.0):
     root = _root(root)
+    if (root / ".afterforge-archived").exists():
+        raise ValueError("archived invocation is read-only")
     held = _state("held")
     if root in held:
         if expected_sha256 is not None and manifest_revision(root) != expected_sha256:
@@ -85,11 +87,37 @@ def note_manifest_write(root):
         operation["revision"] = manifest_revision(root)
 
 
+def require_open_invocation(root):
+    """Reject production edits before they can replace closed evidence or files."""
+    import json
+    root = _root(root)
+    manifest = json.loads((root / "animation-manifest.json").read_text())
+    if "D5" not in manifest.get("workflow", {}).get("stageEvidence", {}):
+        return
+    try:
+        from scripts.workflow_status import resolve_stage_status
+    except ModuleNotFoundError:
+        from workflow_status import resolve_stage_status
+    status = resolve_stage_status(root)
+    if status.get("blockingStage") is None and "D5" in status.get("completedStages", []):
+        raise ValueError("closed invocation is read-only; begin rework before editing")
+
+
+def manifest_read(function):
+    """Obtain a coherent read without granting mutation eligibility."""
+    @wraps(function)
+    def wrapped(version_root, *args, **kwargs):
+        with manifest_commit(version_root):
+            return function(version_root, *args, **kwargs)
+    return wrapped
+
+
 def manifest_mutation(function):
     """Serialize short mutations and exclusive multi-file migration/rollback."""
     @wraps(function)
     def wrapped(version_root, *args, **kwargs):
         with manifest_commit(version_root):
+            require_open_invocation(version_root)
             return function(version_root, *args, **kwargs)
     return wrapped
 

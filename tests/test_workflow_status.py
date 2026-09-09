@@ -563,6 +563,7 @@ class WorkflowStatusTests(SingleSourceFixture):
             preview = root / "previews/demo.mp4"
             preview.parent.mkdir()
             preview.write_bytes(b"registered demo")
+            self.write_demo_evidence(root, "previews/demo.mp4")
 
             result = register_demo(root, "previews/demo.mp4")
             status = resolve_stage_status(root)
@@ -586,6 +587,7 @@ class WorkflowStatusTests(SingleSourceFixture):
             preview = root / "previews/demo.mp4"
             preview.parent.mkdir()
             preview.write_bytes(b"approved demo")
+            self.write_demo_evidence(root, "previews/demo.mp4")
             register_demo(root, "previews/demo.mp4")
             comment = add_review_comment(
                 root,
@@ -623,6 +625,7 @@ class WorkflowStatusTests(SingleSourceFixture):
             preview = root / "previews/demo.mp4"
             preview.parent.mkdir()
             preview.write_bytes(b"demo with open comment")
+            self.write_demo_evidence(root, "previews/demo.mp4")
             register_demo(root, "previews/demo.mp4")
             add_review_comment(
                 root,

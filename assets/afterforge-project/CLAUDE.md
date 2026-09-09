@@ -1,5 +1,5 @@
-# Claude Code 项目入口
+# AfterForge
 
-开始工作前读取同目录的 `AGENTS.md`，并遵守其中的资产边界、非破坏性规则和验收约束。
+先遵循同目录 `AGENTS.md`。这是电影系列的动画工作区：围绕当前作品与反馈工作，用 `fcpxml-animation-pipeline` 的统一 CLI，保留原素材、精确时间、制作版 runtime 和不可变交付。
 
-本文件只在 AfterForge 视频项目初始化时创建一次。创建后不随 Vn、新版 HyperFrames 或日常制作自动同步；未来实际使用 Claude Code 时，再依据届时项目规则和用户授权显式更新。
+默认读取 `工程/创作记忆.md` 的简明共识及选中版本的视觉规范；不加载全部历史阶段文档。旧 schema 2.0 只读，继续制作显式创建新副本。

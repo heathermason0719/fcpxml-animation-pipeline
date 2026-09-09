@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AfterForge 审阅</title>
+  <link rel="stylesheet" href="/review-v3.css">
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="#">AfterForge <span>审阅</span></a><div id="versionTitle" class="version-title">选择一个版本</div><button id="refresh" class="quiet">刷新状态</button></header>
+  <main class="shell">
+    <aside class="navigator"><div class="panel-label">项目与版本</div><div id="projectTree" class="project-tree" aria-live="polite"></div></aside>
+    <section class="workspace">
+      <div class="workspace-head"><div><p id="eyebrow" class="eyebrow">AfterForge</p><h1 id="title">审阅工作台</h1><p id="summary" class="muted">从左侧选择正在制作的版本。</p></div><div id="revision" class="revision"></div></div><section class="compare"><label>与另一个版本对照 <select id="compareVersion"><option value="">不对照</option></select></label><div id="compareContent" class="compare-content"></div></section>
+      <nav class="tabs" aria-label="审阅内容"><button data-tab="overview" class="active">脚本与思路</button><button data-tab="preview">画面与小样</button><button data-tab="delivery">交付</button></nav>
+      <section id="overview" class="tab"><div class="overview-actions"><a id="exportScript" class="quiet" download>导出本集脚本</a></div><div id="brief" class="brief"></div><div id="cues" class="cue-list"></div></section>
+      <section id="preview" class="tab" hidden><div id="media" class="media-stage"><div class="empty">选择可审阅的预览素材</div></div><div class="preview-actions"><span id="mediaTime" class="muted">全局时间：—</span><button id="locateTime" type="button">定位当前时间</button></div><div id="artifacts" class="artifact-list"></div></section>
+      <section id="delivery" class="tab" hidden><div id="deliveries" class="delivery-list"></div></section>
+    </section>
+    <aside class="feedback"><div class="feedback-head"><div><p class="panel-label">反馈</p><h2>留下可追踪的意见</h2></div><span id="feedbackTarget" class="target">整个版本</span></div><form id="feedbackForm"><textarea id="feedbackBody" placeholder="描述希望如何修改；可在预览中选择素材或镜头定位。"></textarea><div class="time-range"><label>起点（整集秒）<input id="timeStart" placeholder="例如 12s"></label><label>终点（整集秒）<input id="timeEnd" placeholder="可选，例如 25/2s"></label></div><button id="submitFeedback" class="primary" type="submit">提交反馈</button></form><div id="draftNotice" class="draft-notice" hidden></div><button id="retargetDraft" type="button" hidden>按当前版本重新定位草稿</button><div id="feedbackList" class="feedback-list"></div><div id="actions" class="actions"></div><p id="message" class="message" aria-live="polite"></p></aside>
+  </main>
+  <script src="/review-v3.js"></script>
+</body>
+</html>

@@ -65,6 +65,7 @@ class RenderPlanningTests(SingleSourceFixture):
         preview = root / "previews/demo.mp4"
         preview.parent.mkdir(parents=True, exist_ok=True)
         preview.write_bytes(b"demo")
+        self.write_demo_evidence(root, "previews/demo.mp4")
         register_demo(root, "previews/demo.mp4")
         approve_demo(root, actor="user")
         authorize_native_render(root, actor="user")

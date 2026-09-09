@@ -15,6 +15,11 @@ from typing import Any, Sequence
 from xml.etree import ElementTree as ET
 
 try:
+    from scripts.rework_state import delivery_directory, delivery_identity, rework_revision, revision_evidence
+except ModuleNotFoundError:
+    from rework_state import delivery_directory, delivery_identity, rework_revision, revision_evidence
+
+try:
     from scripts.hyperframes_adapter import load_manifest, save_manifest
     from scripts.inject_fcpxml import build_delivery_fcpxml
     from scripts.layout_lock import verify_layouts
@@ -50,6 +55,7 @@ def delivery_fingerprint(
     delivery_assets: Sequence[dict[str, Any]],
     placements: Sequence[dict[str, Any]],
     protocol_version: str,
+    *, rework_revision: int = 0,
 ) -> str:
     if not isinstance(source_sha256, str) or len(source_sha256) != 64:
         raise ValueError("source SHA-256 must be a 64-character string")
@@ -61,6 +67,10 @@ def delivery_fingerprint(
         "deliveryAssets": _canonical_records(delivery_assets, "delivery asset"),
         "placements": _canonical_records(placements, "placement"),
     }
+    if type(rework_revision) is not int or rework_revision < 0:
+        raise ValueError("invalid delivery rework revision")
+    if rework_revision:
+        payload["reworkRevision"] = rework_revision
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -131,6 +141,7 @@ def _record_d4(
         "contractVersion": workflow["stageContractVersion"],
         "semanticVersion": 1,
         "status": "published",
+        **revision_evidence(manifest),
         "publicationStatus": publication_status,
         "packageName": package.name,
         "deliveryFingerprint": fingerprint,
@@ -143,7 +154,7 @@ def _resolve_canonical_movies(
     version_root: Path,
     animated: list[dict[str, Any]],
 ) -> dict[str, Path]:
-    source_dir = version_root / "delivery/prores4444"
+    source_dir = delivery_directory(version_root, load_manifest(version_root)) / "prores4444"
     if not source_dir.is_dir() or source_dir.is_symlink():
         raise ValueError(f"canonical delivery movie directory is missing or unsafe: {source_dir}")
     candidates = [
@@ -249,8 +260,9 @@ def build_delivery_package(
         delivery_assets,
         document.fingerprint_inputs["placements"],
         DELIVERY_PROTOCOL_VERSION,
+        rework_revision=rework_revision(manifest),
     )
-    package_name = f"AfterForge__{manifest['sourceVersion']}__d-{fingerprint}.fcpxmld"
+    package_name = f"{delivery_identity(manifest)}__d-{fingerprint}.fcpxmld"
     package_parent = root.parent
     target = package_parent / package_name
     if target.exists():

@@ -1,103 +1,73 @@
 # Agent 工作说明
 
-## 工作范围
+## 范围与阅读
 
-本仓库用于开发 `fcpxml-animation-pipeline` Codex Skill。只执行用户当前明确授权的任务，不自动扩展到动画制作、FCPXML 修改、素材转码、发布或安装。
+本仓库开发 `fcpxml-animation-pipeline` Skill。只执行当前授权工作，不自动扩大到真实动画制作、输入修改、安装、发布或 FCP 导入。
 
-## 开始任务前
+非平凡任务先读 `docs/PROJECT.md` 和 `docs/CURRENT.md`。涉及 Skill 结构、数据流、渲染、FCPXML 或接口时读 `docs/ARCHITECTURE.md`；涉及架构、选型、产品边界或推翻既有决定时再读 `docs/DECISIONS.md`。
 
-处理任何非平凡任务前，必须先读取：
+新版操作词汇以 `references/work-model-contract.json` 为准。只有解释 schema 2.0 历史、维护 legacy 工具或处理旧阶段合同时，才读 `references/workflow-stage-contract.md`；Stage ID 和正式名称以对应 JSON 为 canonical。新版生产不调用旧 resolver，不维护 currentStage/blockingStage/nextEligibleStage。
 
-- `docs/PROJECT.md`：项目目标、范围和约束；
-- `docs/CURRENT.md`：当前可靠状态、待验证事项和下一步。
-
-任务涉及 Skill 结构、数据流、组件边界、渲染适配、FCPXML 回填或 V1 实现时，还必须读取 `docs/ARCHITECTURE.md`。
-
-仅当任务涉及架构、技术选型、产品边界、数据策略，或可能推翻已有决定时，再读取 `docs/DECISIONS.md`。
-
-开始、恢复、汇报正式 invocation，或判断 stage transition 时，读取生成视图 `references/workflow-stage-contract.md`。Stage ID、正式名称和稳定职责只以 `references/workflow-stage-contract.json` 为 machine canonical；不得根据旧文档、聊天历史或记忆重新发明阶段名称。
-
-处理初始动画设计或后续 Review / 聊天反馈修改时，遵循 `SKILL.md` 的创意歧义澄清与运动默认规则；不得把澄清范围限定在 A11 首次出图，也不新增批准门。
+初始设计与反馈修改均遵循 `SKILL.md` 的创意澄清、素材选择和运动默认；澄清不新增批准门。不让用户选择 static/motion 或办理阶段回退。
 
 ## 文件职责
 
-- `README.md`：面向使用者的稳定项目入口；
-- `AGENTS.md`：Agent 工作约束与文档导航；
-- `docs/PROJECT.md`：稳定的项目目标和边界；
-- `docs/CURRENT.md`：当前状态的权威摘要；
-- `docs/DECISIONS.md`：长期有效的重要决策及理由；
-- `docs/ARCHITECTURE.md`：系统分层、组件职责、数据流、V1 接口与实现边界；
-- 后续的 `SKILL.md`、`scripts/`、`references/`、`assets/`：分别承载 Skill 指令、确定性工具、按需参考资料和输出模板或资源。
+- README 是使用入口；AGENTS 是开发约束和导航。
+- PROJECT 保存稳定目标/边界；CURRENT 只保留已验证能力、待验证项与下一步。
+- ARCHITECTURE 保存系统职责、数据流和接口；DECISIONS 保存长期决定及适用范围。
+- SKILL 是日常工作指令；scripts 是确定性工具；references 是按需合同；assets 是可复用资源。
+- schema 2.0、旧生产/架构与单一布局协议位于 references/legacy，仅解释历史，不作为新版默认读取。
+- 不新建任务报告、平行状态文档或重复历史汇总。
 
-不要新建与上述职责重叠的状态、历史或任务报告文档。
+## 写入与风险
 
-## 风险与限制
+- 原 FCPXML/FCPXMLD、旁白、字幕及媒体只读，不直接改 FCP 资源库。默认写入区仅 AfterForge，user-inbox 及版本目录由用户维护。
+- AfterForge 是可替换的门牌，内部 ID 不变；既有 AGENTS/CLAUDE 不自动覆盖。
+- 系列、单集、制作版与交付分别有稳定身份；路径由布局解析器和注册信息取得，不猜父目录层级。
+- 新生产使用统一 afterforge.py。源码先放本版 .staging，再经 update 校验发布；不手工更改批准、产物或交付事实。
+- 所有受控版本 writer 复用 manifest_transaction，读取、更新、发布/回滚在同一版本锁；项目与版本同锁时先项目后版本。长任务固定输入快照、释放锁执行，发布前复核实际内容与用户决定。
+- .afterforge-manifest.lock 是稳定协调文件，不随 manifest 原子替换删除。仅给最终 save 加锁不能保护前面的旧读取。
+- 保持源帧率与有理数时间。runtime 固定精确 pin，普通恢复不查询 latest；安装及实际迁移需明确授权。
+- schema 3.0 工作稿可继续修改，但已发布包与 releases 快照不可覆盖。schema 2.0 原位保留，新工作模型只读；继续制作显式 copyFrom 创建新版本，不继承历史批准。
+- 正式交付必须完整覆盖全部 animated cues，绑定当前完整审阅的批准与授权，允许明确合并指令。冻结或渲染成功不产生授权。
+- 首次协议 2 的实际 FCP round-trip 建立基线；自动测试不能冒充实际导入/验收。
+- 媒体、渲染、日志、临时文件、凭据与环境配置不进入版本控制。
+- 临时 QA 环境异常只有在目标环境复现或有实际可用性受损证据时才修复，不单独当交付故障。
 
-- 永不覆盖用户提供的原始 FCPXML、FCPXMLD、旁白、字幕或媒体素材；默认生成新输出。
-- 第一阶段允许创建的项目顶层目录只有 `AfterForge/` 和 `user-inbox/`。`AfterForge/` 是 Skill 唯一默认写入区；`user-inbox/` 由用户维护，Skill 不得在其中创建、修改、移动、重命名或删除版本目录及材料。
-- 默认显示名 `AfterForge` 只是可替换门牌号，不得替代内部 ID `fcpxml-animation-pipeline`。目录已存在时不得修改其中已有内容。
-- 不直接修改 Final Cut Pro 资源库，也不把普通开发任务解释为导入、发布或安装授权。
-- 处理 FCPXML 时间值时必须保留项目帧率和有理数时间基准，不能使用未经校验的浮点近似回写。
-- 媒体、渲染产物、临时文件、凭据和本地环境配置不得进入版本控制。
-- 已进入制作的 Vn 必须保持自身精确 HyperFrames runtime pin；普通恢复不得自动探测或采用 latest，版本变化只能通过用户明确授权的迁移命令执行并传播审核 evidence 失效。
-- 发现文档与代码、配置、Git 状态或验证结果冲突时，以可复现证据为准，并仅在任务授权范围内修正文档。
+## Git
 
-## Git 操作边界
-
-- `commit` 和 `push` 默认由用户执行；普通开发、文档更新、修复、验证或交付完成都不构成授权。
-- 只有用户在当前请求中明确要求相应 Git 操作时，Agent 才可以执行；不得沿用更早轮次的一次性授权。
+commit、push、merge、rebase、tag、release、deploy 均需当前请求明确授权；不沿用之前的一次性授权。保持已有用户修改，不顺手清理范围外文件。
 
 ## 命令与验证
 
-当前没有 build 或 lint 命令。使用以下命令验证第一阶段能力：
+首次设置且经授权才执行 `python3 -m venv .venv`、`.venv/bin/python -m pip install -r requirements.txt`。正常写入必须通过 JSON Schema，不允许缺 jsonschema 时跳过。
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -B -m unittest discover -s tests -v
 .venv/bin/python "$HOME/.codex/skills/.system/skill-creator/scripts/quick_validate.py" .
 .venv/bin/python scripts/sync_workflow_stage_contract.py --check
 ```
 
-前两条只在首次设置或依赖变更且用户授权安装时执行。正常 Review 写入必须经过 canonical JSON Schema 校验，不允许缺少 `jsonschema` 时跳过。下列命令在 `source .venv/bin/activate` 后执行。
-
-初始化并检查项目工作区：
+日常操作：
 
 ```bash
-python3 scripts/init_user_workspace.py "/absolute/project/workspace"
-python3 scripts/init_user_inbox.py "/absolute/project/workspace"
-python3 scripts/init_afterforge_project.py "/absolute/project/workspace"
-python3 scripts/intake_project.py --flat "/absolute/project/workspace/user-inbox/YYYY-MM-DD_Vn"
-python3 scripts/scaffold_hyperframes.py "/absolute/project/workspace" "YYYY-MM-DD_Vn"
-python3 scripts/sync_storyboard.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
-python3 scripts/layout_lock.py verify "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
-python3 scripts/assemble_hyperframes.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
-python3 scripts/sync_delivery.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
-python3 scripts/validate_hyperframes_adapter.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
-python3 scripts/migrate_delivery_layout.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
-python3 scripts/migrate_workflow_stage_contract.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
-python3 scripts/migrate_hyperframes_runtime.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn" "X.Y.Z"
-python3 scripts/workflow_status.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
-python3 scripts/serve_workflow_review.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
-python3 scripts/render_animations.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
-python3 scripts/register_delivery_assets.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
-python3 scripts/build_delivery_package.py "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn"
-python3 scripts/validate_fcpxml_package.py "/absolute/project/workspace/AfterForge/AfterForge__YYYY-MM-DD_Vn__d-<fingerprint>.fcpxmld" "/absolute/project/workspace/user-inbox/YYYY-MM-DD_Vn/source.fcpxml" "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn/animation-manifest.json" --dtd "/Applications/Final Cut Pro.app/Contents/Frameworks/Interchange.framework/Versions/A/Resources/FCPXMLv1_14.dtd"
-python3 scripts/compare_fcpxml_roundtrip.py "/absolute/project/workspace/AfterForge/AfterForge__YYYY-MM-DD_Vn__d-<fingerprint>.fcpxmld/Info.fcpxml" "/absolute/reexported.fcpxml" "/absolute/project/workspace/AfterForge/YYYY-MM-DD_Vn/animation-manifest.json"
-python3 scripts/sync_workflow_stage_contract.py --check
+.venv/bin/python scripts/afterforge.py open "/workspace/AfterForge" --request-file /tmp/open.json
+.venv/bin/python scripts/afterforge.py status "<version-root>"
+.venv/bin/python scripts/afterforge.py update "<version-root>" --request-file /tmp/update.json
+.venv/bin/python scripts/afterforge.py preview "<version-root>" --request-file /tmp/preview.json
+.venv/bin/python scripts/afterforge.py deliver "<version-root>" --request-file /tmp/deliver.json
+.venv/bin/python scripts/afterforge.py resume "<version-root>" --request-file /tmp/resume.json
+.venv/bin/python scripts/serve_workflow_review.py "/workspace/AfterForge" --port 8765
 ```
 
-前三条初始化命令会在各自严格边界内创建缺失目录或文件；`intake_project.py` 是只读检查。命令示例中的版本名使用大写 `V`，但 `scaffold_hyperframes.py` 同时接受小写 `v`，并原样保留用户选定的拼写；若发现仅大小写不同的既有版本则阻塞。脚手架只在 canonical `frame.md` 已存在且目标 Vn 不存在时创建隔离版本工程，在创建瞬间解析或接受一个精确 HyperFrames 版本、于临时目录检查后 pin，失败时不得留下半成品或修改项目级文件。已有 Vn 不随 latest 自动漂移；`migrate_hyperframes_runtime.py` 是唯一正式版本迁移入口，并记录具体兼容性检查与审核 evidence disposition。Stage Contract 迁移显式作用于单个 legacy Vn，保留旧审核记录但不继承用户批准；resolver 从证据推导上下文、阻塞点、下一可执行阶段和完成集合，不维护 `currentStage`。单 Vn Review 负责 A11/A13 comment、批准和 A14 授权；Demo 时刻存在多个重叠 cue 时不得替用户预选评论对象。正式 D2 渲染必须覆盖全部 animated cues，不能用 `--cue` 形成部分正式交付。原生渲染、注册、包发布、FCP 验收与 round-trip 依次形成 D2–D6 证据链；详细布局协议见 `references/hyperframes-single-source.md`，FCPXML 交付协议见 `docs/ARCHITECTURE.md`。
+显式隔离真实渲染回归（输出目录必须不存在，本地 runtime 与 vendor 预先可用）：
 
-引入新的验证命令时，必须同时更新本节和 `docs/CURRENT.md`。
+```bash
+.venv/bin/python -B tests/work_model_real_smoke.py --run --root /private/tmp/afterforge-real-check --runtime 0.8.33 --gsap-source /absolute/local/gsap.min.js
+```
 
-新增或修改既有 Vn 的写入工具时，必须复用 `manifest_transaction.py`：短操作/多文件迁移及其回滚持有同一 Vn 锁；长渲染、探测、包构建使用乐观快照，在正式发布/登记前复核 revision 与实际 evidence。禁止仅在最终 `save_manifest` 加锁后把先前读出的旧对象写回。`.afterforge-manifest.lock` 是稳定的协调文件，不随 manifest 的原子替换删除；直接手工文件编辑不属于这套协作锁协议。
+旧命令只按 [legacy 生产说明](references/legacy/production-v2.md) 和旧合同维护，不用于新版普通制作。新增验证命令必须同步本节与 CURRENT。
 
-## 文档同步规则
+## 同步规则
 
-- 稳定能力或使用方式发生实质变化：更新 `README.md`；
-- Agent 约束、目录职责或验证命令变化：更新 `AGENTS.md`；
-- 项目目标、范围或核心约束变化：更新 `docs/PROJECT.md`；
-- 可靠能力、进行中工作、阻塞、待验证项或下一步变化：更新 `docs/CURRENT.md`；
-- 出现或推翻重要架构、技术路线或产品边界决定：更新 `docs/DECISIONS.md`。
-- 系统分层、组件职责、数据流、接口或实现边界变化：更新 `docs/ARCHITECTURE.md`；涉及重要路线变更时同时更新 `docs/DECISIONS.md`。
+稳定使用方式变更更新 README；Agent 约束/命令更新 AGENTS；目标/边界更新 PROJECT；可靠状态/待验证项更新 CURRENT；架构/接口更新 ARCHITECTURE；重要决定新增或推翻同时更新 DECISIONS。只在当前授权范围内修正文档，以代码、Git 和可复现验证为准。

@@ -15,6 +15,11 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 try:
+    from scripts.rework_state import delivery_directory, render_ledger_path, revision_evidence
+except ModuleNotFoundError:
+    from rework_state import delivery_directory, render_ledger_path, revision_evidence
+
+try:
     from scripts.hyperframes_adapter import (
         cue_adapter,
         delivery_projection_src,
@@ -29,7 +34,7 @@ try:
     from scripts.validate_hyperframes_adapter import validate_project
     from scripts.workflow_status import resolve_stage_status
     from scripts.workflow_inputs import effective_project_fps, require_current_input_evidence
-    from scripts.manifest_transaction import manifest_commit, optimistic_operation
+    from scripts.manifest_transaction import manifest_commit, optimistic_operation, require_open_invocation
 except ModuleNotFoundError:
     from hyperframes_adapter import (  # type: ignore
         cue_adapter,
@@ -45,7 +50,7 @@ except ModuleNotFoundError:
     from validate_hyperframes_adapter import validate_project  # type: ignore
     from workflow_status import resolve_stage_status  # type: ignore
     from workflow_inputs import effective_project_fps, require_current_input_evidence  # type: ignore
-    from manifest_transaction import manifest_commit, optimistic_operation  # type: ignore
+    from manifest_transaction import manifest_commit, optimistic_operation, require_open_invocation  # type: ignore
 
 
 @dataclass(frozen=True)
@@ -152,6 +157,7 @@ def _assert_final_render_ready(root: Path, selected: Sequence[RenderJob]) -> dic
     return {
         "authorizationFingerprint": _canonical_sha256(a14),
         **inputs,
+        **revision_evidence(manifest),
     }
 
 
@@ -180,6 +186,7 @@ def render_animations(
     prober: Callable[[Path], dict[str, Any]] = probe_delivery,
 ) -> dict[str, Any]:
     root = version_root.expanduser().resolve()
+    require_open_invocation(root)
     jobs = build_render_jobs(root)
     if cue_ids is not None:
         requested = set(cue_ids)
@@ -197,8 +204,10 @@ def render_animations(
     with manifest_commit(root):
         gate = _assert_final_render_ready(root, jobs)
         sync_delivery(root)
-    partial_parent = root / "delivery/.partial"
-    output_root = root / "delivery/prores4444"
+    manifest = load_manifest(root)
+    active_delivery = delivery_directory(root, manifest)
+    partial_parent = active_delivery / ".partial"
+    output_root = active_delivery / "prores4444"
     partial_parent.mkdir(parents=True, exist_ok=True)
     partial_root = Path(tempfile.mkdtemp(prefix="render-", dir=partial_parent))
     output_root.mkdir(parents=True, exist_ok=True)
@@ -252,7 +261,7 @@ def render_animations(
                 official_movie = output_root / job.output_name
                 os.replace(staged_movie, official_movie)
                 published.append((staged_movie, official_movie))
-            os.replace(staged_ledger, root / "delivery/render-ledger.json")
+            os.replace(staged_ledger, render_ledger_path(root, manifest))
         except BaseException as publication_error:
             rollback_errors: list[OSError] = []
             for staged_movie, official_movie in reversed(published):

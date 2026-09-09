@@ -13,6 +13,11 @@ from typing import Any
 from xml.etree import ElementTree as ET
 
 try:
+    from scripts.rework_state import delivery_identity
+except ModuleNotFoundError:
+    from rework_state import delivery_identity
+
+try:
     from scripts.fcpxml_timing import TimelineInterval, collect_positive_anchors
     from scripts.hyperframes_adapter import parse_time
 except ModuleNotFoundError:
@@ -183,7 +188,7 @@ def validate_delivery_package(
         raise ValueError(f"malformed FCPXML: {error}") from error
     _assert_reference_graph(delivered_root)
 
-    expected_event_name = f"AfterForge__{manifest['sourceVersion']}"
+    expected_event_name = delivery_identity(manifest)
     library = delivered_root.find("library")
     if library is None or library.get("location") is not None:
         raise ValueError("delivered FCPXML must have a location-free library")
@@ -221,7 +226,8 @@ def validate_delivery_package(
         if (
             resource.get("hasVideo") != "1"
             or resource.get("hasAudio") is not None
-            or resource.get("duration") != asset["duration"]
+            or resource.get("duration") is None
+            or parse_time(resource.get("duration")) != parse_time(asset["duration"])
             or len(media_reps) != 1
             or media_reps[0].get("kind") != "original-media"
             or media_reps[0].get("src") != f"./{asset['fileName']}"

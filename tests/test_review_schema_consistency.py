@@ -12,7 +12,7 @@ from tests.test_workflow_review_server import ReviewVersionFixture
 
 class ReviewSchemaConsistencyTests(ReviewVersionFixture):
     def assert_schema(self, root):
-        schema = json.loads((Path(__file__).parents[1] / "references/animation-manifest.schema.json").read_text())
+        schema = json.loads((Path(__file__).parents[1] / "references/legacy/animation-manifest-v2.schema.json").read_text())
         Draft202012Validator.check_schema(schema)
         manifest = json.loads((root / "animation-manifest.json").read_text())
         failures = [f"{list(error.path)}: {error.message}" for error in Draft202012Validator(schema).iter_errors(manifest)]
@@ -46,6 +46,7 @@ class ReviewSchemaConsistencyTests(ReviewVersionFixture):
                 root = self.make_review_version(directory)
                 review.approve_storyboard(root, actor="user")
                 (root / "demo.mp4").write_bytes(b"test preview")
+                self.write_demo_evidence(root, "demo.mp4")
                 review.register_demo(root, "demo.mp4")
                 self.assert_schema(root)
                 comment = review.add_review_comment(root, stage_id="A13", body="mixed feedback", actor="user", cue_id="p1s01_c01_title", time_start="1s", time_end="3/2s", impact_scopes=scopes)
@@ -84,6 +85,7 @@ class ReviewSchemaConsistencyTests(ReviewVersionFixture):
                 write_json(manifest_path, manifest)
                 review.approve_storyboard(root, actor="user")
                 (root / "demo.mp4").write_bytes(b"test preview")
+                self.write_demo_evidence(root, "demo.mp4")
                 review.register_demo(root, "demo.mp4")
                 payload = {"manifestSha256":review_state(root)["manifestSha256"], "body":"player feedback",
                            "cueId":"p1s01_c01_title", "timeStart":"11.000s", "impactScopes":["motion"]}

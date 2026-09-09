@@ -1,251 +1,568 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://afterforge.local/schemas/animation-manifest-v2.json",
-  "title": "AfterForge animation manifest v2",
+  "$id": "https://afterforge.local/schemas/animation-manifest-v3.json",
+  "title": "AfterForge work model manifest 3.0",
   "type": "object",
-  "required": ["schemaVersion", "sourceVersion", "project", "cues"],
+  "required": [
+    "schemaVersion",
+    "workModelVersion",
+    "identity",
+    "editRevision",
+    "project",
+    "brief",
+    "cues",
+    "artifacts",
+    "reviewSets",
+    "feedback",
+    "decisions",
+    "deliveries",
+    "requests"
+  ],
   "properties": {
-    "schemaVersion": { "const": "2.0" },
-    "sourceVersion": { "type": "string", "minLength": 1 },
-    "reviews": { "type": "object" },
-    "workflow": { "$ref": "#/$defs/workflow" },
+    "schemaVersion": {
+      "const": "3.0"
+    },
+    "workModelVersion": {
+      "const": "2.0.0"
+    },
+    "sourceVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "episodeId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "episodeTitle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "versionTitle": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "projectId",
+        "episodeId",
+        "versionId",
+        "episodeTitle",
+        "versionTitle"
+      ],
+      "additionalProperties": false
+    },
+    "editRevision": {
+      "type": "integer",
+      "minimum": 0
+    },
     "project": {
       "type": "object",
-      "required": ["source", "preview", "delivery"],
       "properties": {
         "source": {
-          "type": "object",
-          "required": ["width", "height", "frameDuration", "duration"],
-          "properties": {
-            "width": { "type": "integer", "minimum": 1 },
-            "height": { "type": "integer", "minimum": 1 },
-            "frameDuration": { "$ref": "#/$defs/rationalTime" },
-            "duration": { "$ref": "#/$defs/rationalTime" }
-          }
+          "type": [
+            "object",
+            "null"
+          ]
         },
-        "preview": { "$ref": "#/$defs/dimensions" },
-        "delivery": { "$ref": "#/$defs/dimensions" },
-        "renderAdapters": { "type": "object" }
-      }
+        "preview": {
+          "$ref": "#/$defs/dimensions"
+        },
+        "delivery": {
+          "$ref": "#/$defs/dimensions"
+        },
+        "creativeDirection": {
+          "type": "object"
+        },
+        "renderAdapters": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "source",
+        "preview",
+        "delivery"
+      ],
+      "additionalProperties": true
+    },
+    "brief": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string"
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "purpose": {
+                "type": "string"
+              },
+              "narration": {
+                "type": "string"
+              },
+              "visualPlan": {
+                "type": "string"
+              },
+              "sourceRole": {
+                "type": "string"
+              },
+              "timeStart": {
+                "$ref": "#/$defs/time"
+              },
+              "timeEnd": {
+                "$ref": "#/$defs/time"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "additionalProperties": true
+          }
+        }
+      },
+      "required": [
+        "summary",
+        "segments"
+      ],
+      "additionalProperties": false
     },
     "cues": {
       "type": "array",
-      "items": { "$ref": "#/$defs/cue" }
-    }
-  },
-  "additionalProperties": true,
-  "$defs": {
-    "reviewComment": {
-      "type": "object",
-      "required": ["id", "stageId", "revision", "author", "body", "status"],
-      "oneOf": [
-        { "required": ["impactScopes"], "not": { "required": ["issueType"] } },
-        { "required": ["issueType"], "not": { "required": ["impactScopes"] } }
-      ],
-      "properties": {
-        "id": { "type": "string", "pattern": "^A(?:11|13)-C[0-9]{4,}$" },
-        "stageId": { "enum": ["A11", "A13"] },
-        "revision": { "type": "integer", "minimum": 1 },
-        "author": { "const": "user" },
-        "impactScopes": {
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 2,
-          "uniqueItems": true,
-          "items": { "enum": ["static", "motion"] }
-        },
-        "issueType": { "enum": ["static", "motion"] },
-        "body": { "type": "string", "minLength": 1 },
-        "status": { "enum": ["open", "addressed", "accepted"] },
-        "cueId": { "type": "string", "minLength": 1 },
-        "frameId": { "type": "string", "minLength": 1 },
-        "timeStart": { "$ref": "#/$defs/rationalTime" },
-        "timeEnd": { "$ref": "#/$defs/rationalTime" },
-        "addressedBy": { "const": "agent" },
-        "acceptedBy": { "const": "user" }
-      },
-      "additionalProperties": false
-    },
-    "stageEvidence": {
-      "type": "object",
-      "required": ["stageId", "contractVersion", "semanticVersion", "status"],
-      "properties": {
-        "stageId": { "pattern": "^[AD][1-9][0-9]*$" },
-        "contractVersion": { "type": "string", "minLength": 1 },
-        "semanticVersion": { "type": "integer", "minimum": 1 },
-        "status": { "type": "string", "minLength": 1 },
-        "comments": { "type": "array", "items": { "$ref": "#/$defs/reviewComment" } }
-      },
-      "additionalProperties": true
-    },
-    "workflow": {
-      "type": "object",
-      "required": ["stageContractVersion", "stageEvidence"],
-      "properties": {
-        "stageContractVersion": { "type": "string", "minLength": 1 },
-        "roundTripRequired": { "type": "boolean" },
-        "activeReviewContext": { "type": ["string", "null"], "enum": ["A11", "A13", null] },
-        "migration": { "type": "object" },
-        "stageEvidence": {
-          "type": "object",
-          "propertyNames": { "pattern": "^[AD][1-9][0-9]*$" },
-          "additionalProperties": { "$ref": "#/$defs/stageEvidence" }
-        }
-      },
-      "additionalProperties": false
-    },
-    "rationalTime": { "type": "string", "pattern": "^-?[0-9]+(?:/[1-9][0-9]*)?s$" },
-    "dimensions": {
-      "type": "object",
-      "required": ["width", "height"],
-      "properties": {
-        "width": { "type": "integer", "minimum": 1 },
-        "height": { "type": "integer", "minimum": 1 }
-      },
-      "additionalProperties": true
-    },
-    "deliveryAsset": {
-      "type": "object",
-      "required": ["fileName", "sha256", "width", "height", "frameRate", "duration", "codec", "hasAlpha"],
-      "properties": {
-        "fileName": { "type": "string", "pattern": "^AF__[A-Za-z0-9][A-Za-z0-9.-]*\\.mov$" },
-        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-        "width": { "type": "integer", "minimum": 1 },
-        "height": { "type": "integer", "minimum": 1 },
-        "frameRate": { "type": "string", "pattern": "^[0-9]+(?:/[1-9][0-9]*)?$" },
-        "duration": { "$ref": "#/$defs/rationalTime" },
-        "codec": { "const": "prores_4444" },
-        "hasAlpha": { "const": true }
-      },
-      "additionalProperties": false
-    },
-    "guidanceReview": {
-      "type": "object",
-      "required": ["status"],
-      "properties": {
-        "status": {
-          "enum": ["ready", "agent-normalized", "needs-material", "needs-clarification", "out-of-scope", "unaligned"]
-        },
-        "notes": {
-          "type": "array",
-          "items": { "type": "string", "minLength": 1 }
-        }
-      },
-      "additionalProperties": false
-    },
-    "layoutLock": {
-      "type": ["object", "null"],
-      "required": ["revision", "algorithm", "files", "aggregateSha256", "reviewProjection", "projectionSpec", "approvedPoster", "approvedPosterSha256"],
-      "properties": {
-        "revision": { "type": "integer", "minimum": 1 },
-        "algorithm": { "const": "sha256" },
-        "files": { "type": "array" },
-        "aggregateSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-        "reviewProjection": {
-          "type": "object",
-          "required": ["path", "sha256"],
-          "properties": {
-            "path": { "type": "string", "pattern": "^compositions/review/.+\\.html$" },
-            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
           },
-          "additionalProperties": false
-        },
-        "projectionSpec": {
-          "type": "object",
-          "required": ["mode", "previewWidth", "previewHeight", "deliveryWidth", "deliveryHeight"],
-          "properties": {
-            "mode": { "const": "delivery-to-preview-axis-scale" },
-            "previewWidth": { "type": "integer", "minimum": 1 },
-            "previewHeight": { "type": "integer", "minimum": 1 },
-            "deliveryWidth": { "type": "integer", "minimum": 1 },
-            "deliveryHeight": { "type": "integer", "minimum": 1 }
+          "productionMode": {
+            "enum": [
+              "animation",
+              "source-only"
+            ]
           },
-          "additionalProperties": false
+          "status": {
+            "enum": [
+              "draft",
+              "ready"
+            ]
+          },
+          "segmentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "resolvedTimeline": {
+            "type": "object",
+            "properties": {
+              "start": {
+                "$ref": "#/$defs/time"
+              },
+              "duration": {
+                "$ref": "#/$defs/time"
+              },
+              "authority": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "start",
+              "duration"
+            ],
+            "additionalProperties": true
+          },
+          "renderAdapters": {
+            "type": "object"
+          },
+          "layer": {
+            "type": "integer",
+            "minimum": 1
+          }
         },
-        "approvedPoster": { "type": "string" },
-        "approvedPosterSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-        "reviewFrames": {
-          "type": "array",
-          "minItems": 1,
-          "items": { "$ref": "#/$defs/reviewFrame" }
-        },
-        "reviewFrameSetSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        "required": [
+          "id",
+          "productionMode"
+        ],
+        "additionalProperties": true
       }
     },
-    "reviewFrame": {
-      "type": "object",
-      "required": ["id", "role", "label", "path", "sha256"],
-      "properties": {
-        "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
-        "role": { "enum": ["hero", "auxiliary"] },
-        "label": { "type": "string", "minLength": 1 },
-        "path": { "type": "string", "pattern": "^approvals/a11/.+" },
-        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
-      },
-      "additionalProperties": false
-    },
-    "animatedAdapter": {
-      "type": "object",
-      "required": ["compositionId", "compositionSrc", "motionSrc", "reviewSrc", "stillSrc", "heroTime", "layoutDependencies", "layoutLock"],
-      "properties": {
-        "compositionId": { "type": "string", "minLength": 1 },
-        "compositionSrc": { "type": "string", "pattern": "^compositions/cues/.+\\.html$" },
-        "motionSrc": { "type": "string", "pattern": "^compositions/motion/.+\\.js$" },
-        "reviewSrc": { "type": "string", "pattern": "^compositions/review/.+\\.html$" },
-        "stillSrc": { "type": "string", "minLength": 1 },
-        "heroTime": { "type": "number", "minimum": 0 },
-        "layoutDependencies": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
-        "layoutRevision": { "type": "integer", "minimum": 0 },
-        "layoutLock": { "$ref": "#/$defs/layoutLock" }
-      },
-      "additionalProperties": false
-    },
-    "sourceOnlyAdapter": {
-      "type": "object",
-      "required": ["reviewSrc", "stillSrc", "heroTime"],
-      "properties": {
-        "reviewSrc": { "type": "string", "pattern": "^compositions/review/.+\\.html$" },
-        "stillSrc": { "type": "string", "minLength": 1 },
-        "heroTime": { "type": "number", "minimum": 0 }
-      },
-      "additionalProperties": false
-    },
-    "cue": {
-      "type": "object",
-      "required": ["id", "productionMode", "workflowState", "resolvedTimeline", "renderAdapters"],
-      "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "productionMode": { "enum": ["animation", "source-only"] },
-        "workflowState": { "enum": ["design-draft", "layout-built", "layout-approved", "motion-built", "motion-approved", "rendered"] },
-        "finalAnimationDescription": { "type": "string", "minLength": 1 },
-        "guidanceReview": { "$ref": "#/$defs/guidanceReview" },
-        "deliveryAsset": { "$ref": "#/$defs/deliveryAsset" },
-        "resolvedTimeline": {
-          "type": "object",
-          "required": ["start", "duration", "authority"],
-          "properties": {
-            "start": { "$ref": "#/$defs/rationalTime" },
-            "duration": { "$ref": "#/$defs/rationalTime" },
-            "authority": { "const": "fcpxml" }
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "still",
+              "local-preview",
+              "full-preview",
+              "cue-preview"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "minLength": 1
+          },
+          "inputKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "range": {
+            "$ref": "#/$defs/range"
+          },
+          "cueIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "probe": {
+            "type": "object"
+          },
+          "missingCueIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
-        "renderAdapters": {
-          "type": "object",
-          "required": ["hyperframes"],
-          "properties": { "hyperframes": { "type": "object" } }
+        "required": [
+          "id",
+          "kind",
+          "path",
+          "sha256",
+          "inputKey",
+          "range",
+          "cueIds",
+          "complete"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "reviewSets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "inputKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "artifactIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "inputKey",
+          "artifactIds"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "feedback": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "$ref": "#/$defs/source"
+          },
+          "target": {
+            "$ref": "#/$defs/target"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "needs-clarification",
+              "addressed",
+              "accepted"
+            ]
+          },
+          "resolution": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "acceptedSource": {
+            "$ref": "#/$defs/source"
+          }
+        },
+        "required": [
+          "id",
+          "body",
+          "source",
+          "target",
+          "status"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "approve",
+              "authorize",
+              "approve-and-deliver",
+              "accept-import",
+              "roundtrip"
+            ]
+          },
+          "source": {
+            "$ref": "#/$defs/source"
+          },
+          "reviewSetId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "deliveryId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "source"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "deliveries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "inputKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "protocolVersion": {
+            "const": "2"
+          },
+          "packagePath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "snapshotPath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "infoFcpxmlSha256": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "inputKey",
+          "protocolVersion",
+          "packagePath",
+          "snapshotPath",
+          "infoFcpxmlSha256"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "requests": {
+      "type": "object"
+    },
+    "sourceHashes": {
+      "type": "object"
+    },
+    "provenance": {
+      "type": "object"
+    },
+    "delivery": {
+      "type": "object"
+    },
+    "workModelInputs": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "time": {
+      "type": "string",
+      "pattern": "^-?\\d+(?:/\\d+)?s$"
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "enum": [
+            "chat",
+            "review"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
         }
       },
-      "allOf": [
-        {
-          "if": { "properties": { "productionMode": { "const": "animation" } } },
-          "then": { "properties": { "renderAdapters": { "properties": { "hyperframes": { "$ref": "#/$defs/animatedAdapter" } } } } },
-          "else": {
-            "properties": { "renderAdapters": { "properties": { "hyperframes": { "$ref": "#/$defs/sourceOnlyAdapter" } } } },
-            "not": { "required": ["deliveryAsset"] }
-          }
+      "required": [
+        "channel",
+        "text",
+        "reference"
+      ],
+      "additionalProperties": false
+    },
+    "range": {
+      "type": "object",
+      "properties": {
+        "start": {
+          "$ref": "#/$defs/time"
+        },
+        "duration": {
+          "$ref": "#/$defs/time"
         }
+      },
+      "required": [
+        "start",
+        "duration"
+      ],
+      "additionalProperties": false
+    },
+    "dimensions": {
+      "type": "object",
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "width",
+        "height"
       ],
       "additionalProperties": true
+    },
+    "target": {
+      "type": "object",
+      "properties": {
+        "versionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cueIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "segmentIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "timeStart": {
+          "$ref": "#/$defs/time"
+        },
+        "timeEnd": {
+          "$ref": "#/$defs/time"
+        }
+      },
+      "required": [
+        "versionId"
+      ],
+      "additionalProperties": false
     }
   }
 }

@@ -7,17 +7,24 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from scripts.rework_state import revision_evidence
+except ModuleNotFoundError:
+    from rework_state import revision_evidence
+
+try:
     from scripts.manifest_transaction import manifest_mutation
     from scripts.manifest_schema import save_review_manifest
     from scripts.workflow_stages import load_stage_contract
     from scripts.workflow_inputs import input_fingerprint, evidence_fingerprint_version, input_fingerprint_evidence, require_current_input_evidence
     from scripts.storyboard_approval import evaluate_storyboard_cue
+    from scripts.demo_evidence import evidence_path, require_current_a11_approval, require_matching_demo_generation_evidence
 except ModuleNotFoundError:
     from manifest_transaction import manifest_mutation
     from manifest_schema import save_review_manifest
     from workflow_stages import load_stage_contract
     from workflow_inputs import input_fingerprint, evidence_fingerprint_version, input_fingerprint_evidence, require_current_input_evidence
     from storyboard_approval import evaluate_storyboard_cue
+    from demo_evidence import evidence_path, require_current_a11_approval, require_matching_demo_generation_evidence
 
 try:
     from scripts.hyperframes_adapter import cue_adapter, find_cue, load_manifest, parse_time, safe_project_path
@@ -333,7 +340,9 @@ def register_demo(
     workflow = manifest.get("workflow")
     if not isinstance(workflow, dict) or not isinstance(workflow.get("stageContractVersion"), str):
         raise ValueError("workflow stage contract is not initialized")
+    require_current_a11_approval(root)
     preview = safe_project_path(root, preview_relative)
+    generation = require_matching_demo_generation_evidence(root, manifest, preview_relative)
     evidence = {
         "stageId": "A12",
         "contractVersion": workflow["stageContractVersion"],
@@ -342,6 +351,9 @@ def register_demo(
         "preview": preview_relative,
         "sha256": hashlib.sha256(preview.read_bytes()).hexdigest(),
         **input_fingerprint_evidence(root, manifest),
+        "reworkRevision": generation["inputs"]["reworkRevision"],
+        "generationEvidence": str(Path(preview_relative + ".evidence.json")),
+        "generationEvidenceSha256": hashlib.sha256(evidence_path(root, preview_relative).read_bytes()).hexdigest(),
     }
     if metadata:
         evidence["media"] = metadata
@@ -381,6 +393,7 @@ def approve_demo(version_root: Path, *, actor: str) -> dict[str, Any]:
             "semanticVersion": 1,
             "status": "approved",
             "demoSha256": demo["sha256"],
+            **revision_evidence(manifest),
             "inputFingerprint": demo["inputFingerprint"],
             "inputFingerprintVersion": demo["inputFingerprintVersion"],
             "commentRevision": comment_revision,
@@ -409,6 +422,7 @@ def authorize_native_render(version_root: Path, *, actor: str) -> dict[str, Any]
         "contractVersion": workflow["stageContractVersion"],
         "semanticVersion": 1,
         "status": "authorized",
+        **revision_evidence(manifest),
         "demoSha256": demo["sha256"],
         "inputFingerprint": demo["inputFingerprint"],
         "inputFingerprintVersion": demo["inputFingerprintVersion"],
@@ -434,6 +448,7 @@ def record_fcp_acceptance(version_root: Path, *, actor: str) -> dict[str, Any]:
         "contractVersion": workflow["stageContractVersion"],
         "semanticVersion": 1,
         "status": "accepted",
+        **revision_evidence(manifest),
         "packageName": d4["packageName"],
         "deliveryFingerprint": d4["deliveryFingerprint"],
         "infoFcpxmlSha256": d4["infoFcpxmlSha256"],

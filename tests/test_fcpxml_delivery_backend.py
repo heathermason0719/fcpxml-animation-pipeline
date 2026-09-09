@@ -17,6 +17,7 @@ from scripts.sync_storyboard import sync_storyboard
 from scripts.workflow_inputs import input_fingerprint, input_fingerprint_evidence
 from scripts.workflow_review import approve_demo, approve_storyboard, authorize_native_render, register_demo
 from scripts.workflow_status import evidence_fingerprint
+from tests.demo_fixture import write_simulated_demo_evidence
 from tests.test_hyperframes_single_source import SingleSourceFixture, manifest_fixture, write_json
 
 try:
@@ -94,6 +95,7 @@ class DeliveryAssetRegistrationTests(SingleSourceFixture):
         preview = root / "previews/demo.mp4"
         preview.parent.mkdir(parents=True, exist_ok=True)
         preview.write_bytes(b"approved demo")
+        write_simulated_demo_evidence(root, "previews/demo.mp4")
         register_demo(root, "previews/demo.mp4")
         approve_demo(root, actor="user")
         authorize_native_render(root, actor="user")
@@ -519,6 +521,7 @@ class DeliveryPackageTests(unittest.TestCase):
         preview = root / "previews/demo.mp4"
         preview.parent.mkdir(parents=True, exist_ok=True)
         preview.write_bytes(b"approved package demo")
+        write_simulated_demo_evidence(root, "previews/demo.mp4")
         register_demo(root, "previews/demo.mp4")
         approve_demo(root, actor="user")
         authorize_native_render(root, actor="user")

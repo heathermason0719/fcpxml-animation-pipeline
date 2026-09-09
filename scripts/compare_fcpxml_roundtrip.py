@@ -4,6 +4,11 @@
 from __future__ import annotations
 
 try:
+    from scripts.rework_state import revision_evidence
+except ModuleNotFoundError:
+    from rework_state import revision_evidence
+
+try:
     from scripts.manifest_transaction import manifest_commit, optimistic_operation
 except ModuleNotFoundError:  # direct script execution
     from manifest_transaction import manifest_commit, optimistic_operation
@@ -280,6 +285,7 @@ def register_roundtrip(version_root: Path, reexported_xml: Path) -> dict[str, An
     result = compare_roundtrip(delivered, reexported, manifest)
     evidence = {
         "stageId": "D6",
+        **revision_evidence(manifest),
         "contractVersion": workflow["stageContractVersion"],
         "semanticVersion": 1,
         "status": "valid",

@@ -1,0 +1,12 @@
+{
+  "contractVersion": "2.0.0",
+  "manifestSchemaVersion": "3.0",
+  "deliveryProtocolVersion": "2",
+  "identityHierarchy": ["projectId", "episodeId", "versionId"],
+  "actions": ["open", "status", "update", "preview", "deliver", "resume"],
+  "artifactKinds": ["still", "local-preview", "full-preview", "cue-preview"],
+  "feedbackStates": ["pending", "needs-clarification", "addressed", "accepted"],
+  "decisionKinds": ["approve", "authorize", "approve-and-deliver", "accept-import", "roundtrip"],
+  "reviewAuthority": "immutable-review-set-and-current-verified-inputs",
+  "legacy": {"manifestSchemaVersion": "2.0", "stageContractVersion": "1.0.0", "defaultAccess": "read-only"}
+}
