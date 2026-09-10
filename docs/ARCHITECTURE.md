@@ -27,6 +27,10 @@ AfterForge/
 
 `open copyFrom` 只复制实际依赖、规范/runtime 和所需原剪输入，不复制批准、缓存或交付。原工程和 user-inbox 不变。重新绑定粗剪必须创建新版本，保留创意草案并把旧时间映射标为未完成。
 
+复制 schema 2.0 视觉规范时，仅在新副本替换已知旧审核模板、追加视觉默认适用范围，保留 YAML 与创意内容，不按阶段关键词删改未知文案。旧 creativeDirection.visualSpec 的 canonical 路径与冻结哈希不继承；新版依据自己的 frame.md 字节计算输入。v3 到 v3 的规范原样复制。任何 frame 中的历史流程文字均不定义新版操作、批准或重开要求。
+
+系列默认来自 `工程/frame.md`。既有项目入口与根层 frame 的衔接只能在用户明确授权时同步；尚未创建制作版本时可在项目锁下接纳已核对的默认，之后使用 visual-defaults 更新。普通 open 保持既有 AGENTS/CLAUDE 不变，不自动创建或迁移真实工程。
+
 ## 应用层
 
 | 组件 | 职责 |

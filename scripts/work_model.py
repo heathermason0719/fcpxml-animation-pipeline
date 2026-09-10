@@ -73,6 +73,31 @@ def _blank(identity):
             "feedback": [], "decisions": [], "deliveries": [], "requests": {}}
 
 
+def _legacy_visual_defaults(text):
+    """Adapt the known legacy boilerplate, never classify arbitrary design prose."""
+    old_review = (
+        "A8 确认整体方向，A11 通过真实文案与静态主审/辅助帧确认实际画面，"
+        "A13 审核全运动 Demo，A14 独立授权原生渲染。任何机器验证不能替代用户审美批准。"
+        "Review 外壳属于仓库基础设施，不随项目视觉变更。"
+    )
+    text = text.replace(old_review, "任何机器验证不能替代用户审美批准。Review 外壳属于仓库基础设施，不随项目视觉变更。")
+    notice = (
+        "\n<!-- afterforge:work-model-visual-defaults -->\n"
+        "本副本从历史版本仅继承视觉与运动默认。文中的历史阶段、静态冻结、storyboard 审批及重开要求"
+        "不作为本副本的工作指令；schema 3.0 的操作、反馈和交付以当前 Skill 与 work model 2.0 合同为准。"
+        "静态未批准可生成讨论小样，正式交付仍需当前完整审阅集合的用户批准与制作授权。\n\n"
+    )
+    # Keep YAML byte-for-byte at the start for consumers of visual tokens.
+    lines = text.splitlines(keepends=True)
+    offset = 1 if text.startswith("\ufeff") else 0
+    if lines and lines[0].lstrip("\ufeff").strip() == "---":
+        for index, line in enumerate(lines[1:], 1):
+            if line.strip() == "---":
+                offset = sum(len(part) for part in lines[:index + 1])
+                break
+    return text[:offset] + notice + text[offset:]
+
+
 def _copy_version(source_root, destination, manifest):
     source_root = Path(source_root).expanduser().resolve()
     old = load(source_root)
@@ -114,6 +139,12 @@ def _copy_version(source_root, destination, manifest):
         dest = safe(destination, name, exists=False)
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(origin, dest)
+    if old["schemaVersion"] == "2.0":
+        frame = destination / "frame.md"
+        if frame.is_file():
+            frame.write_bytes(_legacy_visual_defaults(frame.read_bytes().decode("utf-8")).encode("utf-8"))
+        # v2's canonical parent path and lock hash do not describe this v3 copy.
+        manifest["project"].get("creativeDirection", {}).pop("visualSpec", None)
     manifest["provenance"] = {**copy.deepcopy(old.get("provenance", {})), "copiedFrom": str(source_root), "sourceManifestSha256": sha(source_root / "animation-manifest.json"),
                               "legacySchema": old["schemaVersion"], "copiedAt": now()}
     if source_base:

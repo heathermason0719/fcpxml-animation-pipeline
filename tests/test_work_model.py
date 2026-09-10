@@ -124,6 +124,69 @@ class WorkModelTests(unittest.TestCase):
                  for p in legacy.rglob("*") if p.is_file()}
         self.assertEqual(before, after)
 
+    def test_legacy_copy_preserves_visuals_without_activating_old_review_instructions(self):
+        from tests.test_hyperframes_single_source import SingleSourceFixture
+        from scripts import work_model as model
+        parent = Path(self.directory.name) / "legacy"
+        parent.mkdir()
+        legacy = SingleSourceFixture().make_version(str(parent))
+        visual = "---\npalette: {accent: '#6ABEB6'}\n---\n\n## 字体\n宋体 600；A11 是画面内的样例编号，保留。\n\n"
+        old_flow = "A8 确认整体方向，A11 通过真实文案与静态主审/辅助帧确认实际画面，A13 审核全运动 Demo，A14 独立授权原生渲染。任何机器验证不能替代用户审美批准。Review 外壳属于仓库基础设施，不随项目视觉变更。"
+        (legacy / "frame.md").write_text(visual + old_flow + "\n")
+        before = {str(p.relative_to(legacy)): p.read_bytes() for p in legacy.rglob("*") if p.is_file()}
+        result = model.open_project(self.afterforge, {"requestId": "copy", "expectedRevision": 0,
+            "episodeTitle": "新副本", "copyFrom": str(legacy)})
+        root = Path(result["root"])
+        frame = (root / "frame.md").read_text()
+        self.assertTrue(frame.startswith("---\npalette: {accent: '#6ABEB6'}\n---\n"))
+        self.assertIn("宋体 600；A11 是画面内的样例编号，保留。", frame)
+        self.assertNotIn(old_flow, frame)
+        self.assertIn("仅继承视觉与运动默认", frame)
+        copied = json.loads((root / "animation-manifest.json").read_text())
+        self.assertNotIn("visualSpec", copied["project"].get("creativeDirection", {}))
+        self.assertEqual(before, {str(p.relative_to(legacy)): p.read_bytes()
+                                 for p in legacy.rglob("*") if p.is_file()})
+        # A v3 copy must keep the already adapted specification byte-for-byte.
+        second = model.open_project(self.afterforge, {"requestId": "copy-again", "expectedRevision": 1,
+            "episodeId": result["identity"]["episodeId"], "copyFrom": str(root)})
+        self.assertEqual((Path(second["root"]) / "frame.md").read_bytes(), (root / "frame.md").read_bytes())
+
+    def test_planning_and_series_defaults_work_with_old_project_files_without_stage_resolver(self):
+        from unittest.mock import patch
+        self.afterforge.mkdir()
+        old_entry = "历史工程入口：A11 静态批准后才能制作。\n"
+        (self.afterforge / "AGENTS.md").write_text(old_entry)
+        engine = self.afterforge / "工程"
+        engine.mkdir()
+        frame = "# 视觉默认\n思源宋体 600，蓝绿 #6ABEB6。\n"
+        (engine / "frame.md").write_text(frame)
+        with patch("scripts.workflow_status.resolve_stage_status", side_effect=AssertionError("old stage resolver called")):
+            model, root = self.create(brief={"summary": "完整文案先策划", "segments": []})
+            self.assertIsNone(json.loads((root / "animation-manifest.json").read_text())["project"]["source"])
+            self.assertEqual(model.status(root)["brief"]["summary"], "完整文案先策划")
+            self.edit(model, root, patch={"brief": {"summary": "补充本集论点", "segments": []}})
+        self.assertEqual((root / "frame.md").read_text(), frame)
+        self.assertEqual((self.afterforge / "AGENTS.md").read_text(), old_entry)
+
+    def test_legacy_copy_keeps_bom_and_original_frontmatter_newlines(self):
+        from tests.test_hyperframes_single_source import SingleSourceFixture
+        from scripts import work_model as model
+        for index, (bom, newline) in enumerate((("\ufeff", "\r\n"), ("", "\r\n"), ("\ufeff", "\n"))):
+            with self.subTest(bom=bool(bom), newline=repr(newline)):
+                parent = Path(self.directory.name) / f"legacy-{index}"
+                parent.mkdir()
+                legacy = SingleSourceFixture().make_version(str(parent))
+                header = (bom + newline.join(("---", "palette: {accent: '#6ABEB6'}", "---", ""))).encode()
+                body = (newline + "## 字体" + newline + "中文宋体 600" + newline).encode()
+                original = header + body
+                (legacy / "frame.md").write_bytes(original)
+                result = model.open_project(self.afterforge / str(index), {"requestId": "copy", "expectedRevision": 0,
+                    "episodeTitle": "编码保留", "copyFrom": str(legacy)})
+                copied = (Path(result["root"]) / "frame.md").read_bytes()
+                self.assertTrue(copied.startswith(header))
+                self.assertTrue(copied.endswith(body))
+                self.assertEqual((legacy / "frame.md").read_bytes(), original)
+
     def test_memory_update_preserves_version_visual_snapshot(self):
         model, root = self.create()
         self.edit(model, root, patch={"brief": {"summary": "开场观点", "segments": []}})

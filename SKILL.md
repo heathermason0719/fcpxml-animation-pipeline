@@ -13,6 +13,8 @@ Use the user's workspace and explicit episode/version selection. Inspect existin
 
 Read the concise `AfterForge/工程/创作记忆.md` first when it exists, then only relevant cases. Read this version's `frame.md` for concrete visual defaults. Series memory describes understanding and choices; it does not silently override an existing version's visual source.
 
+Visual specifications supply typography, color, layout and motion defaults only. Historical stage, approval or reopening instructions embedded in a copied specification have no authority over schema 3.0 work. Use this Skill and the work-model contract for operations and user decisions. When explicitly continuing a legacy project, check its root Agent instructions and series defaults before production; synchronize them only within the user's migration/cleanup authorization, leaving historical versions untouched.
+
 Use `scripts/afterforge.py` for normal work-model operations. Read `references/work-model-contract.json` for vocabulary and `references/hyperframes-single-source.md` when authoring/rendering. No Stage Contract or stage resolver is needed for schema 3.0 work.
 
 ```bash
@@ -79,3 +81,5 @@ When useful after an episode, update the single series memory with a short case:
 ## Legacy boundary
 
 Schema 2.0 data and packages stay in place. New entry points only read them; explicit `open copyFrom` creates a schema 3.0 copy without inherited approvals. Existing root Agent files are never automatically overwritten. Only to interpret historical evidence, read `references/workflow-stage-contract.md`, `references/legacy/production-v2.md`, and relevant legacy references. Old stage definitions and runtime pins retain their original meanings.
+
+For legacy copies, the new version's frame retains visual parameters, replaces the known old review boilerplate and states its visual-only role. Other historical wording is not automatically classified or deleted. The source frame stays unchanged; legacy canonical paths and frozen visualSpec hashes are not inherited. Fresh versions use `工程/frame.md`; a legacy root `frame.md` is not silently adopted. An explicitly authorized project cleanup may copy the reviewed root defaults there before any version is created; later series changes use `update operation: "visual-defaults"`.

@@ -2,7 +2,7 @@
 
 ## 用途
 
-`scripts/intake_project.py` 对用户指定的投放版本目录执行只读扫描，并把已发现材料、时间线证据、就绪状态和必要问题输出为 JSON。该目录通常是实际项目根目录下的 `user-inbox/YYYY-MM-DD_Vn/` 或 `user-inbox/YYYY-MM-DD_vn/`，由用户创建、选择和维护；选定的大小写在后续版本工程中原样保留。入口报告用于决定能否开始后续内容分析，不是最终 `animation-manifest.json`。
+`scripts/intake_project.py` 对用户指定的投放版本目录执行只读扫描，并把已发现材料、时间线证据、就绪状态和必要问题输出为 JSON。该目录通常是实际项目根目录下的 `user-inbox/YYYY-MM-DD_Vn/` 或 `user-inbox/YYYY-MM-DD_vn/`，由用户创建、选择和维护；输入目录名原样记录为 sourceVersion，与制作版本 ID 分离。此报告只判断指定粗剪能否绑定为时间线输入，不是开始文案策划的门禁，也不是最终 `animation-manifest.json`。schema 3.0 日常从 afterforge.py open 进入，无粗剪时可先提供 brief；明确绑定 inputDirectory 时由共享应用层调用此扫描。
 
 ## 命令与退出码
 
@@ -37,15 +37,15 @@ FCPXML/FCPXMLD 和低码粗剪参考视频各自必须能够唯一确定。目�
 
 旁白材料、动画脚本和设计材料不是必要输入候选，不参与入口阻塞。一个已存在的 SRT、时间线 caption、转写稿或文稿只要足以支撑后续对应关系，就不再索取其他旁白格式；但用户已经提供的动画脚本仍必须保留在 `materials.animation_guidance`，不能因为 SRT 已存在而从报告中丢失。
 
-为避免逐镜独立原片与必需的低码粗剪参考视频竞争候选身份，此类文件名使用 `01-`、`02-` 等一至三位数字顺序前缀，或保留 `animation-source`、`animation_source`、`source-clip`、`source_clip`、“动画素材”或“原片素材”之一。intake 把匹配的视频单独列入 `materials.animation_source_clips`，不再列入 `candidates.reference_videos`；带数字前缀但同时包含粗剪关键词的文件仍保留参考候选身份。该字段是可选材料清单，不改变全局 `ready` / `blocked` 状态。
+为避免逐镜独立原片与必需的低码粗剪参考视频竞争候选身份，此类文件名使用 `01-`、`02-` 等一至三位数字顺序前缀，或保留 `animation-source`、`animation_source`、`source-clip`、`source_clip`、“动画素材”或“原片素材”之一。intake 把匹配的视频单独列入 `materials.animation_source_clips`，不再列入 `candidates.reference_videos`；带数字前缀但同时包含粗剪关键词的文件仍保留参考候选身份。该字段是可选材料清单，不改变本次扫描的 `ready` / `blocked` 状态。
 
-需要在动画内重新编排两段或以上原片的 cue，A7 默认要求每个语义片段独立导出、按预期进入顺序编号并留足目标动作前后余量。标准接受规格是 1920×1080 H.264、匹配 FCPXML 的恒定帧率、Rec.709 SDR，前后各至少约 0.5 秒可用余量，不预烘焙裁切、调速、边框或动画；音频可省略。ProRes 或 4K 只在大幅放大裁切、抠像、重度影像处理或近全画幅重用时按需要求。
+需要在动画内重新编排两段或以上原片的 cue，先核实用户选择的片段与顺序；已有素材或用户明确授权的精确提取范围可直接使用。确实缺少独立素材时，再请求按进入顺序编号、留有动作前后余量的片段。标准接受规格是 1920×1080 H.264、匹配 FCPXML 的恒定帧率、Rec.709 SDR，前后各至少约 0.5 秒可用余量，不预烘焙裁切、调速、边框或动画；音频可省略。ProRes 或 4K 只在大幅放大裁切、抠像、重度影像处理或近全画幅重用时按需要求。
 
-素材身份、编号顺序与可用内容以用户最新明确说明和实际文件的名称、顺序、可检查画面为权威。动画脚本列出的素材类型默认只作规划参考；实际文件与用户说明一致但与脚本举例不同时，A7 记录 `agent-normalized` 并继续，不要求用户为迎合脚本重新导出。只有用户说明、文件名、顺序或实际内容彼此冲突时才询问。该权威关系不改变脚本对逐镜风格、运动或表达目的的明确要求。
+素材身份、编号顺序与可用内容以用户最新明确说明和实际文件的名称、顺序、可检查画面为权威。动画脚本列出的素材类型默认只作规划参考；实际文件与用户说明一致但与脚本举例不同时，保存规范化说明并继续，不要求用户为迎合脚本重新导出。只有用户说明、文件名、顺序或实际内容彼此冲突时才询问。该权威关系不改变脚本对逐镜风格、运动或表达目的的明确要求。
 
 同一文件可以承担多个证据角色。例如没有独立 SRT 时，一份包含对应旁白原句的动画脚本可以通过唯一通用文档兜底同时出现在 `narration_sources` 与 `animation_guidance`；存在独立 SRT 时，SRT 负责旁白对齐，动画脚本只保留为创作约束。动画脚本中的帧率、帧号或时间码不替代 FCPXML/FCPXMLD 的时间权威。
 
-入口阶段只负责发现和保留 `animation_guidance`，不审核其中每条要求是否可执行。内容审核属于后续 A7：Agent 对照参考视频实际口播与原画、FCPXML 时间线、AfterForge 范围和当前制作后端，判断要求是可直接使用、可自主规范化、需要额外素材、需要澄清、超出范围，还是无法可靠对齐。审核结论写入现有草稿 manifest 的 cue 级 `guidanceReview`，不创建独立报告，也不反向改变 intake 的 `ready` / `blocked` 结果；脚本缺失始终不构成入口 blocker。
+扫描只负责发现和保留 `animation_guidance`，不审核其中每条要求是否可执行。创作判断由当前 Agent 按受影响段落的实际需要完成：Agent 对照参考视频实际口播与原画、FCPXML 时间线、AfterForge 范围和当前制作后端，判断要求是可直接使用、可自主规范化、需要额外素材、需要澄清、超出范围，还是无法可靠对齐。有用的结论随当前 brief/Cue 保存，需要用户澄清的内容保留原话与定位；通过统一 update 发布，不创建独立报告或阶段门，也不反向改变此扫描的 `ready` / `blocked` 结果；脚本缺失始终不构成入口 blocker。
 
 Skill 自带的 `assets/animation-script-template.docx` 只是可按需提供的填写便利。用户填好并自行放入当前投放版本后，它与其他动画脚本一样进入 `materials.animation_guidance`；如果用户修改回填副本的文件名，Agent 应要求名称保留 `animation-script` 或“动画脚本”关键词，以便现有 intake 确定性识别。Skill 不自动向 `user-inbox/` 写入模板，也不因用户使用自由格式脚本或完全不提供脚本而降低入口状态。
 
@@ -70,7 +70,7 @@ Marker、chapter marker、keyword 等单独保存在 `timeline.markers`，作为
 
 ## Blocker 与 warning 边界
 
-以下情况阻塞入口：
+以下情况阻塞本次粗剪扫描/绑定，不阻塞无媒体的文案策划：
 
 - 工作区不存在；
 - 找不到 FCPXML/FCPXMLD；

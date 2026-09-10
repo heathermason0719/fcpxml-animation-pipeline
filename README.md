@@ -29,6 +29,8 @@ CLI 与 Review 共用业务层；结构化写入使用 `requestId` 和 `expected
 
 绑定粗剪时增加用户明确选择的 `inputDirectory`；同一集新版本使用 `episodeId`，可用 `copyFrom` 继承创意源。`user-inbox/` 从不写入。源 FCPXML、参考视频与旁白材料在制作版内保存所需副本。
 
+从旧工程创建副本时，仅继承视觉与运动默认；新副本会替换已知旧审核模板，并明确旧阶段文字不再是执行指令。原规范不改，旧规范路径和冻结哈希不进入新副本。新建版从 `工程/frame.md` 读取系列默认；既有项目的 AGENTS/CLAUDE 和根层规范须在明确授权的衔接清理中同步，普通 open 不自动覆盖或迁移这些文件。
+
 初次制作通过 `update` 的 `operation: "runtime", version: "X.Y.Z"` 初始化本地已缓存的精确 runtime。若该安装不包含 GSAP，可把现有本地 vendor 放到本版 `.staging/` 并传 `vendorSource`。缺少 runtime 时明确报错，不自动安装。
 
 Agent 把代码和素材准备到 `.staging/`，用 `operation: "edit"` 的 `files: [{path, source}]` 与 `patch: {brief, cues, project}` 一次发布。无需手改 manifest、写连接脚本或维护阶段字段。具体源格式见 [制作源合同](references/hyperframes-single-source.md)。
