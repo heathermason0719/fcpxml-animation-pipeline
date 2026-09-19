@@ -24,20 +24,15 @@ MEMORY_SEED = """# 系列创作记忆
 
 ## 当前理解
 
-先理解本集希望观众发生什么认识变化，再决定原片、口播与视觉辅助的主次。允许没有动画，也允许画面安静。
+按本集目标记录理解；尚无用户确认的系列创作历史。
 
-## 已确认的创作经验与适用范围
+## 已确认偏好及适用范围
 
-- 《楚门》新版开场以口播为主，原片承接人物与生活；设计不抢走论证的注意力。这是开场案例，不是所有段落都只能用简单文字。
-- “看电影 → 看他”把明确的视觉变化用在论点转折上；“观看授权”保留为概念文字，不必把每个口播比喻做成道具。
-- 克制仍需要清楚的排版层级与适当质感，过于单薄也会让观看费力。
-- 用户对镜子意象与粗剪淡出的解释优先于旧分镜。实际粗剪可以推动脚本成长。
+仅记录用户明确表达的选择、范围与出处，不把单次批准推广成长期偏好。
 
-以上来自用户在新版开场制作与工作模型重构讨论中的明确反馈。旧视觉策划探索文档不作为默认指导。
+## 案例与取舍
 
-## 本系列案例
-
-每集仅补充关键取舍、采用或放弃的原因、成片反馈及出处。Agent 推测明确标注，不把单次批准推广成长期偏好。
+按需记录采用、放弃原因与成片反馈。Agent 推测须明确标注。
 """
 
 # Rebuildable process-local UI projection. Production decisions never read it.
@@ -65,12 +60,13 @@ def _identifier(prefix):
 
 
 def _blank(identity):
-    return {"schemaVersion": "3.0", "workModelVersion": "2.0.0", "sourceVersion": None,
+    return {"schemaVersion": "3.0", "workModelVersion": "2.1.0", "sourceVersion": None,
             "identity": identity, "editRevision": 0,
             "project": {"source": None, "preview": {"width": 854, "height": 480},
                         "delivery": {"width": 1920, "height": 1080}},
             "brief": {"summary": "", "segments": []}, "cues": [], "artifacts": [], "reviewSets": [],
-            "feedback": [], "decisions": [], "deliveries": [], "requests": {}}
+            "feedback": [], "decisions": [], "deliveries": [], "requests": {},
+            "creativeObjects": [], "storyboards": [], "reviewRounds": [], "explorations": [], "productionRuns": []}
 
 
 def _legacy_visual_defaults(text):
@@ -84,8 +80,8 @@ def _legacy_visual_defaults(text):
     notice = (
         "\n<!-- afterforge:work-model-visual-defaults -->\n"
         "本副本从历史版本仅继承视觉与运动默认。文中的历史阶段、静态冻结、storyboard 审批及重开要求"
-        "不作为本副本的工作指令；schema 3.0 的操作、反馈和交付以当前 Skill 与 work model 2.0 合同为准。"
-        "静态未批准可生成讨论小样，正式交付仍需当前完整审阅集合的用户批准与制作授权。\n\n"
+        "不作为本副本的工作指令；schema 3.0 的操作、反馈和交付以当前 Skill 与 work model 2.1 合同为准。"
+        "首次设计先通过 Storyboard 确认；明确局部探索可试做，active loop 可自由修改。正式交付仍需当前完整审阅集合的用户批准与制作授权。\n\n"
     )
     # Keep YAML byte-for-byte at the start for consumers of visual tokens.
     lines = text.splitlines(keepends=True)
@@ -100,6 +96,7 @@ def _legacy_visual_defaults(text):
 
 def _copy_version(source_root, destination, manifest):
     source_root = Path(source_root).expanduser().resolve()
+    source_hash = sha(source_root / 'animation-manifest.json')
     old = load(source_root)
     manifest["project"] = copy.deepcopy(old["project"])
     manifest["sourceVersion"] = old.get("sourceVersion")
@@ -108,11 +105,19 @@ def _copy_version(source_root, destination, manifest):
     files = set()
     for cue in manifest["cues"]:
         cue.pop("deliveryAsset", None)
+        cue.pop("objectId", None)
         adapter = cue.get("renderAdapters", {}).get("hyperframes", {})
         adapter.pop("layoutLock", None)
         cue.setdefault("segmentIds", [])
         if cue["productionMode"] == "animation":
-            files.update(dependencies(source_root, cue))
+            from scripts.work_model_sources import inspect_sources
+            if adapter.get('compositionSrc'):
+                files.update(p for p in inspect_sources(source_root, cue)['files'] if (source_root / p).is_file())
+            # Explicitly commissioned copies include their real static design
+            # materials, independently of the Motion dependency closure.
+            if adapter.get('stillSrc'):
+                files.add(adapter['stillSrc'])
+            files.update(frame['stillSrc'] for frame in cue.get('storyboard', {}).get('frames', []) if frame.get('stillSrc'))
     for name in ("package.json", "hyperframes.json", "meta.json", "frame.md", "assets/vendor/gsap.min.js"):
         if (source_root / name).is_file():
             files.add(name)
@@ -149,9 +154,12 @@ def _copy_version(source_root, destination, manifest):
                               "legacySchema": old["schemaVersion"], "copiedAt": now()}
     if source_base:
         manifest["provenance"]["sourceReferenceBase"] = source_base
+    if sha(source_root / 'animation-manifest.json') != source_hash:
+        raise ValueError('copy source changed while reading the commissioned version')
+    return old, source_hash
 
 
-def _bind_source(afterforge, root, manifest, input_directory):
+def _bind_source(afterforge, root, manifest, input_directory, selections=None):
     from scripts.intake_project import analyze_workspace
     from scripts.validate_delivery import probe_delivery
     from scripts.hyperframes_adapter import parse_time
@@ -162,7 +170,7 @@ def _bind_source(afterforge, root, manifest, input_directory):
         raise ValueError("input directory must be an explicitly selected user-inbox version")
     if Path(input_directory).is_symlink():
         raise ValueError("input directory cannot use symlinks")
-    report = analyze_workspace(chosen, recursive=False)
+    report = analyze_workspace(chosen, recursive=False, selections=selections)
     if report["status"] != "ready":
         raise ValueError("input discovery blocked: " + json.dumps(report["blockers"], ensure_ascii=False))
     timeline = report["timeline"]
@@ -247,11 +255,22 @@ def open_project(afterforge_root, request=None):
         installed = False
         try:
             if request.get("copyFrom"):
-                _copy_version(request["copyFrom"], stage, manifest)
+                commission = user_source(request.get("commission"))
+                origin, source_hash = _copy_version(request["copyFrom"], stage, manifest)
+                manifest.setdefault("provenance", {})["commission"] = commission
+                from scripts.work_model_policy import copy_object_relations
+                copy_object_relations(manifest, origin, request, source_hash)
             elif (engine / "frame.md").is_file():
-                shutil.copy2(safe(engine, "frame.md"), stage / "frame.md")
+                if type(request.get("useSeriesDefaults")) is not bool:
+                    raise ValueError("series visual defaults exist; specify the user-intended useSeriesDefaults")
+                if request["useSeriesDefaults"]:
+                    commission = user_source(request.get("commission"))
+                    shutil.copy2(safe(engine, "frame.md"), stage / "frame.md")
+                    manifest.setdefault("provenance", {})["commission"] = commission
             if request.get("inputDirectory"):
-                _bind_source(afterforge, stage, manifest, request["inputDirectory"])
+                from scripts.intake_project import normalize_input_selection
+                _bind_source(afterforge, stage, manifest, request["inputDirectory"],
+                             normalize_input_selection(request, request["inputDirectory"]))
             if "brief" in request:
                 manifest["brief"] = copy.deepcopy(request["brief"])
             save(stage, manifest)
@@ -308,20 +327,32 @@ def _artifact_current(root, manifest, artifact):
     try:
         if sha(safe(root, artifact["path"])) != artifact["sha256"]:
             return False
+        if artifact.get('purpose') in {'storyboard', 'still'}:
+            from scripts.work_model_storyboard import frame_current
+            return frame_current(root, manifest, artifact)
+        if artifact.get('purpose') == 'exploration':
+            from scripts.work_model_exploration import candidate_manifest
+            from scripts.work_model_storyboard import frame_current
+            return frame_current(root, candidate_manifest(manifest, artifact), artifact)
         from scripts.hyperframes_adapter import parse_time
         from scripts.work_model_inputs import cue_key
         if artifact["kind"] == "cue-preview":
             from scripts.work_model_jobs import supplemental_key
             cue = next(c for c in manifest["cues"] if c["id"] == artifact["cueIds"][0])
             return artifact["inputKey"] == supplemental_key(root, manifest, cue)
+        if 'previewRequest' in artifact:
+            from scripts.work_model_jobs import _spec
+            return artifact['inputKey'] == digest(_spec(root, manifest, 'preview', artifact['previewRequest'],
+                job_id=artifact['eventId'])['timeline'])
         return artifact["inputKey"] == timeline_key(root, manifest,
             start=parse_time(artifact["range"]["start"]), duration=parse_time(artifact["range"]["duration"]),
-            allow_draft=not artifact["complete"])
+            allow_draft=not artifact["complete"], excluded_cue_ids=artifact.get('excludedCueIds', []))
     except (ValueError, OSError, KeyError, StopIteration):
         return False
 
 
 def current_review_set(root, manifest):
+    from scripts.work_model_policy import artifact_eligible
     for review in reversed(manifest["reviewSets"]):
         try:
             if review["inputKey"] != timeline_key(root, manifest):
@@ -338,7 +369,8 @@ def current_review_set(root, manifest):
             supplied = {a["cueIds"][0] for a in selected if a["kind"] == "cue-preview"}
             if not required.issubset(supplied):
                 continue
-            if all(a["complete"] and _artifact_current(root, manifest, a) for a in selected):
+            if selected and all(a["complete"] and artifact_eligible(manifest, a)
+                                and _artifact_current(root, manifest, a) for a in selected):
                 return review
         except (ValueError, OSError, KeyError):
             pass
@@ -347,6 +379,7 @@ def current_review_set(root, manifest):
 
 @verified_operation
 def status(version_root):
+    from scripts.work_model_content import content_context
     root = Path(version_root).expanduser().resolve()
     manifest = load(root)
     if manifest["schemaVersion"] == "2.0":
@@ -383,8 +416,42 @@ def status(version_root):
         return copy.deepcopy(cached[1])
     result = {key: copy.deepcopy(manifest[key]) for key in ("identity", "editRevision", "brief", "cues", "artifacts", "feedback", "decisions", "deliveries")}
     result["legacy"] = False
+    from scripts.work_model_policy import artifact_eligible, first_confirmed, storyboard_current
     for artifact in result["artifacts"]:
-        artifact["current"] = _artifact_current(root, manifest, artifact)
+        artifact["mediaCurrent"] = _artifact_current(root, manifest, artifact)
+        artifact["reviewEligible"] = artifact.get('purpose') in {'storyboard', 'exploration', 'still'} or artifact_eligible(manifest, artifact)
+        artifact["current"] = artifact["mediaCurrent"] and artifact["reviewEligible"]
+    artifacts = {a['id']: a for a in result['artifacts']}
+    cards = []
+    for cue in animation_cues(manifest):
+        board = next((s for s in reversed(manifest.get('storyboards', [])) if s['cueId'] == cue['id']
+                      and s['objectId'] == cue.get('objectId')), None)
+        confirmed = first_confirmed(manifest, cue.get('objectId'))
+        from scripts.work_model_confirmation import confirmation_problems
+        problems = confirmation_problems(root, manifest, [board]) if board else [{'code': 'missing-storyboard', 'message': 'Generate a current Storyboard first.'}]
+        cards.append({'id': cue['id'], 'title': cue.get('title', cue['id']),
+            'narration': board.get('narration', '') if board else cue.get('narrationAnchor', ''),
+            'contentContext': board.get('contentContext', content_context(manifest, cue)) if board else content_context(manifest, cue),
+            'finalAnimationDescription': board.get('finalAnimationDescription', '') if board else cue.get('finalAnimationDescription', ''),
+            'storyboardId': board['id'] if board else None,
+            'frames': [{**artifacts[i], 'artifactId': i} for i in board['artifactIds']] if board else [],
+            'canConfirm': not problems, 'confirmationProblems': problems, 'firstConfirmed': confirmed})
+    result['storyboard'] = {'cues': cards, 'rounds': copy.deepcopy(manifest.get('reviewRounds', []))}
+    result['explorations'] = copy.deepcopy(manifest.get('explorations', []))
+    result['workScopeCueIds'] = []
+    result['presentationCueIds'] = [c['id'] for c in animation_cues(manifest)]
+    result['excludedCueIds'] = []
+    result['production'] = []
+    from scripts.work_model_inputs import cue_key
+    for cue in animation_cues(manifest):
+        technical = {'cueId': cue['id'], 'objectId': cue.get('objectId'),
+                     'firstConfirmed': first_confirmed(manifest, cue.get('objectId'))}
+        try:
+            technical['mediaKey'] = cue_key(root, manifest, cue)
+            technical['implementationAvailable'] = cue.get('status', 'ready') == 'ready'
+        except (ValueError, OSError, KeyError, TypeError) as error:
+            technical.update(implementationAvailable=False, problem=str(error))
+        result['production'].append(technical)
     result["reviewSet"] = current_review_set(root, manifest)
     result["tasks"] = []
     job_dir = root / "jobs"
@@ -439,7 +506,11 @@ def _validate_edit(manifest):
         size = manifest["project"][field]
         if (size.get("width"), size.get("height")) != expected:
             raise ValueError("work model requires 480p preview and 1080p native delivery dimensions")
+    from scripts.work_model_content import validate_content_declarations
     for cue in manifest["cues"]:
+        problems = validate_content_declarations(manifest, cue)
+        if problems:
+            raise ValueError('; '.join(p['code'] + ': ' + p['message'] for p in problems))
         if not set(cue.get("segmentIds", [])).issubset(segment_ids):
             raise ValueError("unknown cue segmentId")
         timeline = cue.get("resolvedTimeline")
@@ -449,6 +520,9 @@ def _validate_edit(manifest):
 
 def _record_decision(root, manifest, request):
     kind = request.get("kind")
+    if kind in {"confirm-design", "explore-motion", "authorize-demo"}:
+        from scripts.work_model_policy import creative_decision
+        return creative_decision(root, manifest, request)
     source = user_source(request.get("source"))
     if kind in {"approve", "authorize", "approve-and-deliver"}:
         review = current_review_set(root, manifest)
@@ -459,10 +533,15 @@ def _record_decision(root, manifest, request):
         record = {"id": _identifier("decision"), "kind": kind, "source": source,
                   "reviewSetId": review["id"], "createdAt": now()}
         if kind in {"approve", "approve-and-deliver"}:
+            accepted = set(request.get("feedbackIds", []))
+            if not accepted.issubset({f["id"] for f in manifest["feedback"]}):
+                raise ValueError("unknown explicitly accepted feedback")
             for feedback in manifest["feedback"]:
-                if feedback["status"] == "addressed":
+                if feedback["id"] in accepted:
                     feedback.update(status="accepted", acceptedSource=source)
-            if any(f["status"] in {"pending", "needs-clarification"} for f in manifest["feedback"]):
+            from scripts.work_model_policy import blocking_feedback
+            from scripts.work_model_feedback_targets import review_target
+            if blocking_feedback(manifest, review_target(manifest, review)):
                 raise ValueError("pending feedback must be addressed or explicitly accepted before approval")
     elif kind == "accept-import":
         from scripts.work_model_delivery import verify_release
@@ -479,6 +558,27 @@ def _record_decision(root, manifest, request):
     return record
 
 
+def _prepare_files(root, request):
+    installs = []
+    for item in request.get("files", []):
+        name = Path(item["path"]).as_posix()
+        if not (name.startswith(("compositions/", "assets/")) or name == 'frame.md'):
+            raise ValueError("source update cannot overwrite evidence, cache or release files")
+        if name == 'assets/vendor/gsap.min.js':
+            raise ValueError('controlled runtime files require operation=runtime')
+        if name.startswith("assets/source/"):
+            raise ValueError("bound roughcut inputs are immutable")
+        destination = safe(root, name, exists=False)
+        staged = Path(item["source"]).expanduser().absolute()
+        if not staged.is_relative_to(root / ".staging"):
+            raise ValueError("source file must be prepared in version .staging")
+        staged = safe(root, staged.relative_to(root).as_posix())
+        if not staged.is_file():
+            raise ValueError("staged source must be a regular file")
+        installs.append((destination, staged.read_bytes(), destination.read_bytes() if destination.exists() else None))
+    return installs
+
+
 @verified_operation
 def update(version_root, request):
     root = Path(version_root).expanduser().resolve()
@@ -491,6 +591,8 @@ def update(version_root, request):
             previous = request_check(manifest, request)
             if previous is not None:
                 return previous
+            from scripts.work_model_policy import upgrade
+            upgrade(manifest)
             is_memory = request["operation"] == "memory"
             memory = afterforge / ("工程/创作记忆.md" if is_memory else "工程/frame.md")
             current_sha = sha(memory) if memory.is_file() else None
@@ -518,21 +620,30 @@ def update(version_root, request):
         previous = request_check(manifest, request)
         if previous is not None:
             return previous
+        from scripts.work_model_policy import upgrade
+        upgrade(manifest)
+        from scripts.work_model_policy import correct_incomplete_runs
+        correct_incomplete_runs(root, manifest)
+        before_manifest = copy.deepcopy(manifest)
         operation = request.get("operation")
         installs = []
+        runtime_change = None
         record = None
         if operation == "runtime":
-            from scripts.work_model_runtime import runtime_files
+            from scripts.work_model_runtime import runtime_files, runtime_transition
             supplied = None
             if request.get("vendorSource"):
                 candidate = Path(request["vendorSource"]).expanduser().absolute()
                 if not candidate.is_relative_to(root / ".staging"):
                     raise ValueError("vendorSource must be prepared in version .staging")
                 supplied = safe(root, candidate.relative_to(root).as_posix())
-            for name, data in runtime_files(root, manifest, request.get("version"), supplied).items():
+            payload = runtime_files(root, manifest, request.get("version"), supplied)
+            runtime_change = runtime_transition(root, manifest, payload, request.get("version"))
+            manifest['runtimeIdentity'] = runtime_change['identity']
+            for name, data in payload.items():
                 destination = safe(root, name, exists=False)
                 installs.append((destination, data, destination.read_bytes() if destination.exists() else None))
-        elif operation == "edit":
+        elif operation in {"edit", "exploration-adopt"}:
             patch = request.get("patch", {})
             if not isinstance(patch, dict) or set(patch) - {"brief", "cues", "project"}:
                 raise ValueError("edit may change only brief, cues and project settings")
@@ -547,52 +658,47 @@ def update(version_root, request):
             manifest.update(copy.deepcopy(patch))
             if any("deliveryAsset" in c or c.get("renderAdapters", {}).get("hyperframes", {}).get("layoutLock") for c in manifest["cues"]):
                 raise ValueError("edit cannot register delivery or approval evidence")
+            from scripts.work_model_policy import bind_objects
+            bind_objects(before_manifest, manifest, request.get("objectRelations"))
             _validate_edit(manifest)
-            for item in request.get("files", []):
-                name = item["path"]
-                if not (name.startswith(("compositions/", "assets/")) or name in {"frame.md", "package.json", "hyperframes.json", "meta.json"}):
-                    raise ValueError("source update cannot overwrite evidence, cache or release files")
-                if name.startswith("assets/source/"):
-                    raise ValueError("bound roughcut inputs are immutable")
-                destination = safe(root, name, exists=False)
-                staged = Path(item["source"]).expanduser().absolute()
-                if not staged.is_relative_to(root / ".staging"):
-                    raise ValueError("source file must be prepared in version .staging")
-                staged = safe(root, staged.relative_to(root).as_posix())
-                if not staged.is_file():
-                    raise ValueError("staged source must be a regular file")
-                if destination.exists() and name == "package.json":
-                    from scripts.hyperframes_runtime import read_runtime_pin
-                    import re
-                    pin = read_runtime_pin(root)
-                    pins = re.findall(r"--package=hyperframes@([^\s]+)", staged.read_text())
-                    if not pins or any(p != pin for p in pins):
-                        raise ValueError("runtime migration requires an explicit new version")
-                installs.append((destination, staged.read_bytes(), destination.read_bytes() if destination.exists() else None))
+            installs.extend(_prepare_files(root, request))
+            if operation == "exploration-adopt":
+                from scripts.work_model_exploration import adoption
+                record = adoption(manifest, request, root=root)
+                allowed = set(request['cueIds'])
+                old_cues = {c['id']: c for c in before_manifest['cues']}
+                new_cues = {c['id']: c for c in manifest['cues']}
+                changed = {cid for cid in old_cues.keys() | new_cues.keys() if old_cues.get(cid) != new_cues.get(cid)}
+                if not changed.issubset(allowed) or set(patch) - {'cues'}:
+                    raise ValueError('visual adoption exceeds the explicitly selected cue scope')
+                changed_paths = {p.relative_to(root).as_posix() for p, data, old in installs if data != old}
+                for cue in before_manifest['cues']:
+                    if cue['id'] in allowed or cue['productionMode'] != 'animation':
+                        continue
+                    if changed_paths.intersection(dependencies(root, cue, require_motion=False)):
+                        raise ValueError('shared visual dependency would change an unselected cue')
+        elif operation == "exploration":
+            from scripts.work_model_exploration import set_exploration
+            installs.extend(_prepare_files(root, request))
+            overrides = {p.relative_to(root).as_posix(): data for p, data, _ in installs}
+            record = set_exploration(manifest, request, root=root, overrides=overrides)
+            prefixes = ('compositions/explorations/' + record['id'] + '/', 'assets/explorations/' + record['id'] + '/')
+            if any(not p.relative_to(root).as_posix().startswith(prefixes) for p, _, _ in installs):
+                raise ValueError('visual exploration may write only its own candidate files')
         elif operation == "feedback":
-            body = request.get("body")
-            if not isinstance(body, str) or not body.strip():
-                raise ValueError("feedback body is required")
-            target = copy.deepcopy(request.get("target", {}))
-            if target.get("versionId") != manifest["identity"]["versionId"]:
-                raise ValueError("feedback target version mismatch")
-            if target.get("artifactId") and target["artifactId"] not in {a["id"] for a in manifest["artifacts"]}:
-                raise ValueError("unknown feedback artifact")
-            for field, valid in (("cueIds", {c["id"] for c in manifest["cues"]}), ("segmentIds", {s["id"] for s in manifest["brief"]["segments"]})):
-                if not set(target.get(field, [])).issubset(valid):
-                    raise ValueError("unknown feedback target")
-            from scripts.hyperframes_adapter import parse_time
-            start = parse_time(target["timeStart"]) if target.get("timeStart") else None
-            end = parse_time(target["timeEnd"]) if target.get("timeEnd") else None
-            if (start is not None and start < 0) or (end is not None and (start is None or end < start)):
-                raise ValueError("invalid feedback time interval")
-            if manifest["project"].get("source"):
-                total = parse_time(manifest["project"]["source"]["duration"])
-                if any(moment is not None and moment > total for moment in (start, end)):
-                    raise ValueError("feedback interval outside episode")
-            record = {"id": _identifier("feedback"), "body": body.strip(), "target": target,
-                      "source": user_source(request.get("source")), "status": "pending", "createdAt": now()}
-            manifest["feedback"].append(record)
+            from scripts.work_model_feedback import add_feedback
+            record = add_feedback(manifest, request, root=root)
+        elif operation == "review-submit":
+            from scripts.work_model_feedback import submit_round
+            record = submit_round(root, manifest, request)
+        elif operation == "review-progress":
+            from scripts.work_model_feedback import round_progress
+            record = round_progress(manifest, request)
+        elif operation == "feedback-applicability":
+            record = next((f for f in manifest["feedback"] if f["id"] == request.get("feedbackId")), None)
+            if not record or request.get("kind") not in {"current", "deferred", "not-applicable"}:
+                raise ValueError("unknown feedback or applicability")
+            record["applicability"] = {"kind": request["kind"], "source": user_source(request.get("source"))}
         elif operation == "feedback-status":
             record = next((f for f in manifest["feedback"] if f["id"] == request.get("feedbackId")), None)
             if not record:
@@ -609,10 +715,34 @@ def update(version_root, request):
             record.update(status=value, updatedAt=now(), resolution=request.get("resolution", ""))
         elif operation == "decision":
             record = _record_decision(root, manifest, request)
+        elif operation == "decisions":
+            record = [_record_decision(root, manifest, item) for item in request.get("decisions", [])]
         elif operation == "roundtrip":
             return _register_roundtrip(root, manifest, request)
         else:
             raise ValueError("unsupported update operation")
+        if operation in {"edit", "exploration-adopt", "runtime"}:
+            from scripts.work_model_policy import check_motion_edit
+            check_motion_edit(root, before_manifest, manifest, request,
+                [(path.relative_to(root).as_posix(), data, old) for path, data, old in installs],
+                runtime_transition=runtime_change)
+        if operation == 'exploration':
+            overrides = {p.relative_to(root).as_posix(): data for p, data, _ in installs}
+            # Exploration is a static comparison workspace, not another Motion
+            # publisher. Validate unpublished bytes using the same source rule.
+            from scripts.work_model_sources import inspect_sources, _content
+            for path, data in overrides.items():
+                if Path(path).suffix.lower() in {'.js', '.mjs', '.html', '.htm', '.svg', '.css'}:
+                    dynamic, refs = _content(path, data.decode('utf-8'))
+                    if dynamic or any(executable is True for _, executable in refs):
+                        raise ValueError('visual exploration cannot publish Motion; use bounded Cue exploration')
+            for variant in record['variants']:
+                for cue in variant['cues']:
+                    adapter = cue.get('renderAdapters', {}).get('hyperframes', {})
+                    if adapter.get('compositionSrc'):
+                        analysis = inspect_sources(root, cue, overrides, allow_missing=True)
+                        if set(analysis['motionFiles']) & overrides.keys():
+                            raise ValueError('visual exploration cannot publish Motion sources')
         manifest["editRevision"] += 1
         result = {"status": "updated", "editRevision": manifest["editRevision"]}
         if record is not None:

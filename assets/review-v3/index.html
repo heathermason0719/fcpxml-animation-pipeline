@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>AfterForge 审阅</title>
+  <link rel="stylesheet" href="/review-neutral.css">
   <link rel="stylesheet" href="/review-v3.css">
 </head>
 <body>
@@ -12,8 +13,10 @@
     <aside class="navigator"><div class="panel-label">项目与版本</div><div id="projectTree" class="project-tree" aria-live="polite"></div></aside>
     <section class="workspace">
       <div class="workspace-head"><div><p id="eyebrow" class="eyebrow">AfterForge</p><h1 id="title">审阅工作台</h1><p id="summary" class="muted">从左侧选择正在制作的版本。</p></div><div id="revision" class="revision"></div></div><section class="compare"><label>与另一个版本对照 <select id="compareVersion"><option value="">不对照</option></select></label><div id="compareContent" class="compare-content"></div></section>
-      <nav class="tabs" aria-label="审阅内容"><button data-tab="overview" class="active">脚本与思路</button><button data-tab="preview">画面与小样</button><button data-tab="delivery">交付</button></nav>
+      <nav class="tabs" aria-label="审阅内容"><button data-tab="overview" class="active">脚本与思路</button><button data-tab="storyboard">Storyboard</button><button id="explorationTab" data-tab="exploration" hidden>视觉探索</button><button data-tab="preview">Demo</button><button data-tab="delivery">交付</button></nav>
       <section id="overview" class="tab"><div class="overview-actions"><a id="exportScript" class="quiet" download>导出本集脚本</a></div><div id="brief" class="brief"></div><div id="cues" class="cue-list"></div></section>
+      <section id="storyboard" class="tab" hidden><div id="storyboards" class="storyboard-list"></div></section>
+      <section id="exploration" class="tab" hidden><div id="explorations" class="exploration-list"></div></section>
       <section id="preview" class="tab" hidden><div id="media" class="media-stage"><div class="empty">选择可审阅的预览素材</div></div><div class="preview-actions"><span id="mediaTime" class="muted">全局时间：—</span><button id="locateTime" type="button">定位当前时间</button></div><div id="artifacts" class="artifact-list"></div></section>
       <section id="delivery" class="tab" hidden><div id="deliveries" class="delivery-list"></div></section>
     </section>

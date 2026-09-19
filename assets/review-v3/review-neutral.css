@@ -1,0 +1,2 @@
+/* Shared neutral frame/card geometry used by legacy and schema-3 Review shells. */
+.review-frame-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.review-frame{margin:0}.review-frame.hero{grid-column:1/-1}.review-frame img{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#080c0d}

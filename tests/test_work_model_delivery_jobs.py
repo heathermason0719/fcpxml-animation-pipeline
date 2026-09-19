@@ -11,6 +11,7 @@ from unittest.mock import patch
 from scripts import work_model as model
 from scripts.work_model_store import load
 from tests import test_work_model_jobs as job_fixture
+from tests.work_model_fixtures import activate, demo_request
 
 
 class DeliveryJobIntegrationTests(unittest.TestCase):
@@ -19,6 +20,8 @@ class DeliveryJobIntegrationTests(unittest.TestCase):
         job_fixture.JobTests.setUp(self)
 
     def req(self, name: str, **extra: object) -> dict:
+        if extra.get('scope') == 'full':
+            return demo_request(self.root, name, **extra)
         return {"requestId": name, "expectedRevision": load(self.root)["editRevision"], **extra}
 
     def preview_and_deliver(self, name: str = "deliver") -> dict:
@@ -71,12 +74,13 @@ class DeliveryJobIntegrationTests(unittest.TestCase):
         opened = model.open_project(afterforge, {
             "requestId": "second-version", "expectedRevision": index["revision"],
             "episodeId": load(self.root)["identity"]["episodeId"], "versionTitle": "制作二",
-            "copyFrom": str(self.root),
+            "copyFrom": str(self.root), "copyMode": "restart", "commission": {"channel":"chat","text":"沿用这些设计建立独立版本","reference":"fixture:copy"},
         })
         other = Path(opened["root"])
         original_root = self.root
         self.root = other
         try:
+            activate(self.root, 'copied-design')
             second = self.preview_and_deliver("second-version-deliver")["delivery"]
         finally:
             self.root = original_root

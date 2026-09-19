@@ -19,9 +19,11 @@ from typing import Any
 
 try:
     from scripts.hyperframes_runtime import read_runtime_pin
+    from scripts.work_model_runtime import local_cached_cli
     from scripts.validate_delivery import probe_delivery
 except ModuleNotFoundError:  # pragma: no cover - direct script use
     from hyperframes_runtime import read_runtime_pin  # type: ignore
+    from work_model_runtime import local_cached_cli  # type: ignore
     from validate_delivery import probe_delivery  # type: ignore
 
 
@@ -106,13 +108,23 @@ def build_render_command(root: Path, cue: dict[str, Any], *, quality: str, targe
 
 def _run_logged(command: list[str], *, cwd: Path, log_path: Path) -> None:
     """Forward one renderer's output to disk without retaining it in memory."""
+    if command[:3] == ["npm", "run", "render"]:
+        runtime = read_runtime_pin(cwd)
+        cached = local_cached_cli(runtime)
+        if cached is not None:
+            command = [*cached, "render", *command[4:]]
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a", encoding="utf-8") as handle:
         environment = dict(os.environ, npm_config_offline="true", NPM_CONFIG_OFFLINE="true")
+        start = handle.tell()
         process = subprocess.Popen(command, cwd=cwd, stdout=handle, stderr=subprocess.STDOUT, text=True, env=environment)
         returncode = process.wait()
     if returncode:
         raise subprocess.CalledProcessError(returncode, command)
+    from scripts.work_model_capabilities import validate_render_resources
+    with log_path.open(encoding='utf-8') as recorded:
+        recorded.seek(start)
+        validate_render_resources(recorded.read())
 
 
 def _relative(root: Path, path: Path) -> str:
@@ -163,7 +175,8 @@ def render_cue(root: Path, manifest: dict[str, Any], cue: dict[str, Any], *, qua
     host = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(_render_host_html(cue, width=width, height=height, fps=fps, native_width=native_width, native_height=native_height))
+            from scripts.work_model_capabilities import guarded_host
+            handle.write(guarded_host(_render_host_html(cue, width=width, height=height, fps=fps, native_width=native_width, native_height=native_height)))
         command = build_render_command(root, cue, quality=quality, target=target, composition=_relative(root, host))
         command += ["--fps", _text(fps)]
         _run_logged(command, cwd=root, log_path=log_path)

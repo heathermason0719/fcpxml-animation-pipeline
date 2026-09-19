@@ -1,5 +1,19 @@
 # 重要决策
 
+## 2026-09-19：以产品对象、完整来源与实际完成定义 2.1 生产事实
+
+**决定：** 静态 layout 采用有限声明式模型，静态 host 不加载用户脚本或 vendor JS。单帧 raster、local SVG 和字体可静态使用；animated GIF/APNG/WebP 归为 Motion，未知 capability 拒绝。`srcset`、`image-set`、SVG 资源、动态声明和改变的依赖绑定共同使用完整 closure 确定受影响 Cue；动态计算引用必须显式声明。host 仅装载 isolated closure 并施加 CSP，这不等同于证明任意 JavaScript 安全。runtime bootstrap 仍是基础设施，runtime 拥有其配置文件，普通 edit 不得改写 runtime 配置。
+
+**完成与连续性：** `productionRuns` 只记录 `commission_fulfilled`。请求展示目标缺失默认拒绝；`allowDraft` 只记录 unfinished 讨论，明确 exclusion 可以完成受限委托却不能成为正式 full Review。旧 writer 的过早完成通过追加 `productionCorrections` 证据纠正，不改写原 run 或 artifact。跨版本 copy 必须有 commission，并选择 restart 或逐动画 Cue 的 new/continue `objectContinuity`；continue 只承接 qualification provenance，不复制 review 或授权。首次 writer 为旧 work model 2.0 的缺失创作对象建立中性身份，不补首次确认或批准；只读访问不迁移。
+
+**确认事实：** 当前 board 的技术完整性、非空最终说明、两渠道 `contentContext` 与相关反馈冲突分别核验。实际叙述/屏幕文字仍由既有 canonical 文本字段提供；none 必须带 text/reference，unknown 不能由另一渠道补足。历史 `firstConfirmed` 不等于当前技术状态。带用户来源的 feedback resolutions 可与确认原子记录。确认、批准和交付共同使用反馈目标解析；未采用探索候选的意见不成为 canonical blocker，采用后以冻结 revision/content identity/object scope 判定关联。
+
+## 2026-09-19：创意对象、反馈轮次与生产授权分离
+
+**决定：** 创意对象代表表达意图，不从 Cue ID 推断；新独立想法显式声明 `objectRelations`，普通继续编辑保持对象。首次设计确认、反馈 handoff、静帧、完整审阅与交付分别保存事实。整版 Demo 授权绑定 taskId、工作/时间/展示范围，完成后需新的明确委托。历史不合规 Demo 仅保留只读事实。
+
+**适用与修订：** 此决定将 work model 更新到 2.1.0，manifest 仍为 3.0，兼容读取旧 2.0.0 数据，不在读取时迁移或补批准。覆盖下一条 2.0 决定中对真正 cold-start 的静态门缺省，不改变 active-loop 的修改自由。审阅交棒不批准无评论 Cue；本轮不修改也不等于 Demo 排除。对象技术变更不裁定资格，跨版本关系由用户明确委托。通用 Storyboard 延续既有主辅帧、旁白、最终说明、逐镜反馈与确认；视觉探索是并列可选工作区，采用落实到 canonical 源，不形成新门禁。
+
 ## 2026-09-09：新版采用作品工作模型，旧阶段合同仅解释 legacy
 
 **决定：** manifest 3.0 / work model 2.0 以系列、单集、制作版本、反馈、审阅产物和不可变交付组织工作。理解、设计和试做可往返，静态批准不再是动态小样的全局门禁；一次明确“批准并制作交付”可同时记录用户批准与授权。旧 schema 2.0 与 Stage Contract 1.0.0 原位保留，新入口只读或显式复制，不继承旧授权。

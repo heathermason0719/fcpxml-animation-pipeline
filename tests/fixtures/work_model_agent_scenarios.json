@@ -1,0 +1,56 @@
+[
+  {
+    "id": "cold-continue",
+    "utterance": "素材没问题，继续",
+    "background": "素材已绑定，但没有真实 Storyboard。",
+    "acceptance": "先生成可审阅的 Storyboard；不把这句话当作首审确认或 Demo 授权。"
+  },
+  {
+    "id": "round-handoff",
+    "utterance": "这轮意见提完了",
+    "background": "A 有帧级反馈；B 当前未确认；C 已确认。",
+    "acceptance": "可提交反馈 handoff；不得因没有新评论而确认 B。"
+  },
+  {
+    "id": "confirm-selected",
+    "utterance": "A和B这些镜头通过",
+    "background": "当前 snapshot 可见。",
+    "acceptance": "只确认用户显式列出的当前 snapshot。"
+  },
+  {
+    "id": "edit-a-only",
+    "utterance": "只改A字体，D不动",
+    "background": "D 映射到第三个独立 Cue。",
+    "acceptance": "实际修改 A 独立 layout/CSS source；D 的依赖字节不变。"
+  },
+  {
+    "id": "demo-exclude-d",
+    "utterance": "这轮Demo先别放D",
+    "background": "前文已明确要求生成本轮整版 Demo，本轮没有新创作；D 是第三个 Cue。",
+    "acceptance": "Demo 授权明确展示/排除范围，不默认改变工作范围。"
+  },
+  {
+    "id": "full-after-edit",
+    "utterance": "改完给整版",
+    "background": "当前修改已可审阅。",
+    "acceptance": "用新 taskId 明确完整 Demo 授权。"
+  },
+  {
+    "id": "rename-continuation",
+    "utterance": "还是 A 这个镜头，只是在工程里改名为 A-renamed，接着原来做。",
+    "background": "已确认 A 的首次静态设计；这是明确的技术改名。",
+    "acceptance": "通过 continue objectRelation 保持同一 creative object。"
+  },
+  {
+    "id": "ambiguous-relation",
+    "utterance": "这个方案单独做一镜吧。",
+    "background": "新方案将放在原 A 附近，未明确是替换 A，还是新增一个独立镜头。",
+    "acceptance": "记录聚焦澄清并停止依赖关系的更新。"
+  },
+  {
+    "id": "pure-visual-content",
+    "utterance": "A 只给人物脸加一个定位框，这里没有对应旁白，也不放文字。",
+    "background": "A 的纯视觉框线布局已存在，首次资格尚未建立，内容事实尚未登记。",
+    "acceptance": "依据明确目标记录旁白和屏幕文字各自 none 及原话出处，不编造 narrationAnchor 或屏幕文案；可生成 Storyboard，不能把制作请求当作设计批准。"
+  }
+]

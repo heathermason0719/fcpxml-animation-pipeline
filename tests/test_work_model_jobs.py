@@ -10,6 +10,7 @@ from scripts.work_model_store import load, save, sha
 from scripts.work_model_inputs import cue_key
 from tests.test_hyperframes_single_source import SingleSourceFixture
 from tests.test_work_model_delivery import SOURCE
+from tests.work_model_fixtures import activate, user, demo_request
 
 
 class JobTests(unittest.TestCase):
@@ -20,7 +21,7 @@ class JobTests(unittest.TestCase):
         legacy = base / 'legacy'
         legacy.mkdir()
         SingleSourceFixture().make_version(str(legacy))
-        opened = model.open_project(base / 'AfterForge', {'requestId':'open','expectedRevision':0,'episodeTitle':'开场','copyFrom':str(legacy)})
+        opened = model.open_project(base / 'AfterForge', {'requestId':'open','expectedRevision':0,'episodeTitle':'开场','copyFrom':str(legacy),'copyMode':'restart','commission':user('明确沿用旧设计创建测试副本')})
         self.root = Path(opened['root'])
         m = load(self.root)
         source = self.root / 'assets/source/Info.fcpxml'
@@ -31,10 +32,17 @@ class JobTests(unittest.TestCase):
         m['sourceHashes'] = {'fcpxml':sha(source),'referenceVideo':sha(media)}
         second = copy.deepcopy(m['cues'][0])
         second['id']='second'
+        second.pop('objectId', None)
         second['resolvedTimeline']={'start':'2s','duration':'2s'}
         # Independent motion dependency permits meaningful incremental checks.
         p = self.root/'compositions/motion/second.js'
         p.write_text('// second motion')
+        adapter = second['renderAdapters']['hyperframes']
+        old_composition, old_motion = adapter['compositionSrc'], adapter['motionSrc']
+        second_composition = 'compositions/cues/second.html'
+        (self.root / second_composition).write_text((self.root / old_composition).read_text().replace(old_motion, p.relative_to(self.root).as_posix()))
+        adapter['compositionSrc'] = second_composition
+        adapter['layoutDependencies'] = [second_composition if path == old_composition else path for path in adapter['layoutDependencies']]
         second['renderAdapters']['hyperframes']['motionSrc']=p.relative_to(self.root).as_posix()
         m['cues'].append(second)
         save(self.root,m)
@@ -53,18 +61,22 @@ class JobTests(unittest.TestCase):
             p.start();self.addCleanup(p.stop)
         p=patch('scripts.work_model_jobs._validate_media',return_value={'probe':{'width':1920,'height':1080,'r_frame_rate':'24','duration':'2'},'alpha':{'status':'valid'}})
         p.start();self.addCleanup(p.stop)
+        if not getattr(self, 'cold_start', False):
+            activate(self.root)
     def req(self,name,**kw):
+        if kw.get('scope') == 'full' and not getattr(self, 'cold_start', False):
+            return demo_request(self.root, name, **kw)
         return {'requestId':name,'expectedRevision':load(self.root)['editRevision'],**kw}
     def edit(self,name,mutate):
         m=load(self.root); mutate(m)
         return model.update(self.root,self.req(name,operation='edit',patch={'cues':m['cues'],'brief':m['brief']}))
-    def test_full_review_requires_no_static_approval_and_retry_reuses_media(self):
+    def test_active_full_review_uses_explicit_task_and_retry_reuses_media(self):
         request=self.req('full',scope='full')
         first=model.preview(self.root,request)
         self.assertEqual(len(self.calls),2)
         self.assertIsNotNone(model.status(self.root)['reviewSet'])
         self.assertEqual(model.preview(self.root,request),first)
-        self.assertEqual(load(self.root)['decisions'],[])
+        self.assertEqual([d['kind'] for d in load(self.root)['decisions']], ['confirm-design', 'authorize-demo'])
         self.assertEqual(len(self.calls),2)
     def test_prose_and_placement_reuse_but_motion_and_duration_rebuild(self):
         model.preview(self.root,self.req('full',scope='full'))

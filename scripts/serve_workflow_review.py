@@ -226,7 +226,7 @@ def apply_review_action(version_root: Path, action: str, payload: dict[str, Any]
 
 INDEX_HTML = r"""<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AfterForge Review</title><style>
+<title>AfterForge Review</title><link rel="stylesheet" href="/review-neutral.css"><style>
 :root{color-scheme:dark;--bg:#0b0f14;--panel:#121923;--line:#2b3949;--text:#edf3f8;--muted:#94a3b3;--accent:#51b7d9;--warn:#f1b65d;--ok:#69c291}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
 header{position:sticky;top:0;z-index:4;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:18px 24px;background:#0b0f14ee;border-bottom:1px solid var(--line);backdrop-filter:blur(12px)}
@@ -323,7 +323,7 @@ function makeCueCard(cue){
   const card=node('article','card'),head=node('div','cue-head'),title=node('h3','',`${cue.shotNumber?`第 ${cue.shotNumber} 镜 · `:''}${cue.id} · layout r${cue.layoutRevision??'—'}`);
   head.append(title,node('span',`badge ${cue.approvalStatus==='current'?'approved':cue.approvalStatus}`,cue.approvalStatus));
   const narration=node('p','narration');narration.append(node('span','eyebrow','对应旁白'),document.createTextNode(cue.narrationAnchor||''));card.append(head,narration);
-  const gallery=node('div','frame-gallery');for(const frame of cue.frames){const figure=node('figure',`frame-block ${frame.role}`),image=node('img','frame');image.src=vn(frame.src);image.alt=`${cue.id} ${frame.label}`;figure.append(image,node('figcaption','',`${frame.role==='hero'?'主审帧':'辅助帧'} · ${frame.label}`));gallery.append(figure)}card.append(gallery);
+  const gallery=node('div','frame-gallery review-frame-grid');for(const frame of cue.frames){const figure=node('figure',`frame-block review-frame ${frame.role}`),image=node('img','frame');image.src=vn(frame.src);image.alt=`${cue.id} ${frame.label}`;figure.append(image,node('figcaption','',`${frame.role==='hero'?'主审帧':'辅助帧'} · ${frame.label}`));gallery.append(figure)}card.append(gallery);
   const description=node('section','final-description');description.append(node('h4','','最终动画说明'),node('p','',cue.finalAnimationDescription||'尚未填写'));card.append(description);
   for(const frame of cue.frames){const review=node('section','frame-review');review.append(node('h4','',`${frame.role==='hero'?'主审帧':'辅助帧'} · ${frame.label} · comment`));const comments=node('div','comment-list');renderCommentList(comments,frame.comments);review.append(comments,makeFrameForm(cue,frame));card.append(review)}
   const cueActions=node('div','cue-actions'),hint=node('span','muted',cue.approvalStatus==='current'?'当前镜头已批准':cue.canApprove?'当前镜头可批准':cue.approvalBlockers.join('；')),approve=node('button','','批准当前镜头');
@@ -481,6 +481,19 @@ def make_handler(version_root: Path):
                 body = INDEX_HTML.encode("utf-8")
                 self.send_response(200)
                 self.send_header("content-type", "text/html; charset=utf-8")
+                self.send_header("content-length", str(len(body)))
+                self.end_headers()
+                if self.command != "HEAD":
+                    self.wfile.write(body)
+                return
+            if parsed.path == "/review-neutral.css":
+                try:
+                    body = (_REPOSITORY_ROOT / "assets" / "review-v3" / "review-neutral.css").read_bytes()
+                except OSError:
+                    self._json(404, {"error": "not found"})
+                    return
+                self.send_response(200)
+                self.send_header("content-type", "text/css; charset=utf-8")
                 self.send_header("content-length", str(len(body)))
                 self.end_headers()
                 if self.command != "HEAD":

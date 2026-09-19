@@ -11,7 +11,7 @@ import sys
 import xml.etree.ElementTree as ET
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Mapping
 
 
 VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".webm"}
@@ -73,20 +73,6 @@ def format_time(value: Fraction) -> str:
 
 def normalize_text(value: str) -> str:
     return "".join(character.lower() for character in value if character.isalnum())
-
-
-def _relative_depth(path: Path, root: Path) -> int:
-    try:
-        return len(path.relative_to(root).parts)
-    except ValueError:
-        return 999
-
-
-def _candidate_score(path: Path, workspace: Path, keywords: Iterable[str]) -> int:
-    searchable = "/".join(part.lower() for part in path.relative_to(workspace).parts)
-    score = sum(10 for keyword in keywords if keyword in searchable)
-    score -= _relative_depth(path, workspace)
-    return score
 
 
 def _walk_workspace(workspace: Path, recursive: bool = True) -> list[Path]:
@@ -204,12 +190,90 @@ def scan_workspace(workspace: Path, recursive: bool = True) -> dict[str, list[Pa
     }
 
 
+class IntakeBlockerError(ValueError):
+    def __init__(self, blocker: dict[str, Any]) -> None:
+        super().__init__(blocker["message"])
+        self.blocker = blocker
+
+
+def normalize_input_selection(
+    request: Mapping[str, Any], input_directory: str | Path
+) -> dict[str, Path] | None:
+    """Normalize the canonical intake selection and its legacy alias.
+
+    Both public request names remain valid during the transition.  Supplying
+    both is only unambiguous when each supplied selection resolves to the same
+    path inside the input directory.
+    """
+    workspace = Path(input_directory).expanduser().resolve()
+    selection_names = ("inputSelection", "selections")
+    allowed_fields = {"fcpxml", "reference_video"}
+
+    def normalized_values(name: str) -> dict[str, Path] | None:
+        if name not in request:
+            return None
+        raw = request[name]
+        if not isinstance(raw, Mapping):
+            raise ValueError(f"{name} must be a mapping of input selections.")
+        unknown_fields = set(raw) - allowed_fields
+        if unknown_fields:
+            fields = ", ".join(sorted(str(field) for field in unknown_fields))
+            raise ValueError(f"{name} has unknown selection fields: {fields}.")
+        values: dict[str, Path] = {}
+        for kind, value in raw.items():
+            if not isinstance(kind, str) or not isinstance(value, (str, Path)):
+                raise ValueError(f"{name}.{kind} must be a selection path.")
+            selected = Path(value).expanduser()
+            if not selected.is_absolute():
+                selected = workspace / selected
+            selected = selected.resolve()
+            if not selected.is_relative_to(workspace):
+                raise ValueError(f"{name}.{kind} must be inside the input directory.")
+            values[kind] = selected
+        return values
+
+    canonical, compatibility = (normalized_values(name) for name in selection_names)
+    if canonical is None:
+        return compatibility
+    if compatibility is None:
+        return canonical
+    if canonical != compatibility:
+        raise ValueError(
+            "inputSelection and selections conflict; provide one complete selection."
+        )
+    return canonical
+
+
+def _selection_blocker(kind: str, message: str) -> dict[str, Any]:
+    label = "FCPXML/FCPXMLD" if kind == "fcpxml" else "参考视频"
+    return {
+        "code": f"invalid_selected_{kind}",
+        "message": message,
+        "why": f"显式选择的{label}必须是此输入目录内已发现的候选文件。",
+    }
+
+
 def _select_required(
     candidates: list[Path],
     workspace: Path,
     kind: str,
-    keywords: Iterable[str],
+    selections: Mapping[str, str | Path] | None,
 ) -> tuple[Path | None, dict[str, Any] | None]:
+    if selections is not None and kind in selections:
+        selected_value = selections[kind]
+        if not isinstance(selected_value, (str, Path)):
+            return None, _selection_blocker(kind, "显式选择的路径无效。")
+        selected = Path(selected_value).expanduser()
+        if not selected.is_absolute():
+            selected = workspace / selected
+        selected = selected.resolve()
+        if not selected.is_relative_to(workspace):
+            return None, _selection_blocker(kind, "显式选择的路径不在输入目录内。")
+        for candidate in candidates:
+            if candidate.resolve() == selected:
+                return candidate, None
+        return None, _selection_blocker(kind, "显式选择的路径不是已发现的对应输入候选。")
+
     if not candidates:
         label = "粗剪 FCPXML/FCPXMLD" if kind == "fcpxml" else "低码粗剪参考视频"
         return None, {
@@ -218,27 +282,33 @@ def _select_required(
             "why": f"{label}是确认真实时间线和粗剪画面关系所必需的输入。",
         }
 
-    scored = [(candidate, _candidate_score(candidate, workspace, keywords)) for candidate in candidates]
-    best_score = max(score for _, score in scored)
-    best = [candidate for candidate, score in scored if score == best_score]
-    if len(best) == 1:
-        return best[0], None
+    if len(candidates) == 1:
+        return candidates[0], None
 
     label = "FCPXML/FCPXMLD" if kind == "fcpxml" else "参考视频"
     return None, {
         "code": f"ambiguous_{kind}",
-        "message": f"发现多个同等可信的{label}候选，不能安全代替用户选择。",
+        "message": f"发现多个{label}候选，不能安全代替用户选择。",
         "why": "选择错误会使后续时间线分析与实际粗剪不一致。",
-        "candidates": [str(path) for path in best],
+        "candidates": [str(path) for path in candidates],
     }
 
 
 def _resolve_fcpxml(path: Path) -> Path:
     if path.is_file():
         return path
-    candidates = sorted(path.rglob("*.fcpxml"), key=lambda item: (item.name.lower() != "info.fcpxml", str(item)))
+    candidates = sorted(path.rglob("*.fcpxml"), key=lambda item: str(item).casefold())
     if not candidates:
         raise ValueError(f"FCPXMLD 中没有找到 .fcpxml：{path}")
+    if len(candidates) > 1:
+        raise IntakeBlockerError(
+            {
+                "code": "ambiguous_fcpxmld_xml",
+                "message": "FCPXMLD 中包含多个 FCPXML，不能安全代替用户选择。",
+                "why": "交付当前只支持单个 Project 和对应的单条时间线。",
+                "candidates": [str(candidate.resolve()) for candidate in candidates],
+            }
+        )
     return candidates[0]
 
 
@@ -378,10 +448,38 @@ def _collect_nested_evidence(
 def parse_fcpxml(path: Path, narration_sources: list[Path]) -> dict[str, Any]:
     xml_path = _resolve_fcpxml(path)
     root = ET.parse(xml_path).getroot()
-    project = next((node for node in root.iter() if local_name(node.tag) == "project"), None)
-    sequence = next((node for node in root.iter() if local_name(node.tag) == "sequence"), None)
-    if sequence is None:
+    projects = [node for node in root.iter() if local_name(node.tag) == "project"]
+    if not projects:
+        raise ValueError("FCPXML 中没有 Project")
+    if len(projects) > 1:
+        raise IntakeBlockerError(
+            {
+                "code": "ambiguous_fcpxml_project",
+                "message": "FCPXML 中包含多个 Project，不能安全代替用户选择。",
+                "why": "交付当前只支持单个 Project 和对应的单条时间线。",
+                "candidates": [
+                    f"Project {index}: {project.get('name') or '未命名'}"
+                    for index, project in enumerate(projects, start=1)
+                ],
+            }
+        )
+    project = projects[0]
+    sequences = [node for node in project.iter() if local_name(node.tag) == "sequence"]
+    if not sequences:
         raise ValueError("FCPXML 中没有 sequence")
+    if len(sequences) > 1:
+        raise IntakeBlockerError(
+            {
+                "code": "ambiguous_fcpxml_sequence",
+                "message": "FCPXML 中的 Project 包含多个 sequence，不能安全代替用户选择。",
+                "why": "交付当前只支持单个 Project 和对应的单条时间线。",
+                "candidates": [
+                    f"Sequence {index}: {sequence.get('name') or sequence.get('duration') or '未命名'}"
+                    for index, sequence in enumerate(sequences, start=1)
+                ],
+            }
+        )
+    sequence = sequences[0]
     spine = next((node for node in sequence if local_name(node.tag) == "spine"), None)
     if spine is None:
         raise ValueError("FCPXML sequence 中没有 spine")
@@ -456,12 +554,24 @@ def _question_for(blocker: dict[str, Any]) -> dict[str, str]:
         request = "请确认哪一个 FCPXML/FCPXMLD 是本次要补动画的粗剪时间线。"
     elif blocker["code"] == "ambiguous_reference_video":
         request = "请确认哪一个视频是与该时间线对应的低码粗剪参考。"
+    elif blocker["code"] == "invalid_selected_fcpxml":
+        request = "请从此输入目录已发现的 FCPXML/FCPXMLD 候选中重新选择。"
+    elif blocker["code"] == "invalid_selected_reference_video":
+        request = "请从此输入目录已发现的参考视频候选中重新选择。"
+    elif blocker["code"] == "ambiguous_fcpxmld_xml":
+        request = "请提供只包含本次时间线的 FCPXMLD，或导出要使用的单个 FCPXML。"
+    elif blocker["code"] in {"ambiguous_fcpxml_project", "ambiguous_fcpxml_sequence"}:
+        request = "请导出仅包含本次交付所需单个 Project 和 sequence 的 FCPXML。"
     else:
         request = "请修正或重新导出无法读取的粗剪 FCPXML/FCPXMLD。"
     return {"request": request, "why": blocker["why"]}
 
 
-def analyze_workspace(workspace: Path, recursive: bool = True) -> dict[str, Any]:
+def analyze_workspace(
+    workspace: Path,
+    recursive: bool = True,
+    selections: Mapping[str, str | Path] | None = None,
+) -> dict[str, Any]:
     workspace = workspace.expanduser().resolve()
     if not workspace.is_dir():
         blocker = {
@@ -489,10 +599,10 @@ def analyze_workspace(workspace: Path, recursive: bool = True) -> dict[str, Any]
 
     discovery = scan_workspace(workspace, recursive=recursive)
     selected_fcpxml, fcpxml_blocker = _select_required(
-        discovery["fcpxml"], workspace, "fcpxml", ROUGH_KEYWORDS
+        discovery["fcpxml"], workspace, "fcpxml", selections
     )
     selected_video, video_blocker = _select_required(
-        discovery["reference_videos"], workspace, "reference_video", ROUGH_KEYWORDS
+        discovery["reference_videos"], workspace, "reference_video", selections
     )
     blockers = [item for item in (fcpxml_blocker, video_blocker) if item]
     timeline: dict[str, Any] | None = None
@@ -503,6 +613,8 @@ def analyze_workspace(workspace: Path, recursive: bool = True) -> dict[str, Any]
         try:
             timeline = parse_fcpxml(selected_fcpxml, discovery["narration_sources"])
             ambiguities.extend(timeline.pop("ambiguities"))
+        except IntakeBlockerError as error:
+            blockers.append(error.blocker)
         except (ET.ParseError, OSError, ValueError) as error:
             blocker = {
                 "code": "invalid_fcpxml",

@@ -17,6 +17,8 @@ from scripts.validate_delivery import DeliveryExpectation, probe_delivery, valid
 from scripts.work_model_store import atomic_json, digest, layout, load, now, project_lock, request_check, remember, safe, save, sha, verified_operation, fresh_hashes
 from scripts.work_model_inputs import animation_cues, cue_inputs, cue_key, dependencies, preview_range, source_paths, timeline_inputs, timeline_key
 from scripts.work_model_media import render_cue, composite_preview, validate_alpha
+from scripts.work_model_policy import production_basis, first_confirmed, upgrade, blocking_feedback
+from scripts.work_model_storyboard import storyboard_spec, render_storyboard
 
 
 def _validate_media(path, manifest, cue, quality, log):
@@ -46,18 +48,58 @@ def supplemental_key(root, manifest, cue):
                    'dimensions':manifest['project']['preview']})
 
 
-def _spec(root, manifest, action, request):
-    source_paths(root,manifest)
-    if action == 'preview':
-        start,duration = preview_range(manifest,request)
-        data = timeline_inputs(root,manifest,start=start,duration=duration,allow_draft=request.get('allowDraft',False))
-        if request.get('scope') == 'still' and len(request.get('cueIds',[])) != 1:
+def _spec(root, manifest, action, request, *, job_id=None):
+    scope = request.get('scope', 'local')
+    if 'allowDraft' in request and type(request['allowDraft']) is not bool:
+        raise ValueError('allowDraft must be an explicit boolean')
+    if action == 'preview' and scope in {'storyboard', 'still', 'exploration'}:
+        candidate = manifest
+        if scope == 'exploration':
+            from scripts.work_model_exploration import candidate_manifest
+            candidate = candidate_manifest(manifest, request)
+        if scope == 'still' and len(request.get('cueIds', [])) != 1:
             raise ValueError('still preview requires exactly one cueId')
-        return {'timeline':data,'scope':request.get('scope','local'), 'stillTime':request.get('time'),
-                'cueIds':request.get('cueIds',[])}
-    data = timeline_inputs(root,manifest)
-    return {'timeline':data,'native':{c['id']:cue_key(root,manifest,c,'delivery') for c in animation_cues(manifest)},
-            'identity':manifest['identity'],'protocol':'2'}
+        lineage = {}
+        if scope == 'exploration':
+            exploration = next(e for e in manifest['explorations'] if e['id'] == request['explorationId'])
+            variant = next(v for v in exploration['variants'] if v['id'] == request['variantId'])
+            from scripts.work_model_exploration import variant_lineage
+            current_lineage = variant_lineage(variant, root, manifest=manifest)
+            lineage = {key: current_lineage.get(name) for key, name in
+                       [('variantRevision', 'revision'), ('variantContentIdentity', 'contentIdentity')]}
+        return {**lineage, 'lineageFiles': current_lineage.get('files', []) if scope == 'exploration' else [], 'scope': scope, 'static': storyboard_spec(root, candidate, request),
+                'explorationId': request.get('explorationId'), 'variantId': request.get('variantId')}
+    source_paths(root, manifest)
+    if action == 'preview':
+        if scope not in {'local', 'full'}:
+            raise ValueError('unsupported preview scope')
+        start, duration = preview_range(manifest, request)
+        work = request.get('workCueIds', request.get('cueIds', []))
+        data = timeline_inputs(root, manifest, start=start, duration=duration,
+            allow_draft=request.get('allowDraft', False), required_cue_ids=work,
+            excluded_cue_ids=request.get('excludedCueIds', []))
+        # An old unapproved motion file is historical media, not an available
+        # active implementation. Context must never auto-enrol it into work.
+        task = next((d for d in manifest['decisions'] if d.get('taskId') == request.get('taskId')
+                     and d['kind'] == 'explore-motion'), None)
+        available = []
+        for overlay in data['overlays']:
+            cue = next(c for c in manifest['cues'] if c['id'] == overlay['cueId'])
+            eligible = first_confirmed(manifest, cue.get('objectId')) or (scope != 'full' and task
+                       and cue.get('objectId') in task['objectIds'])
+            if eligible or cue['id'] in work:
+                available.append(overlay)
+            else:
+                data['missingCueIds'].append(cue['id'])
+        data['overlays'] = available
+        basis = production_basis(manifest, request, [o['cueId'] for o in available], full=scope == 'full',
+                                 job_id=job_id, time_range=data['range'])
+        if scope == 'full' and not available and data['missingCueIds']:
+            raise ValueError('first design confirmation required before full Motion production')
+        return {'timeline': data, 'scope': scope, 'workCueIds': work, 'productionBasis': basis}
+    data = timeline_inputs(root, manifest)
+    return {'timeline': data, 'native': {c['id']: cue_key(root, manifest, c, 'delivery') for c in animation_cues(manifest)},
+            'identity': manifest['identity'], 'protocol': '2'}
 
 
 def _approved(root, manifest):
@@ -68,7 +110,8 @@ def _approved(root, manifest):
     kinds={d['kind'] for d in manifest['decisions'] if d.get('reviewSetId') == review['id']}
     if not ({'approve','authorize'} <= kinds or 'approve-and-deliver' in kinds):
         raise ValueError('explicit user approval and authorization are required')
-    if any(f['status'] in {'pending','needs-clarification'} for f in manifest['feedback']):
+    from scripts.work_model_feedback_targets import review_target
+    if blocking_feedback(manifest, review_target(manifest, review)):
         raise ValueError('pending feedback must be resolved before delivery')
     return review
 
@@ -94,11 +137,13 @@ def _number(root, manifest, afterforge, index):
 
 
 def _snapshot(root, manifest, spec, destination, review=None):
-    names=set()
-    for overlay in spec['timeline']['overlays']:
+    names=set(spec.get('static', {}).get('files', []))
+    names.update(spec.get('lineageFiles', []))
+    for overlay in spec.get('timeline', {}).get('overlays', []):
         cue=next(c for c in manifest['cues'] if c['id']==overlay['cueId'])
         names.update(cue_inputs(root,manifest,cue)['files'])
-    names.update(path.relative_to(root).as_posix() for path in source_paths(root,manifest))
+    if 'timeline' in spec:
+        names.update(path.relative_to(root).as_posix() for path in source_paths(root,manifest))
     names.update(p.relative_to(root).as_posix() for p in (root/'assets/source').glob('narration-*') if p.is_file())
     if review:
         names.update(a['path'] for a in manifest['artifacts'] if a['id'] in review['artifactIds'])
@@ -123,6 +168,7 @@ def _cache(root, snapshot, manifest, cue, quality, job):
                 valid=_validate_media(movie,manifest,cue,quality,log)
         except (ValueError,OSError,subprocess.CalledProcessError):
             valid=None
+    cache_hit = valid is not None
     if valid is None:
         target=safe(snapshot,relative,exists=False)
         render_cue(snapshot,manifest,cue,quality=quality,target=target,log_path=log)
@@ -137,6 +183,7 @@ def _cache(root, snapshot, manifest, cue, quality, job):
     destination=safe(snapshot,relative,exists=False)
     destination.parent.mkdir(parents=True,exist_ok=True)
     shutil.copy2(movie,destination)
+    job.setdefault('mediaReuse', {})[cue['id']] = 'cache-hit' if cache_hit else 'rebuilt'
     job['completedCueIds']=list(dict.fromkeys(job.get('completedCueIds',[])+[cue['id']]))
     atomic_json(_job_path(root,job['id']),job)
     return {'path':relative,'sha256':sha(destination),'inputKey':key,**valid}
@@ -164,56 +211,117 @@ def _preview_output(root, snap, manifest, spec, job):
         overlay['path']=_cache(root,snap,manifest,cue,'preview',job)['path']
     start=parse_time(data['range']['start']);duration=parse_time(data['range']['duration'])
     key=digest(data)
-    output=snap/f'previews/{job["inputKey"]}.mp4'
+    output=snap/f'previews/{job["id"]}/demo.mp4'
     composite_preview(snap,manifest,overlays,start=start,duration=duration,target=output,log_path=snap/'render.log')
     kind='full-preview' if spec['scope']=='full' else 'local-preview'
     artifacts=[]
-    if spec['scope']=='still':
-        moment=parse_time(spec['stillTime']) if spec['stillTime'] else start+duration/2
-        if moment<start or moment>=start+duration:
-            raise ValueError('still time must lie inside preview range')
-        png=output.with_suffix('.png')
-        with (snap/'render.log').open('ab') as log:
-            subprocess.run(['ffmpeg','-v','error','-ss',str(float(moment-start)),'-i',str(output),'-frames:v','1',str(png)],check=True,stdout=log,stderr=log)
-        artifacts.append(_artifact(snap,manifest,'still',png,key,data['range'],spec['cueIds'],not data['missingCueIds'],time=format_time(moment),timelineBased=True))
-    else:
-        artifacts.append(_artifact(snap,manifest,kind,output,key,data['range'],[o['cueId'] for o in overlays],not data['missingCueIds'],missingCueIds=data['missingCueIds']))
+    coverage = {'workCueIds': spec['workCueIds'], 'presentedCueIds': [o['cueId'] for o in overlays],
+                'reusedCueIds': [o['cueId'] for o in overlays if o['cueId'] not in spec['workCueIds']],
+                'excludedCueIds': data.get('excludedCueIds', []), 'missingCueIds': data['missingCueIds'],
+                'mediaReuse': dict(job.get('mediaReuse', {}))}
+    artifacts.append(_artifact(snap,manifest,kind,output,key,data['range'],[o['cueId'] for o in overlays],
+        not data['missingCueIds'] and not data.get('excludedCueIds'), coverage=coverage,
+        missingCueIds=data['missingCueIds'], excludedCueIds=data.get('excludedCueIds', []),
+        productionBasis=spec['productionBasis'], eventId=job['id'],
+        previewRequest={key: copy.deepcopy(job['request'][key]) for key in
+            ('scope', 'cueIds', 'workCueIds', 'segmentIds', 'range', 'excludedCueIds', 'allowDraft', 'taskId')
+            if key in job['request']}))
     # Conservatively supply every overlapping animation in isolation, covering its entire local duration.
-    if kind=='full-preview' and not data['missingCueIds']:
+    if kind=='full-preview' and not data['missingCueIds'] and not data.get('excludedCueIds'):
         for overlay in overlays:
             if overlay['cueId'] not in _overlap_ids(overlays):
                 continue
             cue=next(c for c in manifest['cues'] if c['id']==overlay['cueId'])
             supplemental=supplemental_key(snap,manifest,cue)
-            target=snap/f'previews/cue-{supplemental}.mp4'
+            target=snap/f'previews/{job["id"]}/cue-{supplemental}.mp4'
             composite_preview(snap,manifest,[overlay],start=parse_time(overlay['start']),duration=parse_time(overlay['duration']),target=target,log_path=snap/'render.log')
-            artifacts.append(_artifact(snap,manifest,'cue-preview',target,supplemental,{'start':overlay['start'],'duration':overlay['duration']},[cue['id']]))
+            artifacts.append(_artifact(snap,manifest,'cue-preview',target,supplemental,{'start':overlay['start'],'duration':overlay['duration']},[cue['id']], productionBasis=spec['productionBasis'],eventId=job['id']))
     return artifacts
 
 
-def _finish_preview(root,snap,manifest,spec,job):
-    artifacts=_preview_output(root,snap,manifest,spec,job)
+def _finish_preview(root, snap, manifest, spec, job):
+    static = 'static' in spec
+    if static:
+        candidate = manifest
+        if spec['scope'] == 'exploration':
+            from scripts.work_model_exploration import candidate_manifest
+            candidate = candidate_manifest(manifest, job['request'])
+        frames = render_storyboard(snap, candidate, spec['static'], snap / 'previews' / job['id'], snap / 'render.log')
+        purpose = ('exploration' if spec['scope'] == 'exploration' else
+                   'still' if spec['scope'] == 'still' and 'time' in job['request'] else 'storyboard')
+        artifacts = []
+        for frame in frames:
+            record = dict(frame)
+            record.update(id='artifact-' + digest([job['id'], frame['cueId'], frame['frameId']])[:20],
+                kind='still' if purpose == 'still' else purpose + '-frame', purpose=purpose, cueIds=[frame['cueId']], complete=True,
+                range={'start': '0s', 'duration': '0s'}, createdAt=now(), eventId=job['id'])
+            if purpose == 'exploration':
+                record.update(explorationId=spec['explorationId'], variantId=spec['variantId'],
+                              **{key: spec[key] for key in ('variantRevision', 'variantContentIdentity') if spec.get(key) is not None})
+            artifacts.append(record)
+    else:
+        artifacts = _preview_output(root, snap, manifest, spec, job)
     with manifest_transaction(root):
         fresh_hashes()
-        current=load(root,writable=True)
-        if digest(_spec(root,current,'preview',job['request']))!=job['inputKey']:
+        current = load(root, writable=True)
+        if digest(_spec(root, current, 'preview', job['request'], job_id=job['id'])) != job['inputKey']:
             raise ValueError('inputs changed during preview; valid cue caches retained')
-        for artifact in artifacts:
-            target=safe(root,artifact['path'],exists=False)
-            target.parent.mkdir(parents=True,exist_ok=True)
-            # Fingerprinted outputs are replaced only if already damaged; hash binds this result.
-            os.replace(safe(snap,artifact['path']),target)
-            current['artifacts']=[a for a in current['artifacts'] if a['id']!=artifact['id']]+[artifact]
-        review=None
-        if spec['scope']=='full' and all(a['complete'] for a in artifacts):
-            review={'id':'review-'+digest([a['sha256'] for a in artifacts]+[job['inputKey']])[:20],
-                    'inputKey':digest(spec['timeline']),'artifactIds':[a['id'] for a in artifacts],'createdAt':now()}
-            current['reviewSets']=[r for r in current['reviewSets'] if r['id']!=review['id']]+[review]
-        current['editRevision']+=1
-        result={'status':'complete','jobId':job['id'],'artifactIds':[a['id'] for a in artifacts],
-                'reviewSet':review,'editRevision':current['editRevision']}
-        remember(current,job['request'],result)
-        save(root,current)
+        upgrade(current)
+        installed = []
+        try:
+            for artifact in artifacts:
+                target = safe(root, artifact['path'], exists=False)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if target.exists():
+                    if sha(target) != artifact['sha256']:
+                        raise ValueError('published preview path is immutable')
+                else:
+                    os.replace(safe(snap, artifact['path']), target)
+                    installed.append(target)
+                current['artifacts'].append(artifact)
+            boards = []
+            if static and purpose == 'storyboard':
+                for cid in dict.fromkeys(a['cueId'] for a in artifacts):
+                    cue = next(c for c in current['cues'] if c['id'] == cid)
+                    if not cue.get('objectId'):
+                        raise ValueError('register creative object through update before Storyboard')
+                    frames = [a for a in artifacts if a['cueId'] == cid]
+                    board = {'id': 'storyboard-' + digest([job['id'], cid])[:20], 'cueId': cid,
+                        'objectId': cue['objectId'], 'artifactIds': [a['id'] for a in frames],
+                        'narration': frames[0].get('narration') or '',
+                        'contentContext': frames[0]['contentContext'],
+                        'finalAnimationDescription': frames[0].get('finalDescription') or '', 'createdAt': now()}
+                    boards.append(board)
+                current['storyboards'].extend(boards)
+            elif static and purpose == 'exploration':
+                exploration = next(e for e in current['explorations'] if e['id'] == spec['explorationId'])
+                variant = next(v for v in exploration['variants'] if v['id'] == spec['variantId'])
+                variant['artifactIds'] = [a['id'] for a in artifacts]
+                variant.update(revision=spec['variantRevision'], contentIdentity=spec['variantContentIdentity'])
+            review = None
+            if spec['scope'] == 'full' and all(a['complete'] for a in artifacts):
+                review = {'id': 'review-' + digest([job['id'], job['inputKey']])[:20],
+                    'inputKey': digest(spec['timeline']), 'artifactIds': [a['id'] for a in artifacts],
+                    'productionBasis': spec['productionBasis'], 'createdAt': now()}
+                current['reviewSets'].append(review)
+            if not static and spec['productionBasis'].get('taskId') and spec['productionBasis']['decisionIds']:
+                commission = next(d for d in current['decisions'] if d.get('taskId') == spec['productionBasis']['taskId'])
+                # A local check is part of an outstanding full-Demo task, not
+                # completion of it. Recovery shares its basis until that task's
+                # commissioned output has actually been published.
+                from scripts.work_model_policy import commission_fulfilled
+                if commission_fulfilled(current, spec):
+                    current['productionRuns'].append({'taskId': spec['productionBasis']['taskId'], 'jobId': job['id'],
+                        'inputKey': job['inputKey'], 'createdAt': now()})
+            current['editRevision'] += 1
+            result = {'status': 'complete', 'jobId': job['id'], 'artifactIds': [a['id'] for a in artifacts],
+                'storyboardIds': [s['id'] for s in boards], 'reviewSet': review, 'editRevision': current['editRevision']}
+            remember(current, job['request'], result)
+            save(root, current)
+        except BaseException:
+            for path in installed:
+                path.unlink(missing_ok=True)
+            raise
     return result
 
 
@@ -315,35 +423,45 @@ def _run(root,action,request,*,resume_id=None):
         with (project_lock(afterforge) if action=='deliver' else nullcontext()),manifest_transaction(root):
             manifest=load(root,writable=True)
             existing=json.loads(job_path.read_text()) if job_path.is_file() else None
+            previous = None
             if resume_id:
-                request_check(manifest,request)
-                if not existing: raise ValueError('unknown resumable job')
-                original=existing['request'];action=existing['action']
+                request_check(manifest, request)
+                if not existing:
+                    raise ValueError('unknown resumable job')
+                original = existing['request']
+                action = existing['action']
             else:
-                original=request
-                if existing and existing['request']!=request:
+                original = request
+                if existing and existing['request'] != request:
                     raise ValueError('requestId was already used with another job request')
-                previous=request_check(manifest,request) if not existing else None
-                if previous is not None:
-                    if action=='deliver' and previous.get('delivery'):
-                        from scripts.work_model_delivery import verify_release
-                        verify_release(root,afterforge,previous['delivery'])
-                    return previous
-            if existing and existing['status']=='complete':
-                if action=='deliver' and existing['result'].get('delivery'):
-                    from scripts.work_model_delivery import verify_release
-                    verify_release(root,afterforge,existing['result']['delivery'])
-                return existing['result']
-            source_paths(root,manifest)
-            if action=='deliver' and not animation_cues(manifest):
-                return {'status':'no-animation','message':'无需动画交付'}
-            if not existing and action=='deliver' and request.get('decision'):
+                previous = request_check(manifest, request) if not existing else None
+            upgraded = upgrade(manifest)
+            from scripts.work_model_policy import correct_incomplete_runs
+            correct_incomplete_runs(root, manifest)
+            if action == 'deliver' and not animation_cues(manifest):
+                return {'status': 'no-animation', 'message': '无需动画交付'}
+            # Explicit combined user commands are registered once. Merely
+            # retrying a historical task cannot manufacture a missing decision.
+            if not existing and previous is None and original.get('decision'):
                 from scripts.work_model import _record_decision
-                _record_decision(root,manifest,request['decision'])
-            review=_approved(root,manifest) if action=='deliver' else None
-            spec=_spec(root,manifest,action,original);key=digest(spec)
-            if existing and existing['inputKey']!=key:
+                _record_decision(root, manifest, original['decision'])
+            review = _approved(root, manifest) if action == 'deliver' else None
+            spec = _spec(root, manifest, action, original, job_id=job_id)
+            key = digest(spec)
+            if existing and existing['inputKey'] != key:
                 raise ValueError('job inputs changed; start a new request to reuse unaffected caches')
+            cached_result = previous or (existing.get('result') if existing and existing['status'] == 'complete' else None)
+            if cached_result is not None:
+                if action == 'deliver' and cached_result.get('delivery'):
+                    from scripts.work_model_delivery import verify_release
+                    verify_release(root, afterforge, cached_result['delivery'])
+                else:
+                    from scripts.work_model import _artifact_current
+                    records = {a['id']: a for a in manifest['artifacts']}
+                    if not all(key in records and _artifact_current(root, manifest, records[key])
+                               for key in cached_result.get('artifactIds', [])):
+                        raise ValueError('cached preview no longer matches verified current inputs')
+                return cached_result
             if action=='deliver':
                 for release in manifest['deliveries']:
                     if release['inputKey']==key:
@@ -360,15 +478,16 @@ def _run(root,action,request,*,resume_id=None):
                 job['reviewSetId']=review['id']
                 if not job.get('releaseId'):
                     _,index=layout(root);job['releaseId']=_number(root,manifest,afterforge,index)
-                if not existing and request.get('decision'):
-                    manifest['editRevision']+=1;save(root,manifest)
+            if upgraded or (not existing and original.get('decision')) or manifest != load(root):
+                manifest['editRevision'] += 1
+                save(root, manifest)
             job.update(status='running',updatedAt=now(),error=None)
             atomic_json(job_path,job)
             scratch=safe(root,'jobs/.scratch',exists=False);scratch.mkdir(parents=True,exist_ok=True)
             snap=Path(tempfile.mkdtemp(prefix=job_id+'-',dir=scratch))
             try:
                 names=_snapshot(root,manifest,spec,snap,review)
-                if digest(_spec(snap,manifest,action,original))!=key:
+                if digest(_spec(snap,manifest,action,original,job_id=job_id))!=key:
                     raise ValueError('inputs changed while freezing task')
             except BaseException as error:
                 job.update(status='failed',error=str(error),updatedAt=now())

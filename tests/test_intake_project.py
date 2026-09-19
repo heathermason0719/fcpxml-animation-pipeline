@@ -215,6 +215,61 @@ class WorkspaceDiscoveryTests(unittest.TestCase):
             self.assertEqual(report["blockers"][0]["code"], "ambiguous_fcpxml")
             self.assertEqual(len(report["blockers"][0]["candidates"]), 2)
 
+    def test_multiple_candidates_are_blocked_even_when_one_filename_scores_higher(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            (workspace / "rough_cut.fcpxml").write_text(FCPXML, encoding="utf-8")
+            (workspace / "alternate.fcpxml").write_text(FCPXML, encoding="utf-8")
+            (workspace / "rough_proxy.mp4").write_bytes(b"video")
+
+            report = analyze_workspace(workspace)
+
+            self.assertEqual(report["status"], "blocked")
+            self.assertEqual(report["selected"]["fcpxml"], None)
+            self.assertEqual(report["blockers"][0]["code"], "ambiguous_fcpxml")
+            self.assertEqual(
+                report["blockers"][0]["candidates"],
+                [
+                    str((workspace / "alternate.fcpxml").resolve()),
+                    str((workspace / "rough_cut.fcpxml").resolve()),
+                ],
+            )
+
+    def test_explicit_in_directory_selections_resolve_multiple_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            first = workspace / "first.fcpxml"
+            second = workspace / "second.fcpxml"
+            first.write_text(FCPXML.replace('project name="粗剪"', 'project name="初版"'), encoding="utf-8")
+            second.write_text(FCPXML.replace('project name="粗剪"', 'project name="定稿"'), encoding="utf-8")
+            (workspace / "first.mp4").write_bytes(b"first")
+            second_video = workspace / "second.mp4"
+            second_video.write_bytes(b"second")
+
+            report = analyze_workspace(
+                workspace,
+                selections={"fcpxml": "second.fcpxml", "reference_video": second_video},
+            )
+
+            self.assertEqual(report["status"], "ready")
+            self.assertEqual(report["selected"]["fcpxml"], str(second.resolve()))
+            self.assertEqual(report["selected"]["reference_video"], str(second_video.resolve()))
+            self.assertEqual(report["timeline"]["project_name"], "定稿")
+
+    def test_out_of_directory_selection_is_blocked_without_falling_back(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as outside_directory:
+            workspace = Path(directory)
+            files = create_ready_workspace(workspace)
+            outside = Path(outside_directory) / "outside.fcpxml"
+            outside.write_text(FCPXML, encoding="utf-8")
+
+            report = analyze_workspace(workspace, selections={"fcpxml": outside})
+
+            self.assertEqual(report["status"], "blocked")
+            self.assertEqual(report["selected"]["fcpxml"], None)
+            self.assertEqual(report["selected"]["reference_video"], str(files["video"].resolve()))
+            self.assertEqual(report["blockers"][0]["code"], "invalid_selected_fcpxml")
+
     def test_analysis_does_not_modify_project_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             workspace = Path(directory)
@@ -286,6 +341,66 @@ class IntakeTimelineTests(unittest.TestCase):
             self.assertEqual(report["status"], "ready")
             self.assertEqual(report["selected"]["fcpxml"], str(bundle.resolve()))
             self.assertEqual(report["timeline"]["project_name"], "粗剪")
+
+    def test_bundle_with_multiple_xml_files_is_blocked_with_their_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            bundle = workspace / "电影粗剪.fcpxmld"
+            bundle.mkdir()
+            (bundle / "Info.fcpxml").write_text(FCPXML, encoding="utf-8")
+            alternate = bundle / "alternate.fcpxml"
+            alternate.write_text(FCPXML, encoding="utf-8")
+            (workspace / "rough_proxy.mp4").write_bytes(b"video")
+
+            report = analyze_workspace(workspace)
+
+            self.assertEqual(report["status"], "blocked")
+            self.assertEqual(report["timeline"], None)
+            self.assertEqual(report["blockers"][0]["code"], "ambiguous_fcpxmld_xml")
+            self.assertEqual(
+                report["blockers"][0]["candidates"],
+                [str(alternate.resolve()), str((bundle / "Info.fcpxml").resolve())],
+            )
+
+    def test_multiple_projects_are_blocked_with_project_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            files = create_ready_workspace(workspace)
+            multiple_projects = FCPXML.replace(
+                "    </event>",
+                "      <project name=\"备用粗剪\"><sequence format=\"r1\" duration=\"8s\"><spine/></sequence></project>\n    </event>",
+            )
+            files["fcpxml"].write_text(multiple_projects, encoding="utf-8")
+
+            projects_report = analyze_workspace(workspace)
+
+            self.assertEqual(projects_report["status"], "blocked")
+            self.assertEqual(projects_report["blockers"][0]["code"], "ambiguous_fcpxml_project")
+            self.assertEqual(
+                projects_report["blockers"][0]["candidates"],
+                ["Project 1: 粗剪", "Project 2: 备用粗剪"],
+            )
+            self.assertEqual(projects_report["timeline"], None)
+
+    def test_multiple_sequences_are_blocked_with_sequence_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Path(directory)
+            files = create_ready_workspace(workspace)
+            multiple_sequences = FCPXML.replace(
+                "        </sequence>",
+                "        </sequence>\n        <sequence format=\"r1\" duration=\"8s\"><spine/></sequence>",
+            )
+            files["fcpxml"].write_text(multiple_sequences, encoding="utf-8")
+
+            sequences_report = analyze_workspace(workspace)
+
+            self.assertEqual(sequences_report["status"], "blocked")
+            self.assertEqual(sequences_report["blockers"][0]["code"], "ambiguous_fcpxml_sequence")
+            self.assertEqual(
+                sequences_report["blockers"][0]["candidates"],
+                ["Sequence 1: 8s", "Sequence 2: 8s"],
+            )
+            self.assertEqual(sequences_report["timeline"], None)
 
 
 class IntakeCliTests(unittest.TestCase):

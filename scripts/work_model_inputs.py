@@ -16,6 +16,22 @@ def animation_cues(manifest):
     return [cue for cue in manifest["cues"] if cue["productionMode"] == "animation"]
 
 
+def cue_narration(manifest, cue):
+    """Resolve explicit canonical text associations, never infer them by time."""
+    for key in ('narration', 'narrationAnchor'):
+        value = cue.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    segments = {s['id']: s for s in manifest.get('brief', {}).get('segments', [])}
+    values = []
+    for sid in cue.get('segmentIds', []):
+        segment = segments.get(sid, {})
+        value = segment.get('narration') or segment.get('text')
+        if isinstance(value, str) and value.strip():
+            values.append(value)
+    return '\n'.join(values)
+
+
 def source_paths(root, manifest):
     source = manifest["project"].get("source")
     adapter = manifest["project"].get("renderAdapters", {}).get("hyperframes", {})
@@ -37,33 +53,49 @@ def source_paths(root, manifest):
                  or any(c.get("narrationAnchor") for c in manifest["cues"])
                  or input_record.get("narrationSources")
                  or any(t.get("classification") == "narration_subtitle" for t in input_record.get("timelineText", [])))
-    if not narration and animation_cues(manifest):
+    from scripts.work_model_content import content_context, validate_content_declarations
+    animations = animation_cues(manifest)
+    explicit_silence = bool(animations) and all(
+        content_context(manifest, cue)['narration']['state'] == 'none'
+        and not validate_content_declarations(manifest, cue) for cue in animations)
+    if not narration and animations and not explicit_silence:
         raise ValueError("缺少旁白依据：请先整理已有字幕、转写或语义锚点")
     return xml, media
 
 
-def dependencies(root, cue):
-    """Declared dynamic dependencies plus recursively discovered static references."""
+def dependencies(root, cue, *, require_motion=True):
+    """One closure for publication checks, cache identity and render snapshots."""
+    from scripts.work_model_sources import inspect_sources
     adapter = cue.get("renderAdapters", {}).get("hyperframes", {})
-    paths = set(adapter.get("layoutDependencies", []))
-    for key in ("compositionSrc", "motionSrc"):
+    for key in (("compositionSrc", "motionSrc") if require_motion else ("compositionSrc",)):
         if not isinstance(adapter.get(key), str):
             raise ValueError(f"missing {key}: {cue['id']}")
-        paths.add(adapter[key])
+        safe(root, adapter[key])
+    analysis = inspect_sources(root, cue)
+    if require_motion and analysis['unseekableFiles']:
+        raise ValueError('time-driven input requires an explicit fixed sample or seekable adapter: ' + ', '.join(analysis['unseekableFiles']))
+    paths = analysis['files']
+    return [p for p in paths if require_motion or p != adapter.get('motionSrc')]
+
+
+def dependency_closure(root, paths, *, overrides=None, excluded=()):
+    """Resolve declared inputs including staged bytes, without publishing them."""
+    overrides = overrides or {}
+    excluded = set(excluded)
     pending = list(paths)
     checked = set()
     patterns = [r'''(?:src|href|data-composition-src)\s*=\s*["']([^"']+)["']''',
                 r'''url\(\s*["']?([^)'"\s]+)''',
-                r'''(?:from\s+|import\s*\()["']([^"']+)["']''']
+                r'''(?:from\s+|import\s*\(|import\s*)["']([^"']+)["']''']
     while pending:
         relative = pending.pop()
-        if relative in checked:
+        if relative in checked or relative in excluded:
             continue
-        path = safe(root, relative)
+        path = safe(root, relative, exists=relative not in overrides)
         checked.add(relative)
         if path.suffix.lower() not in {".html", ".css", ".js", ".mjs"}:
             continue
-        text = path.read_text()
+        text = overrides[relative].decode('utf-8') if relative in overrides else path.read_text()
         for pattern in patterns:
             for reference in re.findall(pattern, text):
                 if reference.startswith(("#", "data:", "blob:")):
@@ -77,12 +109,14 @@ def dependencies(root, cue):
                 # HyperFrames resolves subcomposition assets from the project root.
                 root_candidate = Path(root) / candidate
                 local_candidate = path.parent / candidate
-                selected = root_candidate if root_candidate.exists() else local_candidate
+                selected = root_candidate if candidate in overrides or candidate in excluded or root_candidate.exists() else local_candidate
                 try:
                     resolved = selected.resolve().relative_to(Path(root).resolve()).as_posix()
                 except ValueError as error:
                     raise ValueError("render dependency escapes version") from error
-                safe(root, resolved)
+                if resolved in excluded:
+                    continue
+                safe(root, resolved, exists=resolved not in overrides)
                 if resolved not in checked:
                     pending.append(resolved)
     return sorted(checked)
@@ -119,7 +153,7 @@ def cue_key(root, manifest, cue, quality="preview"):
     return digest(cue_inputs(root, manifest, cue, quality))
 
 
-def timeline_inputs(root, manifest, *, start=None, duration=None, allow_draft=False):
+def timeline_inputs(root, manifest, *, start=None, duration=None, allow_draft=False, excluded_cue_ids=(), required_cue_ids=None):
     xml, media = source_paths(root, manifest)
     source = manifest["project"]["source"]
     frame = parse_time(source["frameDuration"])
@@ -132,16 +166,20 @@ def timeline_inputs(root, manifest, *, start=None, duration=None, allow_draft=Fa
         raise ValueError("preview range must align to source frames")
     records = []
     missing = []
+    excluded = set(excluded_cue_ids)
+    if not excluded.issubset({c['id'] for c in animation_cues(manifest)}):
+        raise ValueError('unknown excluded cue')
+    required = {c['id'] for c in animation_cues(manifest)} if required_cue_ids is None else set(required_cue_ids)
     ids = set()
     for number, cue in enumerate(manifest["cues"]):
         if cue["id"] in ids:
             raise ValueError("duplicate cue id")
         ids.add(cue["id"])
-        if cue["productionMode"] != "animation":
+        if cue["productionMode"] != "animation" or cue["id"] in excluded:
             continue
         placement = cue.get("resolvedTimeline")
         if not placement:
-            if allow_draft:
+            if allow_draft or cue["id"] not in required:
                 missing.append(cue["id"])
                 continue
             raise ValueError(f"cue has no resolved timeline: {cue['id']}")
@@ -156,16 +194,19 @@ def timeline_inputs(root, manifest, *, start=None, duration=None, allow_draft=Fa
                 raise ValueError(f"unfinished cue: {cue['id']}")
             key = cue_key(root, manifest, cue)
         except (ValueError, OSError):
-            if not allow_draft:
+            if not allow_draft and cue['id'] in required:
                 raise
             missing.append(cue["id"])
             continue
         records.append({"cueId": cue["id"], "renderKey": key, "start": format_time(cue_start),
                         "duration": format_time(cue_duration), "layer": cue.get("layer", number + 1)})
-    return {"version": 2, "sourceXml": sha(xml), "referenceVideo": sha(media),
+    result = {"version": 2, "sourceXml": sha(xml), "referenceVideo": sha(media),
             "dimensions": manifest["project"]["preview"], "frameDuration": format_time(frame),
             "range": {"start": format_time(start), "duration": format_time(duration)},
             "overlays": records, "missingCueIds": missing}
+    if excluded:
+        result['excludedCueIds'] = sorted(excluded)
+    return result
 
 
 def timeline_key(root, manifest, **kwargs):
@@ -179,6 +220,8 @@ def preview_range(manifest, request):
     frame = parse_time(source["frameDuration"])
     total = parse_time(source["duration"])
     if request.get("scope", "local") == "full":
+        if 'range' in request and (parse_time(request['range']['start']) != 0 or parse_time(request['range']['duration']) != total):
+            raise ValueError('full preview cannot silently ignore a limited range; use local scope')
         return Fraction(0), total
     if "range" in request:
         start = parse_time(request["range"]["start"])

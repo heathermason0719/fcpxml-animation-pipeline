@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from tests.work_model_fixtures import user
+
 
 class WorkModelTests(unittest.TestCase):
     def setUp(self):
@@ -108,21 +110,63 @@ class WorkModelTests(unittest.TestCase):
         legacy_parent = Path(self.directory.name) / "legacy"
         legacy_parent.mkdir()
         legacy = SingleSourceFixture().make_version(str(legacy_parent))
+        legacy_manifest = json.loads((legacy / 'animation-manifest.json').read_text())
+        background = legacy / 'assets/stills/review.jpg'
+        background.parent.mkdir(parents=True, exist_ok=True)
+        background.write_bytes(b'fixture still background')
+        legacy_manifest['cues'][0]['renderAdapters']['hyperframes']['stillSrc'] = 'assets/stills/review.jpg'
+        (legacy / 'animation-manifest.json').write_text(json.dumps(legacy_manifest))
         before = {str(p.relative_to(legacy)): hashlib.sha256(p.read_bytes()).hexdigest()
                   for p in legacy.rglob("*") if p.is_file()}
         from scripts import work_model as model
         self.assertTrue(model.status(legacy)["legacy"])
         with self.assertRaisesRegex(ValueError, "legacy|旧|read.only"):
             model.update(legacy, {"requestId": "bad", "expectedRevision": 0, "operation": "edit", "patch": {}})
+        commission = user("复制这版的创作内容，不继承批准", "copy:legacy")
         result = model.open_project(self.afterforge, {"requestId": "copy", "expectedRevision": 0,
-            "title": "楚门", "episodeTitle": "开场", "copyFrom": str(legacy)})
+            "title": "楚门", "episodeTitle": "开场", "copyFrom": str(legacy), "copyMode": "restart",
+            "commission": commission})
         copied = json.loads((Path(result["root"]) / "animation-manifest.json").read_text())
         self.assertEqual(copied["decisions"], [])
         self.assertEqual(copied["deliveries"], [])
         self.assertNotIn("workflow", copied)
+        self.assertEqual(copied["provenance"]["commission"], commission)
+        self.assertEqual((Path(result['root']) / 'assets/stills/review.jpg').read_bytes(), background.read_bytes())
         after = {str(p.relative_to(legacy)): hashlib.sha256(p.read_bytes()).hexdigest()
                  for p in legacy.rglob("*") if p.is_file()}
         self.assertEqual(before, after)
+
+    def test_copy_requires_explicit_user_commission(self):
+        model, source = self.create()
+
+        with self.assertRaisesRegex(ValueError, "user decision|commission|source"):
+            model.open_project(self.afterforge, {"requestId": "copy", "expectedRevision": 1,
+                "episodeId": model.status(source)["identity"]["episodeId"], "copyFrom": str(source)})
+
+    def test_open_binds_explicit_intake_selections(self):
+        from unittest.mock import patch
+        from scripts import work_model as model
+
+        input_directory = self.afterforge.parent / "user-inbox" / "rough-cut-v1"
+        input_directory.mkdir(parents=True)
+        xml = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<fcpxml version=\"1.11\"><resources><format id=\"r1\" frameDuration=\"1/25s\" width=\"1920\" height=\"1080\"/></resources>
+<library><event><project name=\"{name}\"><sequence format=\"r1\" duration=\"8s\"><spine/></sequence></project></event></library></fcpxml>"""
+        (input_directory / "alternate.fcpxml").write_text(xml.format(name="备用"), encoding="utf-8")
+        selected_xml = input_directory / "current.fcpxml"
+        selected_xml.write_text(xml.format(name="当前"), encoding="utf-8")
+        (input_directory / "alternate.mp4").write_bytes(b"alternate video")
+        selected_video = input_directory / "current.mp4"
+        selected_video.write_bytes(b"current video")
+
+        with patch("scripts.validate_delivery.probe_delivery", return_value={"r_frame_rate": "25", "duration": "8"}):
+            result = model.open_project(self.afterforge, {"requestId": "bind", "expectedRevision": 0,
+                "title": "电影系列", "episodeTitle": "输入选择", "inputDirectory": str(input_directory),
+                "selections": {"fcpxml": "current.fcpxml", "reference_video": "current.mp4"}})
+
+        root = Path(result["root"])
+        self.assertIn('project name="当前"', (root / "assets/source/Info.fcpxml").read_text())
+        self.assertEqual((root / "assets/source/rough-cut.mp4").read_bytes(), selected_video.read_bytes())
 
     def test_legacy_copy_preserves_visuals_without_activating_old_review_instructions(self):
         from tests.test_hyperframes_single_source import SingleSourceFixture
@@ -135,7 +179,8 @@ class WorkModelTests(unittest.TestCase):
         (legacy / "frame.md").write_text(visual + old_flow + "\n")
         before = {str(p.relative_to(legacy)): p.read_bytes() for p in legacy.rglob("*") if p.is_file()}
         result = model.open_project(self.afterforge, {"requestId": "copy", "expectedRevision": 0,
-            "episodeTitle": "新副本", "copyFrom": str(legacy)})
+            "episodeTitle": "新副本", "copyFrom": str(legacy), "copyMode": "restart",
+            "commission": user("按这版继续创作", "copy:adapt-legacy")})
         root = Path(result["root"])
         frame = (root / "frame.md").read_text()
         self.assertTrue(frame.startswith("---\npalette: {accent: '#6ABEB6'}\n---\n"))
@@ -148,7 +193,8 @@ class WorkModelTests(unittest.TestCase):
                                  for p in legacy.rglob("*") if p.is_file()})
         # A v3 copy must keep the already adapted specification byte-for-byte.
         second = model.open_project(self.afterforge, {"requestId": "copy-again", "expectedRevision": 1,
-            "episodeId": result["identity"]["episodeId"], "copyFrom": str(root)})
+            "episodeId": result["identity"]["episodeId"], "copyFrom": str(root), "copyMode": "restart",
+            "commission": user("以已适配版本创建新制作副本", "copy:adapted-v3")})
         self.assertEqual((Path(second["root"]) / "frame.md").read_bytes(), (root / "frame.md").read_bytes())
 
     def test_planning_and_series_defaults_work_with_old_project_files_without_stage_resolver(self):
@@ -161,7 +207,9 @@ class WorkModelTests(unittest.TestCase):
         frame = "# 视觉默认\n思源宋体 600，蓝绿 #6ABEB6。\n"
         (engine / "frame.md").write_text(frame)
         with patch("scripts.workflow_status.resolve_stage_status", side_effect=AssertionError("old stage resolver called")):
-            model, root = self.create(brief={"summary": "完整文案先策划", "segments": []})
+            model, root = self.create(brief={"summary": "完整文案先策划", "segments": []},
+                useSeriesDefaults=True,
+                commission=user("本集采用系列视觉默认", "series:legacy-entry"))
             self.assertIsNone(json.loads((root / "animation-manifest.json").read_text())["project"]["source"])
             self.assertEqual(model.status(root)["brief"]["summary"], "完整文案先策划")
             self.edit(model, root, patch={"brief": {"summary": "补充本集论点", "segments": []}})
@@ -181,7 +229,8 @@ class WorkModelTests(unittest.TestCase):
                 original = header + body
                 (legacy / "frame.md").write_bytes(original)
                 result = model.open_project(self.afterforge / str(index), {"requestId": "copy", "expectedRevision": 0,
-                    "episodeTitle": "编码保留", "copyFrom": str(legacy)})
+                    "episodeTitle": "编码保留", "copyFrom": str(legacy), "copyMode": "restart",
+                    "commission": user("复制该版并保留视觉字节", "copy:encoding-" + str(index))})
                 copied = (Path(result["root"]) / "frame.md").read_bytes()
                 self.assertTrue(copied.startswith(header))
                 self.assertTrue(copied.endswith(body))
@@ -219,13 +268,33 @@ class SeriesDefaultsTests(unittest.TestCase):
     setUp = WorkModelTests.setUp
     create = WorkModelTests.create
 
-    def test_series_visual_default_does_not_mutate_existing_version_snapshot(self):
+    def test_series_defaults_require_an_explicit_boolean_choice_and_commission(self):
         model,root=self.create()
         model.update(root,{'requestId':'style','expectedRevision':0,'operation':'visual-defaults','text':'# 包装\n青绿标题。','expectedFrameSha256':None})
         self.assertFalse((root/'frame.md').exists())
         state=model.status(root)
-        second=model.open_project(self.afterforge,{'requestId':'next','expectedRevision':1,'episodeId':state['identity']['episodeId']})
+
+        with self.assertRaisesRegex(ValueError, 'useSeriesDefaults|series visual defaults'):
+            model.open_project(self.afterforge,{'requestId':'missing-choice','expectedRevision':1,
+                'episodeId':state['identity']['episodeId']})
+        with self.assertRaisesRegex(ValueError, 'useSeriesDefaults|boolean|bool'):
+            model.open_project(self.afterforge,{'requestId':'invalid-choice','expectedRevision':1,
+                'episodeId':state['identity']['episodeId'],'useSeriesDefaults':'yes',
+                'commission':user('采用系列默认', 'series:invalid-choice')})
+
+        without_default=model.open_project(self.afterforge,{'requestId':'without-default','expectedRevision':1,
+            'episodeId':state['identity']['episodeId'],'useSeriesDefaults':False})
+        self.assertFalse((Path(without_default['root'])/'frame.md').exists())
+
+        with self.assertRaisesRegex(ValueError, 'user decision|commission|source'):
+            model.open_project(self.afterforge,{'requestId':'missing-commission','expectedRevision':2,
+                'episodeId':state['identity']['episodeId'],'useSeriesDefaults':True})
+        commission=user('本次采用系列视觉默认', 'series:adopt-default')
+        second=model.open_project(self.afterforge,{'requestId':'with-default','expectedRevision':2,
+            'episodeId':state['identity']['episodeId'],'useSeriesDefaults':True,'commission':commission})
         self.assertEqual((Path(second['root'])/'frame.md').read_text(),'# 包装\n青绿标题。')
+        copied=json.loads((Path(second['root'])/'animation-manifest.json').read_text())
+        self.assertEqual(copied['provenance']['commission'],commission)
         model.update(root,{'requestId':'style2','expectedRevision':1,'operation':'visual-defaults','text':'# 包装\n白色标题。','expectedFrameSha256':state['frameSha256']})
         self.assertEqual((Path(second['root'])/'frame.md').read_text(),'# 包装\n青绿标题。')
 

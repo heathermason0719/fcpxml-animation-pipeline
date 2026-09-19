@@ -23,7 +23,10 @@
       "const": "3.0"
     },
     "workModelVersion": {
-      "const": "2.0.0"
+      "enum": [
+        "2.0.0",
+        "2.1.0"
+      ]
     },
     "sourceVersion": {
       "type": [
@@ -150,63 +153,7 @@
     "cues": {
       "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "productionMode": {
-            "enum": [
-              "animation",
-              "source-only"
-            ]
-          },
-          "status": {
-            "enum": [
-              "draft",
-              "ready"
-            ]
-          },
-          "segmentIds": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1
-            }
-          },
-          "resolvedTimeline": {
-            "type": "object",
-            "properties": {
-              "start": {
-                "$ref": "#/$defs/time"
-              },
-              "duration": {
-                "$ref": "#/$defs/time"
-              },
-              "authority": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "start",
-              "duration"
-            ],
-            "additionalProperties": true
-          },
-          "renderAdapters": {
-            "type": "object"
-          },
-          "layer": {
-            "type": "integer",
-            "minimum": 1
-          }
-        },
-        "required": [
-          "id",
-          "productionMode"
-        ],
-        "additionalProperties": true
+        "$ref": "#/$defs/cue"
       }
     },
     "artifacts": {
@@ -223,7 +170,9 @@
               "still",
               "local-preview",
               "full-preview",
-              "cue-preview"
+              "cue-preview",
+              "storyboard-frame",
+              "exploration-frame"
             ]
           },
           "path": {
@@ -268,6 +217,74 @@
             "items": {
               "type": "string"
             }
+          },
+          "productionBasis": {
+            "$ref": "#/$defs/productionBasis"
+          },
+          "coverage": {
+            "$ref": "#/$defs/coverage"
+          },
+          "eventId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "excludedCueIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "purpose": {
+            "enum": [
+              "storyboard",
+              "exploration",
+              "still"
+            ]
+          },
+          "cueId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "frameId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "role": {
+            "enum": [
+              "hero",
+              "auxiliary"
+            ]
+          },
+          "mode": {
+            "enum": [
+              "layout",
+              "motion"
+            ]
+          },
+          "background": {
+            "enum": [
+              "none",
+              "timeline"
+            ]
+          },
+          "objectId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previewRequest": {
+            "type": "object"
+          },
+          "variantRevision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "variantContentIdentity": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
           }
         },
         "required": [
@@ -280,7 +297,43 @@
           "cueIds",
           "complete"
         ],
-        "additionalProperties": true
+        "additionalProperties": true,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "storyboard-frame",
+                    "exploration-frame"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "purpose",
+                "cueId",
+                "frameId",
+                "role",
+                "mode",
+                "background",
+                "files",
+                "eventId"
+              ],
+              "properties": {
+                "files": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "uniqueItems": true
+                }
+              }
+            }
+          }
+        ]
       }
     },
     "reviewSets": {
@@ -305,6 +358,9 @@
           },
           "createdAt": {
             "type": "string"
+          },
+          "productionBasis": {
+            "$ref": "#/$defs/productionBasis"
           }
         },
         "required": [
@@ -353,6 +409,26 @@
           },
           "acceptedSource": {
             "$ref": "#/$defs/source"
+          },
+          "applicability": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "current",
+                  "deferred",
+                  "not-applicable"
+                ]
+              },
+              "source": {
+                "$ref": "#/$defs/source"
+              }
+            },
+            "required": [
+              "kind",
+              "source"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [
@@ -380,7 +456,11 @@
               "authorize",
               "approve-and-deliver",
               "accept-import",
-              "roundtrip"
+              "roundtrip",
+              "confirm-design",
+              "explore-motion",
+              "authorize-demo",
+              "adopt-direction"
             ]
           },
           "source": {
@@ -396,6 +476,110 @@
           },
           "createdAt": {
             "type": "string"
+          },
+          "taskId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "objectIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "cueIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "storyboardIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true,
+            "minItems": 1
+          },
+          "presentationCueIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "presentationObjectIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "excludedCueIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "excludedObjectIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true
+          },
+          "range": {
+            "$ref": "#/$defs/range"
+          },
+          "explorationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "variantId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "feedbackResolutions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "feedbackId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "action": {
+                  "enum": [
+                    "accept",
+                    "defer",
+                    "withdraw"
+                  ]
+                }
+              },
+              "required": [
+                "feedbackId",
+                "action"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "variantRevision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "variantContentIdentity": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
           }
         },
         "required": [
@@ -403,7 +587,123 @@
           "kind",
           "source"
         ],
-        "additionalProperties": true
+        "additionalProperties": true,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "confirm-design"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "storyboardIds",
+                "objectIds",
+                "createdAt"
+              ],
+              "properties": {
+                "objectIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "uniqueItems": true,
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "explore-motion"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "taskId",
+                "cueIds",
+                "objectIds",
+                "createdAt"
+              ],
+              "properties": {
+                "cueIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "uniqueItems": true,
+                  "minItems": 1
+                },
+                "objectIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "uniqueItems": true,
+                  "minItems": 1
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "authorize-demo"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "taskId",
+                "cueIds",
+                "objectIds",
+                "presentationCueIds",
+                "presentationObjectIds",
+                "excludedCueIds",
+                "excludedObjectIds",
+                "createdAt"
+              ],
+              "properties": {}
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "adopt-direction"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "explorationId",
+                "variantId",
+                "cueIds",
+                "createdAt"
+              ],
+              "properties": {
+                "cueIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "uniqueItems": true,
+                  "minItems": 1
+                }
+              }
+            }
+          }
+        ]
       }
     },
     "deliveries": {
@@ -460,6 +760,141 @@
     },
     "workModelInputs": {
       "type": "object"
+    },
+    "creativeObjects": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/creativeObject"
+      }
+    },
+    "storyboards": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/storyboard"
+      }
+    },
+    "reviewRounds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reviewRound"
+      }
+    },
+    "productionRuns": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/productionRun"
+      }
+    },
+    "explorations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/exploration"
+      }
+    },
+    "productionCorrections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "jobId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "artifactId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "const": "requested-presentation-missing"
+          },
+          "missingCueIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "uniqueItems": true,
+            "minItems": 1
+          },
+          "createdAt": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "taskId",
+          "jobId",
+          "artifactId",
+          "reason",
+          "missingCueIds",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "runtimeIdentity": {
+      "type": "object",
+      "required": [
+        "version",
+        "files",
+        "vendorProvenance"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "files": {
+          "type": "object",
+          "properties": {
+            "package.json": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "hyperframes.json": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "assets/vendor/gsap.min.js": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "package.json",
+            "hyperframes.json",
+            "assets/vendor/gsap.min.js"
+          ],
+          "additionalProperties": false
+        },
+        "vendorProvenance": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "minLength": 1
+            },
+            "library": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          },
+          "required": [
+            "kind",
+            "sha256"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,
@@ -557,12 +992,1029 @@
         },
         "timeEnd": {
           "$ref": "#/$defs/time"
+        },
+        "storyboardId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "frameId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "explorationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "variantId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "objectIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "variantRevision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "variantContentIdentity": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
         }
       },
       "required": [
         "versionId"
       ],
       "additionalProperties": false
+    },
+    "creativeObject": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "basis": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "text",
+            "reference"
+          ],
+          "additionalProperties": true
+        },
+        "continuity": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sourceVersionId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sourceObjectId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sourceManifestSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "qualificationEvidenceIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "source": {
+              "$ref": "#/$defs/source"
+            },
+            "createdAt": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "id",
+            "sourceVersionId",
+            "sourceObjectId",
+            "sourceManifestSha256",
+            "qualificationEvidenceIds",
+            "source",
+            "createdAt"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "id",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    },
+    "storyboard": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cueId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "objectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifactIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "narration": {
+          "type": "string"
+        },
+        "finalAnimationDescription": {
+          "type": "string"
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentContext": {
+          "$ref": "#/$defs/contentSnapshot"
+        }
+      },
+      "required": [
+        "id",
+        "cueId",
+        "objectId",
+        "artifactIds",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    },
+    "reviewRound": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storyboardIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "feedbackIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "status": {
+          "enum": [
+            "submitted",
+            "processing",
+            "processed"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "updatedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resolution": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "storyboardIds",
+        "feedbackIds",
+        "source",
+        "status",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    },
+    "productionRun": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "jobId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputKey": {
+          "type": "string",
+          "minLength": 1
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "taskId",
+        "jobId",
+        "inputKey",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    },
+    "exploration": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "variants": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "label",
+              "cues"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string"
+              },
+              "references": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "cues": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/cue"
+                }
+              },
+              "artifactIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "contentIdentity": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "adoptions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "enum": [
+                  "approve",
+                  "authorize",
+                  "approve-and-deliver",
+                  "accept-import",
+                  "roundtrip",
+                  "confirm-design",
+                  "explore-motion",
+                  "authorize-demo",
+                  "adopt-direction"
+                ]
+              },
+              "source": {
+                "$ref": "#/$defs/source"
+              },
+              "reviewSetId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "deliveryId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "createdAt": {
+                "type": "string"
+              },
+              "taskId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "objectIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              },
+              "cueIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              },
+              "storyboardIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true,
+                "minItems": 1
+              },
+              "presentationCueIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              },
+              "presentationObjectIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              },
+              "excludedCueIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              },
+              "excludedObjectIds": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "uniqueItems": true
+              },
+              "range": {
+                "$ref": "#/$defs/range"
+              },
+              "explorationId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "variantId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "variantRevision": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "variantContentIdentity": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "source"
+            ],
+            "additionalProperties": true,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "confirm-design"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "storyboardIds",
+                    "objectIds",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "objectIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "uniqueItems": true,
+                      "minItems": 1
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "explore-motion"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "taskId",
+                    "cueIds",
+                    "objectIds",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "cueIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "uniqueItems": true,
+                      "minItems": 1
+                    },
+                    "objectIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "uniqueItems": true,
+                      "minItems": 1
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "authorize-demo"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "taskId",
+                    "cueIds",
+                    "objectIds",
+                    "presentationCueIds",
+                    "presentationObjectIds",
+                    "excludedCueIds",
+                    "excludedObjectIds",
+                    "createdAt"
+                  ],
+                  "properties": {}
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "adopt-direction"
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "explorationId",
+                    "variantId",
+                    "cueIds",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "cueIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "uniqueItems": true,
+                      "minItems": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id",
+        "question",
+        "variants",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    },
+    "cue": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "productionMode": {
+          "enum": [
+            "animation",
+            "source-only"
+          ]
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "ready"
+          ]
+        },
+        "segmentIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "resolvedTimeline": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "$ref": "#/$defs/time"
+            },
+            "duration": {
+              "$ref": "#/$defs/time"
+            },
+            "authority": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "start",
+            "duration"
+          ],
+          "additionalProperties": true
+        },
+        "renderAdapters": {
+          "type": "object"
+        },
+        "layer": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "objectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storyboard": {
+          "type": "object",
+          "properties": {
+            "frames": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "role"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "role": {
+                    "enum": [
+                      "hero",
+                      "auxiliary"
+                    ]
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "time": {
+                    "$ref": "#/$defs/time"
+                  },
+                  "mode": {
+                    "enum": [
+                      "layout",
+                      "motion"
+                    ]
+                  },
+                  "background": {
+                    "enum": [
+                      "none",
+                      "timeline"
+                    ]
+                  },
+                  "stillSrc": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "state": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "id"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "frames"
+          ],
+          "additionalProperties": false
+        },
+        "contentContext": {
+          "$ref": "#/$defs/contentContext"
+        }
+      },
+      "required": [
+        "id",
+        "productionMode"
+      ],
+      "additionalProperties": true
+    },
+    "productionBasis": {
+      "type": "object",
+      "properties": {
+        "policyVersion": {
+          "const": "2.1.0"
+        },
+        "taskId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "local",
+            "full"
+          ]
+        },
+        "decisionIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "objectIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "workObjectIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "policyVersion",
+        "taskId",
+        "scope",
+        "decisionIds",
+        "objectIds",
+        "workObjectIds"
+      ],
+      "additionalProperties": false
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "workCueIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "presentedCueIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "reusedCueIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "excludedCueIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "missingCueIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "mediaReuse": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": [
+              "cache-hit",
+              "rebuilt"
+            ]
+          }
+        }
+      },
+      "required": [
+        "workCueIds",
+        "presentedCueIds",
+        "reusedCueIds",
+        "excludedCueIds",
+        "missingCueIds",
+        "mediaReuse"
+      ],
+      "additionalProperties": false
+    },
+    "contentChannel": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "enum": [
+            "present",
+            "none",
+            "unknown"
+          ]
+        },
+        "basis": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reference": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "text",
+            "reference"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "none"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "basis"
+            ]
+          }
+        }
+      ]
+    },
+    "contentContext": {
+      "type": "object",
+      "properties": {
+        "narration": {
+          "$ref": "#/$defs/contentChannel"
+        },
+        "screenText": {
+          "$ref": "#/$defs/contentChannel"
+        }
+      },
+      "required": [
+        "narration",
+        "screenText"
+      ],
+      "additionalProperties": false
+    },
+    "contentSnapshot": {
+      "type": "object",
+      "properties": {
+        "narration": {
+          "type": "object",
+          "properties": {
+            "state": {
+              "enum": [
+                "present",
+                "none",
+                "unknown"
+              ]
+            },
+            "basis": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "reference": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "text",
+                "reference"
+              ],
+              "additionalProperties": false
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "const": "none"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "basis"
+                ]
+              }
+            }
+          ]
+        },
+        "screenText": {
+          "type": "object",
+          "properties": {
+            "state": {
+              "enum": [
+                "present",
+                "none",
+                "unknown"
+              ]
+            },
+            "basis": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "reference": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "text",
+                "reference"
+              ],
+              "additionalProperties": false
+            },
+            "text": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "state": {
+                    "const": "none"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "basis"
+                ]
+              }
+            }
+          ]
+        }
+      },
+      "required": [
+        "narration",
+        "screenText"
+      ],
+      "additionalProperties": false
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "workModelVersion": {
+            "const": "2.1.0"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "creativeObjects",
+          "storyboards",
+          "reviewRounds",
+          "explorations",
+          "productionRuns"
+        ]
+      }
+    }
+  ]
 }

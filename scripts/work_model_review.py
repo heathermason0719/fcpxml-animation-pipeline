@@ -333,6 +333,8 @@ def make_handler(afterforge_root: Path, *, model_api: Any | None = None):
             try:
                 if parsed.path == "/":
                     self._asset("index.html", "text/html; charset=utf-8")
+                elif parsed.path == "/review-neutral.css":
+                    self._asset("review-neutral.css", "text/css; charset=utf-8")
                 elif parsed.path == "/review-v3.css":
                     self._asset("review-v3.css", "text/css; charset=utf-8")
                 elif parsed.path == "/review-v3.js":
