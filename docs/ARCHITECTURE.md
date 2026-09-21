@@ -45,14 +45,15 @@ AfterForge/
 | `work_model_jobs.py` | 固定快照、可恢复执行、缓存验证、产物/交付发布 |
 | `work_model_media.py` | 受应用层制作依据核验后的原生渲染、FFmpeg 合成与实际 Alpha |
 | `work_model_policy.py` | 产品创作对象、首次确认、限定探索、整版任务依据及资格核验 |
-| `work_model_storyboard.py` | 无 Motion 必要依赖的 PNG snapshot、主辅帧及静态输入核验 |
+| `work_model_storyboard.py` | PNG 合同 5 输入、旧合同核验复用、完整 Storyboard 文字快照及局部说明引用 |
+| `work_model_intent.py` | 本版非权威 focus/preserve 条目的定向更新，不调用生产策略 |
 | `work_model_feedback.py` / `work_model_feedback_targets.py` / `work_model_exploration.py` | 固定反馈批次、处理与接受分离；统一目标解析用于确认、批准、交付；候选工作区及原子采用 |
 | `work_model_delivery.py` | 协议 2 XML、包与复现快照、清单核验和不可覆盖发布 |
 | `work_model_review.py` / `assets/review-v3` | 系列 Review、统一 API、媒体流、下载与冲突草稿 |
 
 CLI 与 HTTP 调用同一应用层。短写入在已有 `manifest_transaction` 版本锁内重新读取、校验并发布，多文件失败回滚；跨系列操作先项目锁后版本锁。所有写入要求 requestId 和 expectedRevision，重复请求不能丢评论或重复交付。
 
-长任务在锁内复制所需输入，释放锁运行，再复核内容身份与当前适用用户决定。评论和决定不污染媒体身份；静态审阅快照另行覆盖旁白与最终说明。旁白先取 Cue 直接文本，否则按显式 `segmentIds` 顺序读取 `brief.segments`；相关文本变化使旧静帧依据失效，但不改变未变的 Motion 媒体身份。生产核验在渲染、发布、缓存返回及已完成任务捷径之前执行。任务 JSON 留下输入键、进度、已完成 Cue、失败原因和结果；恢复时拒绝已经变化的输入，但新任务复用未变缓存。日志流式写磁盘，媒体哈希流式计算。
+长任务在锁内复制所需输入，释放锁运行，再复核内容身份与当前适用用户决定。评论和决定不污染媒体身份；静态审阅快照另行覆盖旁白与最终说明。旁白先取 Cue 直接文本，否则按显式 `segmentIds` 顺序读取 `brief.segments`；相关文本变化使旧 Storyboard 审阅依据失效；PNG 合同 5 排除纯说明、旁白与内容声明，核验输入和 SHA 后复用图片并追加新产物／快照，不改变未变的 Motion 媒体身份。生产核验在渲染、发布、缓存返回及已完成任务捷径之前执行。任务 JSON 留下输入键、进度、已完成 Cue、失败原因和结果；恢复时拒绝已经变化的输入，但新任务复用未变缓存。日志流式写磁盘，媒体哈希流式计算。
 
 同次操作按文件 stat 身份复用已核验哈希，发布边界清空该记忆并重新核验。状态显示使用有界进程缓存，由文件变化重建；批准与交付不读取显示缓存。Review 脚本导出读取选定版本的 brief、段落与最终 Cue 描述，按需生成 UTF-8 Markdown，不保存第二份策划权威。
 
@@ -81,3 +82,11 @@ CLI 与 HTTP 调用同一应用层。短写入在已有 `manifest_transaction` �
 ## 创作记忆
 
 系列只维护一份精炼记忆，通用初始化使用中性空结构，不植入《楚门》或本线程的已确认历史，也不改写已有真实记忆。每集按需补充采用/放弃原因、成片反馈与来源，不加载所有历史聊天，不建立训练服务。视觉默认与理解经验分离，系列默认更新不静默修改旧制作源。
+
+## 局部说明与本版工作上下文
+
+`animationNotes` 是 Storyboard 的描述数据，不是独立生产／审批对象。Cue 仍为连续制作容器，`finalAnimationDescription` 为唯一总说明。新 Storyboard 冻结有序帧集合、总体/局部说明、旁白与内容事实，以 `reviewInputKey` 核验当前审阅依据；PNG 单独以合同 5 的 inputKey 核验，role 等原图片依赖继续有效。合同 4 的历史记录按原键核验，不能证明一致的旧 PNG 重新生成。帧重组不消除旧反馈或产生完整 Motion 权限。
+
+`workingIntent.items` 与生产数据并列存于版本 manifest，包含稳定 ID、focus/preserve、文字、定位、用户来源与 writer 时间。独立 writer 分支在版本锁内去重/校验/保存，不运行 upgrade 或生产历史纠正；仅更新意图及必要 revision/request 记录。定位失效非阻塞；Agent 更新定位与被替代条目。它不进入任何媒体、Review、资格或交付输入，不继承到新制作版，不写入系列记忆。
+
+正式 Review 在现有 API 上读取这两份数据。顶部显示单集/制作版/历史版与 Cue 跳转；桌面三列等尺寸帧，窄屏两列。说明按当前快照帧序挂在最后关联帧下，关系按钮只负责阅读高亮。图片弹窗、桌面 sticky 反馈栏、逐版本/对象/帧的留言开合偏好属于浏览器状态，不改变批准。保存反馈、交棒、完整 Cue 确认仍使用原接口；新 Storyboard 清除旧依据勾选，草稿不自动转绑。后台 hero 约束与抽帧用途不变。

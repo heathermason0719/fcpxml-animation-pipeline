@@ -2,6 +2,10 @@
 
 ## 已验证能力
 
+- Storyboard 局部 `animationNotes` 已接入：单帧、多帧、共享帧及无说明帧；帧重组须同步引用。总说明、局部说明、旁白、内容事实与有序帧集合冻结为 `reviewInputKey`；首次确认仍覆盖完整 Storyboard／创意对象。
+- PNG 合同 5 将纯说明与图片输入分开，文字修改可零渲染复用 SHA 一致的 PNG，同时追加不可变产物和审阅快照。合同 4 按原输入核验，无法证明一致或图片损坏时重渲；发布前复核输入及输出文件。旧快照不能确认新内容，旧反馈及已有首次资格保留。
+- 本版 `workingIntent.items` 通过受控 `working-intent` upserts/removeIds 持久保存，支持定向覆盖、显式移除、失效定位和并发冲突。写入不升级生产事实、不影响渲染/审阅/首次资格/交付，新版本不继承；Agent 恢复规则与只读展示已同步。
+- 正式 Review 已采用顶部版本/Cue 导航、桌面三列静帧（窄屏两列）、局部说明与关联高亮、图片放大、默认展开且逐版本/对象/帧记忆的留言框和 sticky 反馈栏。新快照清除旧依据勾选，旧草稿不自动转绑。长任务准备期可持续轮询，临时任务/失败按制作版隔离；切换空白版不残留上一版媒体。后台 hero 规则不变，未增加已保存反馈编辑。
 - manifest 3.0 / work model 2.1.0 / 交付协议 2 已实现。`open/status/update/preview/deliver/resume` 与通用 Review 使用同一应用层；兼容读取旧 work model 2.0.0，读取不落盘、不补资格。schema 2.0 保持 legacy 原义，新生产不调用旧阶段 resolver。
 - cold-start 从真实 canonical 布局独立生成主审／辅助 PNG，支持中文字体、静态状态及对应原片背景，无需完成 Motion。首次确认引用当前可验证完整帧集合；限定探索、整版 Demo、完整 Review 批准和正式交付授权分别保存事实。
 - 首次资格绑定产品创作对象。字体、构图、摆放、运动、重做以及明确的技术改名保持 active；真正新增对象不继承资格。对象关系有实质歧义才询问，不建立阶段回退。
@@ -19,6 +23,13 @@
 - 跨版本明确区分 `copyMode: restart` 与逐对象 `objectContinuity`，由 Agent 落实用户决定，backend 不解析原话或猜测关系。延续仅携带有出处的首次资格，不携带整版制作、Review 或交付授权。首次 writer 完整登记缺失对象身份，不补用户批准；`inputSelection` 为公开字段，兼容 `selections`，双字段冲突明确拒绝。
 
 ## 当前验收证据
+
+- 2026-09-22 分支提交前复核：完整 unittest 运行 449 项，448 项通过；CLI 启动测试因工作树缺少固定 `.venv/bin/python` 路径未启动。临时链接已有环境后该项单独通过，链接已移除，无代码或依赖变更。日志分别为 `/private/tmp/afterforge-precommit-20260922.log`、`/private/tmp/afterforge-precommit-20260922-cli.log`。Skill 校验、旧合同一致性与 diff 检查通过。下述 09-20 临时日志及 PNG 复用证据目录已不在本机，保留其历史验收记录，本轮未重跑真实渲染和浏览器验收。
+- 2026-09-20 审核页实现：449 项 unittest 通过（原 439 项及新增 10 项，客户端场景同时增加），日志 `/private/tmp/afterforge-review-unittest-final.log`。覆盖说明快照/引用、旧合同与损坏图片、图片输入失效、发布并发、意图对批准后交付依据无影响，以及反馈、批量确认、迟到响应和 hero 原有规则。Skill 校验、旧合同一致性与 diff 检查通过。
+- 真实 PNG 复用与隔离页面：`/private/tmp/afterforge-review-content-20260920-r2/evidence.json`。只读 0917 制作源的隔离副本，2 Cue / 13 张实际 PNG；首次 13 次渲染，纯说明更新 0 次，13 个 SHA 一致，产生新 Storyboard，原制作源全文件哈希未变。第一次沙箱 Chromium 启动被 macOS MachPort 权限拒绝；在获准的隔离运行环境中通过，未为此改渲染实现。
+- 浏览器实操：同目录 `browser-evidence.json` 与 `browser-desktop.png`。桌面 1440×1000 下六张完整帧可同时可见，反馈栏 top=12px；600px 下为两列且无横向溢出。验证默认展开/逐帧恢复、刷新/任务轮询、说明关联/全部展开、放大/Esc、保存反馈/轮次交棒/完整 Cue 确认、新快照清勾选/保留原依据草稿/显式重绑、旧反馈保留及版本切换。页面模拟决定仅在隔离副本，未安装或迁移真实工程。
+
+下列为既有能力的前轮证据；当前页面实现以上述 2026-09-20 记录为准：
 
 - 第二轮 integration 修复：439 项 unittest 通过，较 383 项基线新增 56 项。日志 `/private/tmp/afterforge-integration2-fix/unittest-complete.log`；定向日志、失败复现与修正后的结果保留在同目录。Review shell、客户端代码及客户端 harness 的字节与修复前审计清单一致。
 - 本轮真实 cold-start／active-loop：`/private/tmp/afterforge-integration2-real-r3/evidence.json`，本轮先发布静态 Cue 再初始化 runtime；4 个对象、5 张真实中文主辅帧，静态路径视频渲染／合成调用为 0，后续局部修改、重叠、排除、缓存重建与复用、改名和协议 2 包继续通过。
@@ -51,10 +62,11 @@
 .venv/bin/python -B tests/work_model_real_smoke.py --run --root /private/tmp/afterforge-real-check --runtime 0.8.33 --gsap-source /absolute/local/gsap.min.js --font-source /absolute/local/chinese.woff2
 .venv/bin/python -B tests/work_model_real_smoke.py --run --cold-only --root /private/tmp/afterforge-cold-check --runtime 0.8.33 --gsap-source /absolute/local/gsap.min.js --font-source /absolute/local/chinese.woff2
 .venv/bin/python -B tests/work_model_review_smoke.py --run --root /private/tmp/afterforge-review-check
+.venv/bin/python -B tests/work_model_review_smoke.py --run --review-content --root /private/tmp/afterforge-review-content-check
 .venv/bin/python -B tests/work_model_production_recovery.py --run --root /private/tmp/afterforge-recovery-check
 ```
 
-后两项读取 harness 中明确列出的《楚门》历史源，只写隔离副本；其他机器需先具备相同只读 fixture，不能用原工程代替输出目录。Review fixture 建成后按返回的 AfterForge 路径运行通用 server，浏览器仅操作副本。
+Review 与恢复项读取 harness 中明确列出的《楚门》历史源，只写隔离副本；其他机器需先具备相同只读 fixture，不能用原工程代替输出目录。Review fixture 建成后按返回的 AfterForge 路径运行通用 server，浏览器仅操作副本。
 
 Agent 场景先准备独立状态，再由实际 Agent 根据原话选择请求；每个 case 均需 observe/act，不能仅运行 verify 冒充一次 Agent 交互：
 
@@ -69,5 +81,5 @@ Agent 场景先准备独立状态，再由实际 Agent 根据原话选择请求�
 
 - 协议 2 尚未在 Final Cut Pro 做实际导入及 re-export round-trip；媒体、包和比较器通过不代替真实 FCP 验收。
 - 当前交付仍要求单 Project sequence；多 Project 输入明确报出歧义，不扩展多 Project 交付。
-- 真实工程、素材和历史交付未迁移或改写。当前实现与证据均留在 `codex/rework-lifecycle` 工作区，以 `dbd5ea7` 为基础，未 commit、push、merge、安装或发布。
+- 真实工程、素材和历史交付未迁移或改写。本轮实现位于 `codex/rework-lifecycle-smoke` 工作树，以 `c60d78c` 为基础。2026-09-22 用户授权仅提交并推送当前分支；invocation 闭环前不 merge。未安装或发布。
 - 动态拼接资源仍须声明依赖。没有引入后台 Agent、自动跨版本继承、数据库、云分析、转写或媒体硬链接去重。

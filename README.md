@@ -37,6 +37,10 @@ Agent 把代码和素材准备到 `.staging/`，用 `operation: "edit"` 的 `fil
 
 静态请求为 `{"requestId":"board-1","expectedRevision":1,"scope":"storyboard","cueIds":["A"]}`，无需 Motion 源；静态 layout 不得包含可执行或随时间推进的内容。局部 Motion 指定 `workCueIds`（可兼容 `cueIds`）、`segmentIds` 或有理数 `range`。完整小样与必要重叠 Cue 的完整补充小样组成审阅集合。请求的呈现范围有缺失时默认拒绝；`allowDraft: true` 只能生成讨论稿，且在目标覆盖前不完成任务。明确排除可完成该次委托，但不能形成正式 full Review。
 
+Cue 总体说明继续使用 `finalAnimationDescription`，局部说明写在 `storyboard.animationNotes: [{id, frameIds, text}]`。一条可关联多帧，多条可共享帧；帧增删或重排时同步维护引用。纯说明修改后仍通过 Storyboard 预览发布新审阅快照：核验输入和 SHA 后复用 PNG，保留旧快照及反馈，旧快照不能确认新内容。后台 `hero` 规则不变，页面统一呈现静帧。
+
+本版临时要求通过 `update operation: "working-intent"` 保存，使用 `upserts` 和 `removeIds` 定向更新。每条含 `id`、`kind: "focus"|"preserve"`、`text`、`locator` 与真实用户 `source`；更新时间由接口填写。`status.workingIntent.items` 供跨会话恢复，页面只读显示“本轮重点／暂时保持”。它不提供批准或制作资格，不改变渲染、审阅与交付判断，也不自动继承到新版本。完整接口见 [制作源合同](references/hyperframes-single-source.md)。
+
 取得首次资格后，依据真实用户指令生成整版的请求示例：
 
 ```json
@@ -69,7 +73,7 @@ AfterForge/
         └── releases/
 ```
 
-页面保留通用 shell 的脚本思路、Storyboard、可选视觉探索、Demo 与交付入口；Storyboard 同页呈现旁白、主审／辅助帧、最终动画说明和就地反馈。提交本轮反馈只交棒，设计确认独立操作；反馈目标由同一解析器用于确认、批准与交付。未采用的探索候选评论不会阻塞 canonical 成果，采用时才按冻结的候选 revision、内容身份与对象范围参与核验。支持从当前版本内容导出 Markdown 脚本、局部时间定位、多 Cue 评论、版本对照与独立 MOV 下载。480p 预览保留原粗剪声音；正式交付为源帧率 1920×1080 ProRes 4444。包内仅 Info.fcpxml 与 MOV，源时间线不改。
+页面保留通用 shell 的脚本思路、Storyboard、可选视觉探索、Demo 与交付入口；Storyboard 同页呈现旁白、Cue 总体说明、三列等尺寸静帧（窄屏两列）与局部动画说明。局部说明只显示一次，位于关联的最后一帧下；点击对应帧编号高亮关联图片，不改变留言目标。点击图片可放大，Esc 关闭。留言框默认展开，按版本、创意对象与稳定帧 ID 记住开合；桌面反馈栏随滚动保持可见。顶部保留单集、制作版、历史版及 Cue 导航。提交本轮反馈只交棒，设计确认独立操作；反馈目标由同一解析器用于确认、批准与交付。未采用的探索候选评论不会阻塞 canonical 成果，采用时才按冻结的候选 revision、内容身份与对象范围参与核验。支持从当前版本内容导出 Markdown 脚本、局部时间定位、多 Cue 评论、版本对照与独立 MOV 下载。480p 预览保留原粗剪声音；正式交付为源帧率 1920×1080 ProRes 4444。包内仅 Info.fcpxml 与 MOV，源时间线不改。
 
 快照记录实际依赖、已批准审阅和完整素材。相同输入复用经核验包；草稿继续修改不会覆盖历史包，也不必等待旧包 FCP 验收。实际导入用 `update operation: "decision", kind: "accept-import"` 记录；首次协议 2 的 FCP re-export 用 `operation: "roundtrip"` 验证并建立基线。自动测试不代替实际 FCP 验收。
 

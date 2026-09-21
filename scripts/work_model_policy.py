@@ -158,7 +158,7 @@ def copy_object_relations(manifest, origin, request, source_hash):
 
 
 def storyboard_current(root, manifest, record):
-    from scripts.work_model_storyboard import frame_current, storyboard_spec
+    from scripts.work_model_storyboard import frame_current, storyboard_spec, review_snapshot
     cue = next((c for c in manifest['cues'] if c['id'] == record['cueId']), None)
     if not cue or cue.get('objectId') != record.get('objectId'):
         return False
@@ -170,8 +170,20 @@ def storyboard_current(root, manifest, record):
         return False
     try:
         required = storyboard_spec(root, manifest, {'cueIds': [cue['id']]})['frames']
-        if {(f['frameId'], f['inputKey']) for f in required} != {(f['frameId'], f['inputKey']) for f in frames}:
+        if [f['frameId'] for f in required] != [f['frameId'] for f in frames]:
             return False
+        expected = review_snapshot(manifest, cue, required)
+        if record.get('reviewInputKey'):
+            if record['reviewInputKey'] != expected['reviewInputKey']:
+                return False
+            if any(record.get(k) != v for k, v in expected.items()):
+                return False
+        else:
+            # Legacy publication froze prose but had no independent review key.
+            # Never interpret new notes or changed prose as historical evidence.
+            if expected['animationNotes'] or any(record.get(k) != expected[k] for k in
+                    ('narration', 'contentContext', 'finalAnimationDescription')):
+                return False
     except (ValueError, KeyError, OSError):
         return False
     return all(frame_current(root, manifest, f) for f in frames)

@@ -158,6 +158,30 @@ class WorkModelReviewServerTests(unittest.TestCase):
             time.sleep(0.01)
         self.assertEqual(self.model.requests[-1][0], "preview")
 
+    def test_preview_setup_remains_pollable_before_a_job_file_exists_and_is_version_scoped(self):
+        started, release = threading.Event(), threading.Event()
+        def slow_setup(root, request):
+            started.set()
+            release.wait(5)
+            raise ValueError('isolated setup failure')
+        self.model.preview = slow_setup
+        try:
+            self.request('POST', '/api/action', {'version': 'v1', 'action': 'preview',
+                'request': {'requestId': 'setup', 'expectedRevision': 7}})
+            self.assertTrue(started.wait(2))
+            tasks = json.loads(self.request('GET', '/api/state?version=v1')[2])['tasks']
+            self.assertTrue(any(t['id'] == 'setup' and t['status'] == 'running' for t in tasks))
+            self.assertEqual(json.loads(self.request('GET', '/api/state?version=v2')[2])['tasks'], [])
+        finally:
+            release.set()
+        for _ in range(30):
+            tasks = json.loads(self.request('GET', '/api/state?version=v1')[2])['tasks']
+            if any(t['status'] == 'failed' for t in tasks):
+                break
+            time.sleep(.01)
+        self.assertTrue(any(t['status'] == 'failed' for t in tasks))
+        self.assertEqual(json.loads(self.request('GET', '/api/state?version=v2')[2])['tasks'], [])
+
     def test_delivery_download_archives_only_the_registered_package(self) -> None:
         from scripts.work_model_review import _spooled_package_zip
 
@@ -220,7 +244,7 @@ class WorkModelReviewServerTests(unittest.TestCase):
 
     def test_review_v3_client_action_and_stale_draft_contracts(self) -> None:
         harness = Path(__file__).with_name("review_v3_client_harness.cjs")
-        for scenario in ("actions", "combined", "incomplete-preview", "time-normalization", "invalid-time-draft", "stale-draft", "storyboard-round", "selection-identity", "version-draft", "late-response"):
+        for scenario in ("empty-version", "notes-and-intent", "actions", "combined", "incomplete-preview", "time-normalization", "invalid-time-draft", "stale-draft", "storyboard-round", "selection-identity", "version-draft", "late-response"):
             with self.subTest(scenario=scenario):
                 subprocess.run(["node", str(harness), scenario], check=True, cwd=Path(__file__).parents[1])
 

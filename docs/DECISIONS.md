@@ -1,5 +1,13 @@
 # 重要决策
 
+## 2026-09-20：局部说明、图片复用与临时工作意图分离
+
+**决定：** 保留大 Cue 与完整 Storyboard first-confirm，不新增 Animation Unit、局部批准或锁定。局部 animationNotes 允许多帧和共享帧，随总体说明、旁白、内容事实和帧序冻结为独立审阅快照。PNG 合同 5 排除纯审阅文字；经输入和 SHA 核验后可复用图片，同时追加新的产物与 Storyboard。旧合同保守核验，读取不补写历史。后台 hero 保持现有身份与规则，页面等尺寸显示所有帧。
+
+**工作上下文：** 本版 workingIntent 以可变 focus/preserve 条目记录用户临时要求与来源；Agent 定向覆盖或移除，泛泛继续不清空，失效定位不阻塞。它不提供批准、资格或制作权限，也不进入媒体/审阅/交付指纹；新制作版不自动继承。非权威不代表可以忽略用户要求。
+
+**取舍：** 不把局部暂时满意升级为批准，不将临时意图寄存系列记忆，不靠强制重渲来刷新说明。页面沿用已有 backend 与反馈接口，本轮不新增已保存反馈编辑功能。原型示例不构成真实动画设计确认。
+
 ## 2026-09-19：以产品对象、完整来源与实际完成定义 2.1 生产事实
 
 **决定：** 静态 layout 采用有限声明式模型，静态 host 不加载用户脚本或 vendor JS。单帧 raster、local SVG 和字体可静态使用；animated GIF/APNG/WebP 归为 Motion，未知 capability 拒绝。`srcset`、`image-set`、SVG 资源、动态声明和改变的依赖绑定共同使用完整 closure 确定受影响 Cue；动态计算引用必须显式声明。host 仅装载 isolated closure 并施加 CSP，这不等同于证明任意 JavaScript 安全。runtime bootstrap 仍是基础设施，runtime 拥有其配置文件，普通 edit 不得改写 runtime 配置。

@@ -37,6 +37,8 @@
 - 媒体、渲染、日志、临时文件、凭据与环境配置不进入版本控制。
 - 临时 QA 环境异常只有在目标环境复现或有实际可用性受损证据时才修复，不单独当交付故障。
 
+恢复工作时读取 `status.workingIntent.items`；按用户原话定向维护 focus/preserve，泛泛继续不清空，失效定位由 Agent 修订且不形成阻塞。意图不进入资格或渲染/审阅/交付指纹，不存入系列创作记忆。局部 animationNotes 随帧重组维护引用，首次确认仍针对完整 Storyboard；纯说明通过预览发布新快照并复用已验证 PNG。
+
 固定 runtime 配置与 vendor 由 runtime writer 维护身份；bootstrap 和同指纹修复不产生 Motion 授权。反馈随产品对象与实际采用的候选输入关联，技术改名或摆放变化不自动解决旧反馈。
 
 ## Git
@@ -77,6 +79,7 @@ commit、push、merge、rebase、tag、release、deploy 均需当前请求明确
 
 ```bash
 .venv/bin/python -B tests/work_model_review_smoke.py --run --root /private/tmp/afterforge-review-check
+.venv/bin/python -B tests/work_model_review_smoke.py --run --review-content --root /private/tmp/afterforge-review-content-check
 .venv/bin/python -B tests/work_model_production_recovery.py --run --root /private/tmp/afterforge-recovery-check
 .venv/bin/python -B tests/work_model_agent_scenarios.py prepare --root /private/tmp/afterforge-agent-check
 .venv/bin/python -B tests/work_model_agent_scenarios.py observe --root /private/tmp/afterforge-agent-check --case cold-continue

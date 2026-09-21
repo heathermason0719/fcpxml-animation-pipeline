@@ -44,3 +44,33 @@ Storyboard 是 canonical composition 在固定静帧时间的真实 PNG 投影�
 默认 `alphaExpectation.mode = transparent`；特意全屏不透明 Cue 显式用 `opaque`。可附 `samples: [{time, transparentPoints: [[x,y]], opaquePoints: [[x,y]]}]`，时间为 Cue 本地有理数秒、坐标为原生尺寸。验证实际解码像素与代表时刻，不以像素格式名代替透明性。
 
 正式交付覆盖全部 animated cues；已验证且输入未变的 MOV 复用。源粗剪、引用、摆放、时长、DTD、媒体 SHA、包清单和批准来源在发布前核验。不可变 release 在包外保存可复现源树、审阅证据及交付事实，排除探索、日志与无关缓存。
+
+### 局部说明与图片身份
+
+`cue.storyboard.animationNotes` 可省略（等同空数组）。每条为 `{id, frameIds, text}`：Cue 内 ID 唯一、frameIds 非空且不重复、引用必须存在；多条说明可共享帧，无说明帧合法。帧重组与引用修订通过同一次 `edit` 提交。说明描述旁白触发、状态变化和停留，不新增 Animation Unit 或独立确认。
+
+新 PNG 记录标记 `storyboardContract: 5`。`inputKey` 排除旁白、contentContext 和纯说明，仍覆盖制作源、资源闭包、状态、时间、背景、尺寸、role、屏幕文字和 runtime。Storyboard 的 `reviewInputKey` 覆盖有序完整帧集合、图片输入键、对象身份、旁白、contentContext、总体说明和 animationNotes。发布记录保存这些文字与对应 artifactIds；页面只读快照，不混入未发布草稿。
+
+说明变化后调用 `preview scope: "storyboard"`：固定输入副本中核验可复用 PNG 的输入键和文件 SHA，复制到新产物路径并追加 artifact/Storyboard，不覆盖旧事实。发布前复核当前输入及审阅内容。旧记录无合同标记时按合同 4 计算；复用时只用旧记录的三个审阅字段还原旧键，其他图片依赖全部重新计算，SHA 必须相符。无法证明一致则重渲。读取不迁移；旧快照不能确认改变后的审阅内容。首次资格与旧反馈继续绑定创意对象。
+
+### 本版工作意图接口
+
+manifest 可选 `workingIntent: {items: [...]}`。`update` 请求示例（来源须替换为实际用户原话）：
+
+```json
+{
+  "requestId": "intent-1",
+  "expectedRevision": 12,
+  "operation": "working-intent",
+  "upserts": [{
+    "id": "travel",
+    "kind": "focus",
+    "text": "只修改穿越段",
+    "locator": {"description": "自我介绍的穿越部分", "cueId": "intro", "noteId": "travel"},
+    "source": {"channel": "chat", "text": "前面暂时没问题，只改穿越", "reference": "实际消息引用"}
+  }],
+  "removeIds": []
+}
+```
+
+`upserts`、`removeIds` 可省略，默认空数组；同批 ID 不重复、不同时更新及移除。upsert 完整替换对应条目，其他条目保持；writer 生成 `updatedAt`。locator 必含可读 `description`，可选 `objectId/cueId/frameId/noteId`，引用失效不拒绝写入。接口不解析语义、不自动匹配替代条目。事务使用版本锁、requestId 和 expectedRevision，Schema 校验后原子保存；只写意图、revision、请求去重记录，不升级生产事实。工作意图不进入任何渲染／审阅指纹、确认、批准或交付计算；status 原样返回，copyFrom 不继承。

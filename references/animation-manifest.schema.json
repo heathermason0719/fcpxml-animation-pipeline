@@ -285,6 +285,12 @@
           "variantContentIdentity": {
             "type": "string",
             "pattern": "^[a-f0-9]{64}$"
+          },
+          "storyboardContract": {
+            "enum": [
+              4,
+              5
+            ]
           }
         },
         "required": [
@@ -895,6 +901,82 @@
         }
       },
       "additionalProperties": false
+    },
+    "workingIntent": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "kind": {
+                "enum": [
+                  "focus",
+                  "preserve"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1
+              },
+              "locator": {
+                "type": "object",
+                "properties": {
+                  "objectId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "cueId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "frameId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "noteId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "description"
+                ],
+                "additionalProperties": false
+              },
+              "source": {
+                "$ref": "#/$defs/source"
+              },
+              "updatedAt": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "text",
+              "locator",
+              "source",
+              "updatedAt"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,
@@ -1149,6 +1231,13 @@
         },
         "contentContext": {
           "$ref": "#/$defs/contentSnapshot"
+        },
+        "animationNotes": {
+          "$ref": "#/$defs/animationNotes"
+        },
+        "reviewInputKey": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
         }
       },
       "required": [
@@ -1681,6 +1770,9 @@
                 },
                 "additionalProperties": false
               }
+            },
+            "animationNotes": {
+              "$ref": "#/$defs/animationNotes"
             }
           },
           "required": [
@@ -1995,6 +2087,37 @@
         "screenText"
       ],
       "additionalProperties": false
+    },
+    "animationNotes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "frameIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "frameIds",
+          "text"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "allOf": [

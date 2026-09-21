@@ -75,5 +75,21 @@
     "local",
     "full",
     "exploration"
-  ]
+  ],
+  "storyboardReview": {
+    "pixelContract": 5,
+    "reviewIdentity": "reviewInputKey",
+    "localNotes": "cue.storyboard.animationNotes",
+    "confirmationScope": "complete-storyboard-creative-object"
+  },
+  "workingIntent": {
+    "operation": "working-intent",
+    "storage": "version-manifest",
+    "updates": [
+      "upserts",
+      "removeIds"
+    ],
+    "authority": "non-authoritative-context-only",
+    "inheritsAcrossVersions": false
+  }
 }

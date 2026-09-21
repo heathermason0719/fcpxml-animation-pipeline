@@ -18,6 +18,7 @@ from scripts.work_model_store import load, sha
 
 BASELINE = Path('/Users/xiaobaimac/Movies/trumen/AfterForge/2026-09-09_v1')
 DEFAULT_ROOT = Path(tempfile.gettempdir()) / 'afterforge-review-smoke'
+REVIEW_CONTENT_BASELINE = Path('/Users/xiaobaimac/Movies/trumen/AfterForge/工程/episodes/episode-bd459610b45a/version-d7c63089d9f1')
 
 
 def hashes(root: Path) -> dict[str, str]:
@@ -29,10 +30,78 @@ def request(root: Path, name: str, **kwargs):
     return {'requestId': name, 'expectedRevision': load(root)['editRevision'], **kwargs}
 
 
+def review_content_fixture(root):
+    """Render real current layouts, then prove prose-only publication reuses PNGs.
+
+    All prose/intent here is synthetic test data, not a production design decision.
+    """
+    from unittest.mock import patch
+    from scripts.work_model_storyboard import _render_one
+    baseline = REVIEW_CONTENT_BASELINE
+    before = hashes(baseline)
+    afterforge = root / 'AfterForge'
+    source = {'channel': 'chat', 'text': '隔离验收示例，非真实设计确认', 'reference': 'review-content-smoke'}
+    opened = model.open_project(afterforge, {'requestId': 'content-open', 'expectedRevision': 0,
+        'title': '审核页 · 隔离验收', 'episodeTitle': '片头 · 页面测试', 'versionTitle': '局部说明与工作意图 · 测试版',
+        'copyFrom': str(baseline), 'copyMode': 'restart', 'commission': source})
+    version = Path(opened['root'])
+    m = load(version)
+    cues = [c for c in m['cues'] if c['id'] in {'intro', 'tv-evidence'}]
+    for cue in cues:
+        cue['storyboard']['animationNotes'] = []
+    model.update(version, request(version, 'content-cues', operation='edit', patch={'cues': cues,
+        'brief': {**m['brief'], 'summary': '审核页隔离验收 · 说明与工作意图均为演示数据'}}))
+    with patch('scripts.work_model_storyboard._render_one', wraps=_render_one) as renderer:
+        first = model.preview(version, request(version, 'real-png', scope='storyboard'))
+        initial_calls = renderer.call_count
+    m = load(version)
+    notes = [
+        {'id': 'name', 'frameIds': ['s1'], 'text': '“大家好”时名字进入，小旁批稍晚补入，保持一次完整阅读。（页面验收示例）'},
+        {'id': 'attention', 'frameIds': ['s2', 's3'], 'text': '两行起初同时可读；说到“第一次”时，其他文字退去，再让“第一次”移向中心并停留。（示例）'},
+        {'id': 'method', 'frameIds': ['s4', 's5'], 'text': '跟随旁白依次突出信息、镜头和感觉，最后清场。（示例）'},
+        {'id': 'pullback', 'frameIds': ['s6', 's7'], 'text': '“穿越”开始拉远，显露五格画面带，全部进入视野后停稳。（示例）'},
+        {'id': 'return', 'frameIds': ['s7', 's8'], 'text': '接“回到第一次”，关注点从末格回到开头；其余画面仍然可见，保持这个位置。（示例）'},
+    ]
+    m['cues'][0]['storyboard']['animationNotes'] = notes
+    m['cues'][0]['finalAnimationDescription'] = '介绍栏目，再将观看位置带回电影开头，保留已知结局的视野。（仅为页面验收示例）'
+    m['cues'][1]['storyboard']['animationNotes'] = [{'id': 'evidence', 'frameIds': ['s1', 's3'],
+        'text': '随论述依次指出两处电视痕迹，最后保留对照关系。（页面验收示例）'}]
+    model.update(version, request(version, 'prose-only', operation='edit', patch={'cues': m['cues']}))
+    if any(c['canConfirm'] for c in model.status(version)['storyboard']['cues']):
+        raise RuntimeError('old snapshots incorrectly confirm changed review content')
+    with patch('scripts.work_model_storyboard._render_one', wraps=_render_one) as renderer:
+        second = model.preview(version, request(version, 'reuse-png', scope='storyboard'))
+        reuse_calls = renderer.call_count
+    m = load(version)
+    artifacts = {a['id']: a for a in m['artifacts']}
+    old_shas = [artifacts[i]['sha256'] for i in first['artifactIds']]
+    new_shas = [artifacts[i]['sha256'] for i in second['artifactIds']]
+    if initial_calls != 13 or reuse_calls != 0 or old_shas != new_shas:
+        raise RuntimeError('real PNG reuse regression')
+    model.update(version, request(version, 'intent', operation='working-intent', upserts=[
+        {'id': 'travel', 'kind': 'focus', 'text': '穿越段：调整画面带展开和关注点回到开头的表达。',
+         'locator': {'cueId': 'intro', 'noteId': 'pullback', 'description': '自我介绍 · 穿越'}, 'source': source},
+        {'id': 'earlier', 'kind': 'preserve', 'text': '署名、注意力变化和栏目说明暂时保持。',
+         'locator': {'cueId': 'intro', 'description': '自我介绍 · 前半段'}, 'source': source}]))
+    model.open_project(afterforge, {'requestId': 'empty-comparison', 'expectedRevision': model.project_status(afterforge)['revision'],
+        'episodeId': m['identity']['episodeId'], 'versionTitle': '空白对照版 · 测试导航', 'useSeriesDefaults': False})
+    if hashes(baseline) != before:
+        raise RuntimeError('read-only baseline changed')
+    evidence = {'version': str(version), 'afterforge': str(afterforge), 'baseline': str(baseline),
+        'baselineUnchanged': True, 'initialPngCalls': initial_calls, 'proseOnlyPngCalls': reuse_calls,
+        'shaUnchanged': old_shas == new_shas, 'frameCount': len(new_shas),
+        'oldStoryboardIds': first['storyboardIds'], 'storyboardIds': second['storyboardIds'],
+        'decisions': load(version)['decisions']}
+    (root / 'evidence.json').write_text(json.dumps(evidence, ensure_ascii=False, indent=2)+'\n')
+    print(json.dumps(evidence, ensure_ascii=False, indent=2))
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description='Build an isolated real-PNG Review UI fixture.')
     parser.add_argument('--run', action='store_true', help='required acknowledgement before creating /private/tmp fixture')
     parser.add_argument('--root', type=Path, default=DEFAULT_ROOT)
+    parser.add_argument('--review-content', action='store_true', help='use the 0917 layouts for local notes, intent and real PNG reuse')
     args = parser.parse_args()
     if not args.run:
         parser.error('pass --run to create the fixture')
@@ -41,6 +110,8 @@ def main() -> int:
     root = args.root.resolve()
     if root.exists():
         raise SystemExit(f'refusing to overwrite retained fixture: {root}')
+    if args.review_content:
+        return review_content_fixture(root)
     before = hashes(BASELINE)
     opened = model.open_project(root / 'AfterForge', {
         'requestId': 'review-smoke-open', 'expectedRevision': 0, 'title': '楚门 Review UI',

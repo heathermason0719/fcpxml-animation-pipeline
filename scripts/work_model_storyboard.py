@@ -7,6 +7,7 @@ registration and any first-confirmation policy.
 from __future__ import annotations
 
 import hashlib
+import copy
 import html
 import os
 import re
@@ -162,7 +163,41 @@ def _native_dimensions(manifest: dict[str, Any]) -> tuple[int, int]:
     return width, height
 
 
-def _descriptor(root: Path, manifest: dict[str, Any], cue: dict[str, Any], frame: dict[str, Any]) -> dict[str, Any]:
+def animation_notes(cue):
+    """Validate references against the complete declared frame set, without I/O."""
+    frames = {f['id'] for f in _frames(cue)}
+    notes = cue.get('storyboard', {}).get('animationNotes', [])
+    if not isinstance(notes, list):
+        raise ValueError('animationNotes must be an array')
+    ids = set()
+    for note in notes:
+        if (not isinstance(note, dict) or set(note) != {'id', 'frameIds', 'text'}
+                or not isinstance(note['id'], str) or not note['id'].strip()
+                or not isinstance(note['text'], str) or not note['text'].strip()):
+            raise ValueError('animation note requires stable id, frameIds and nonempty text')
+        refs = note['frameIds']
+        if (note['id'] in ids or not isinstance(refs, list) or not refs
+                or not all(isinstance(i, str) for i in refs)
+                or len(set(refs)) != len(refs) or not set(refs).issubset(frames)):
+            raise ValueError('animation note IDs must be unique and reference existing frames')
+        ids.add(note['id'])
+    return copy.deepcopy(notes)
+
+
+def review_snapshot(manifest, cue, frames):
+    from scripts.work_model_inputs import cue_narration
+    from scripts.work_model_content import content_context
+    review = {'narration': cue_narration(manifest, cue) or '',
+              'contentContext': content_context(manifest, cue),
+              'finalAnimationDescription': cue.get('finalAnimationDescription') or cue.get('finalDescription') or '',
+              'animationNotes': animation_notes(cue)}
+    review['reviewInputKey'] = digest({'cueId': cue['id'], 'objectId': cue.get('objectId'), **review,
+        'frames': [{'frameId': f['frameId'], 'inputKey': f['inputKey']} for f in frames]})
+    return review
+
+
+def _descriptor(root: Path, manifest: dict[str, Any], cue: dict[str, Any], frame: dict[str, Any],
+                *, contract=5, legacy_review=None) -> dict[str, Any]:
     from scripts.work_model_inputs import cue_narration
     from scripts.work_model_content import content_context
     adapter = _adapter(cue)
@@ -215,17 +250,26 @@ def _descriptor(root: Path, manifest: dict[str, Any], cue: dict[str, Any], frame
         snapshot["stillSrc"] = frame["stillSrc"]
     if frame.get('sample'):
         snapshot['sample'] = True
+    pixel_state = dict(snapshot)
+    review_fields = ('narration', 'contentContext', 'finalDescription')
+    if contract == 5:
+        for field in review_fields:
+            pixel_state.pop(field)
+    elif legacy_review is not None:
+        # Contract 4 mixed review prose into the pixel key. Only replace those
+        # known prose fields; every actual image dependency is still recomputed.
+        pixel_state.update({field: legacy_review[field] for field in review_fields})
     key_input = {
-        "storyboardContract": 4, "runtime": read_runtime_pin(root), "dimensions": _dimensions(manifest),
+        "storyboardContract": contract, "runtime": read_runtime_pin(root), "dimensions": _dimensions(manifest),
         "frameDuration": (manifest.get("project", {}).get("source") or {}).get("frameDuration"),
         "compositionId": adapter.get("compositionId"), "compositionSrc": adapter["compositionSrc"],
-        "state": snapshot, "screenText": cue.get("screenText", []),
+        "state": pixel_state, "screenText": cue.get("screenText", []),
         "files": {path: sha(safe(root, path)) for path in sorted(files)},
     }
     # Product-object association belongs to publication identity, not pixels.
     # Keeping it outside inputKey preserves media reuse but makes an in-flight
     # job notice an object replacement before registering its captured frame.
-    return {**snapshot, "objectId": cue.get("objectId"), "files": sorted(files), "inputKey": digest(key_input)}
+    return {**snapshot, 'storyboardContract': contract, "objectId": cue.get("objectId"), "files": sorted(files), "inputKey": digest(key_input)}
 
 
 def storyboard_spec(root: Path, manifest: dict[str, Any], request: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -249,7 +293,8 @@ def storyboard_spec(root: Path, manifest: dict[str, Any], request: dict[str, Any
         frames = [_descriptor(root, manifest, cue, definition)]
     else:
         frames = [_descriptor(root, manifest, cue, frame) for cue in cues for frame in _frames(cue)]
-    return {"frames": frames, "files": sorted({path for frame in frames for path in frame["files"]})}
+    reviews = {cue['id']: review_snapshot(manifest, cue, [f for f in frames if f['cueId'] == cue['id']]) for cue in cues}
+    return {"frames": frames, 'reviews': reviews, "files": sorted({path for frame in frames for path in frame["files"]})}
 
 
 def _frame_definition(cue, descriptor):
@@ -386,7 +431,13 @@ def render_storyboard(root: Path, manifest: dict[str, Any], spec: dict[str, Any]
         if current["inputKey"] != descriptor.get("inputKey"):
             raise ValueError("storyboard inputs changed; capture a new spec before rendering")
         target = output_dir / f"{cue['id']}-{current['frameId']}-{current['inputKey'][:16]}.png"
-        if not target.is_file() or target.is_symlink():
+        cached = reusable_frame(root, manifest, current)
+        if cached:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(safe(root, cached['path']), target)
+            if sha(target) != cached['sha256']:
+                raise ValueError('cached PNG changed while copying verified bytes')
+        else:
             _render_one(root, manifest, cue, current, target, log_path)
         result.append({**current, "path": _relative(root, target), "sha256": sha(target)})
     return result
@@ -397,8 +448,35 @@ def frame_current(root: Path, manifest: dict[str, Any], frame: dict[str, Any]) -
     try:
         root = Path(root).expanduser().resolve()
         cue = next(cue for cue in manifest.get("cues", []) if cue.get("id") == frame.get("cueId"))
-        descriptor = _descriptor(root, manifest, cue, _frame_definition(cue, frame))
+        contract = frame.get('storyboardContract', 4)
+        if contract not in (4, 5):
+            return False
+        descriptor = _descriptor(root, manifest, cue, _frame_definition(cue, frame), contract=contract)
         return (descriptor['objectId'] == frame.get('objectId') and descriptor["inputKey"] == frame.get("inputKey")
                 and sha(safe(root, frame.get("path"))) == frame.get("sha256"))
     except (KeyError, StopIteration, TypeError, ValueError, OSError):
         return False
+
+
+def reusable_frame(root, manifest, descriptor):
+    """Return evidence for identical PNG inputs/bytes, never just a cache name."""
+    cue = next(c for c in manifest['cues'] if c['id'] == descriptor['cueId'])
+    for old in reversed(manifest.get('artifacts', [])):
+        if (old.get('cueId') != descriptor['cueId'] or old.get('frameId') != descriptor['frameId']
+                or old.get('objectId') != descriptor.get('objectId')
+                or old.get('purpose') not in {'storyboard', 'still', 'exploration'}):
+            continue
+        try:
+            contract = old.get('storyboardContract', 4)
+            if contract == 5:
+                key = descriptor['inputKey']
+            elif contract == 4:
+                key = _descriptor(root, manifest, cue, _frame_definition(cue, descriptor),
+                                  contract=4, legacy_review=old)['inputKey']
+            else:
+                continue
+            if key == old.get('inputKey') and sha(safe(root, old['path'])) == old.get('sha256'):
+                return old
+        except (KeyError, OSError, ValueError, TypeError, StopIteration):
+            continue
+    return None

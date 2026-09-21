@@ -58,6 +58,30 @@ class StoryboardTests(unittest.TestCase):
         (self.root / "compositions/cues/title.html").write_text("<template><div>Changed</div></template>")
         self.assertFalse(frame_current(self.root, self.manifest, record))
 
+    def test_review_prose_is_independent_but_image_state_time_background_and_role_are_not(self):
+        import copy
+        cue = self.manifest['cues'][0]
+        cue['storyboard'] = {'frames': [{'id': 'a', 'role': 'hero'}, {'id': 'b', 'role': 'auxiliary'}]}
+        first = storyboard_spec(self.root, self.manifest)
+        cue.update(narration='修改旁白', finalAnimationDescription='修改总体说明',
+                   contentContext={'narration': {'state': 'present'}, 'screenText': {'state': 'none',
+                       'basis': {'text': '明确无屏幕文字', 'reference': 'test:user'}}})
+        second = storyboard_spec(self.root, self.manifest)
+        self.assertEqual(first['frames'][0]['inputKey'], second['frames'][0]['inputKey'])
+        self.assertNotEqual(first['reviews']['title']['reviewInputKey'], second['reviews']['title']['reviewInputKey'])
+        baseline = copy.deepcopy(cue['storyboard']['frames'])
+        for change in ({'state': {'id': 'other'}}, {'time': '1s'}, {'role': 'auxiliary'}, {'background': 'timeline'}):
+            with self.subTest(change=change):
+                cue['storyboard']['frames'] = copy.deepcopy(baseline)
+                cue['storyboard']['frames'][0].update(change)
+                if 'role' in change:
+                    cue['storyboard']['frames'][1]['role'] = 'hero'
+                if 'background' in change:
+                    (self.root / 'background.mov').write_bytes(b'background')
+                    self.manifest['project']['renderAdapters'] = {'hyperframes': {'previewMediaSrc': 'background.mov'}}
+                    cue['resolvedTimeline'] = {'start': '2s', 'duration': '2s'}
+                self.assertNotEqual(second['frames'][0]['inputKey'], storyboard_spec(self.root, self.manifest)['frames'][0]['inputKey'])
+
     def test_layout_strips_a_relative_motion_loader(self):
         from scripts.work_model_storyboard import _strip_motion
         motion = self.root / "compositions/motion/title.js"

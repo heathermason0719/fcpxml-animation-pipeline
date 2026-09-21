@@ -7,13 +7,14 @@
   <link rel="stylesheet" href="/review-neutral.css">
   <link rel="stylesheet" href="/review-v3.css">
 </head>
-<body>
+<body id="top">
   <header class="topbar"><a class="brand" href="#">AfterForge <span>审阅</span></a><div id="versionTitle" class="version-title">选择一个版本</div><button id="refresh" class="quiet">刷新状态</button></header>
   <main class="shell">
-    <aside class="navigator"><div class="panel-label">项目与版本</div><div id="projectTree" class="project-tree" aria-live="polite"></div></aside>
+    <aside class="navigator"><div class="panel-label">项目与版本</div><div id="projectTree" class="project-tree" aria-live="polite"></div><nav id="cueNavigation" class="cue-navigation" aria-label="Cue 跳转"></nav></aside>
     <section class="workspace">
-      <div class="workspace-head"><div><p id="eyebrow" class="eyebrow">AfterForge</p><h1 id="title">审阅工作台</h1><p id="summary" class="muted">从左侧选择正在制作的版本。</p></div><div id="revision" class="revision"></div></div><section class="compare"><label>与另一个版本对照 <select id="compareVersion"><option value="">不对照</option></select></label><div id="compareContent" class="compare-content"></div></section>
+      <div class="workspace-head"><div><p id="eyebrow" class="eyebrow">AfterForge</p><h1 id="title">审阅工作台</h1><p id="summary" class="muted">从上方选择正在制作的版本。</p></div><div id="revision" class="revision"></div></div><section class="compare"><label>与另一个版本对照 <select id="compareVersion"><option value="">不对照</option></select></label><div id="compareContent" class="compare-content"></div></section>
       <nav class="tabs" aria-label="审阅内容"><button data-tab="overview" class="active">脚本与思路</button><button data-tab="storyboard">Storyboard</button><button id="explorationTab" data-tab="exploration" hidden>视觉探索</button><button data-tab="preview">Demo</button><button data-tab="delivery">交付</button></nav>
+      <section id="workingIntent" class="working-intent" hidden aria-label="本版工作意图"></section>
       <section id="overview" class="tab"><div class="overview-actions"><a id="exportScript" class="quiet" download>导出本集脚本</a></div><div id="brief" class="brief"></div><div id="cues" class="cue-list"></div></section>
       <section id="storyboard" class="tab" hidden><div id="storyboards" class="storyboard-list"></div></section>
       <section id="exploration" class="tab" hidden><div id="explorations" class="exploration-list"></div></section>
@@ -22,6 +23,7 @@
     </section>
     <aside class="feedback"><div class="feedback-head"><div><p class="panel-label">反馈</p><h2>留下可追踪的意见</h2></div><span id="feedbackTarget" class="target">整个版本</span></div><form id="feedbackForm"><textarea id="feedbackBody" placeholder="描述希望如何修改；可在预览中选择素材或镜头定位。"></textarea><div class="time-range"><label>起点（整集秒）<input id="timeStart" placeholder="例如 12s"></label><label>终点（整集秒）<input id="timeEnd" placeholder="可选，例如 25/2s"></label></div><button id="submitFeedback" class="primary" type="submit">提交反馈</button></form><div id="draftNotice" class="draft-notice" hidden></div><button id="retargetDraft" type="button" hidden>按当前版本重新定位草稿</button><div id="feedbackList" class="feedback-list"></div><div id="actions" class="actions"></div><p id="message" class="message" aria-live="polite"></p></aside>
   </main>
+  <dialog id="frameLightbox" class="frame-lightbox"><div class="lightbox-head"><p id="lightboxTitle"></p><button id="closeLightbox" type="button">关闭 · Esc</button></div><img id="lightboxImage" alt="放大的静帧"></dialog>
   <script src="/review-v3.js"></script>
 </body>
 </html>

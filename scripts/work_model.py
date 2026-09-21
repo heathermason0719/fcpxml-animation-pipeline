@@ -416,6 +416,7 @@ def status(version_root):
         return copy.deepcopy(cached[1])
     result = {key: copy.deepcopy(manifest[key]) for key in ("identity", "editRevision", "brief", "cues", "artifacts", "feedback", "decisions", "deliveries")}
     result["legacy"] = False
+    result['workingIntent'] = copy.deepcopy(manifest.get('workingIntent', {'items': []}))
     from scripts.work_model_policy import artifact_eligible, first_confirmed, storyboard_current
     for artifact in result["artifacts"]:
         artifact["mediaCurrent"] = _artifact_current(root, manifest, artifact)
@@ -429,9 +430,11 @@ def status(version_root):
         confirmed = first_confirmed(manifest, cue.get('objectId'))
         from scripts.work_model_confirmation import confirmation_problems
         problems = confirmation_problems(root, manifest, [board]) if board else [{'code': 'missing-storyboard', 'message': 'Generate a current Storyboard first.'}]
-        cards.append({'id': cue['id'], 'title': cue.get('title', cue['id']),
+        cards.append({'id': cue['id'], 'objectId': cue.get('objectId'), 'title': cue.get('title', cue['id']),
+            'animationNotes': copy.deepcopy(board.get('animationNotes', [])) if board else [],
+            'reviewInputKey': board.get('reviewInputKey') if board else None,
             'narration': board.get('narration', '') if board else cue.get('narrationAnchor', ''),
-            'contentContext': board.get('contentContext', content_context(manifest, cue)) if board else content_context(manifest, cue),
+            'contentContext': board.get('contentContext', {}) if board else content_context(manifest, cue),
             'finalAnimationDescription': board.get('finalAnimationDescription', '') if board else cue.get('finalAnimationDescription', ''),
             'storyboardId': board['id'] if board else None,
             'frames': [{**artifacts[i], 'artifactId': i} for i in board['artifactIds']] if board else [],
@@ -508,6 +511,9 @@ def _validate_edit(manifest):
             raise ValueError("work model requires 480p preview and 1080p native delivery dimensions")
     from scripts.work_model_content import validate_content_declarations
     for cue in manifest["cues"]:
+        if 'storyboard' in cue:
+            from scripts.work_model_storyboard import animation_notes
+            animation_notes(cue)
         problems = validate_content_declarations(manifest, cue)
         if problems:
             raise ValueError('; '.join(p['code'] + ': ' + p['message'] for p in problems))
@@ -585,6 +591,21 @@ def update(version_root, request):
     # Check read-only before creating a lock in a historical directory.
     load(root, writable=True)
     afterforge, _ = layout(root)
+    if request.get('operation') == 'working-intent':
+        # Context-only writes must not upgrade policy or correct production
+        # history as a side effect of leaving a memo.
+        with manifest_transaction(root):
+            manifest = load(root, writable=True)
+            previous = request_check(manifest, request)
+            if previous is not None:
+                return previous
+            from scripts.work_model_intent import update_intent
+            record = update_intent(manifest, request)
+            manifest['editRevision'] += 1
+            result = {'status': 'updated', 'editRevision': manifest['editRevision'], 'record': record}
+            remember(manifest, request, result)
+            save(root, manifest)
+            return result
     if request.get("operation") in {"memory", "visual-defaults"}:
         with project_lock(afterforge), manifest_transaction(root):
             manifest = load(root, writable=True)

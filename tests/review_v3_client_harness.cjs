@@ -46,7 +46,35 @@ async function main() {
   vm.runInContext(fs.readFileSync('assets/review-v3/review-v3.js','utf8'),context);
   await new Promise(setImmediate);
   const scenario=process.argv[2];
-  if(scenario==='actions') {
+  if(scenario==='empty-version') {
+    assert.match(byId('media').innerHTML,/video/);
+    const normalFetch=context.fetch;
+    context.fetch=async(url,options)=>url==='/api/state?version=v2'?{ok:true,json:async()=>({...version(),artifacts:[],cues:[]})}:normalFetch(url,options);
+    await context.selectVersion('v2');
+    assert.doesNotMatch(byId('media').innerHTML,/video|previews\/demo/);
+    assert.equal(byId('feedbackTarget').textContent,'整个版本');
+  } else if(scenario==='notes-and-intent') {
+    withStoryboard=true; await context.selectVersion('v1');
+    const cue={id:'cue-a',objectId:'object-a',storyboardId:'b',title:'S01 开场',narration:'旁白',finalAnimationDescription:'总体描述',frames:[
+      {frameId:'b',label:'先出现'}, {frameId:'a',label:'再停留'}, {frameId:'c',label:'无说明'}],animationNotes:[
+      {id:'n1',frameIds:['a','b'],text:'一条跨帧说明'}, {id:'n2',frameIds:['b'],text:'共享前帧'}]};
+    const html=context.storyboardCueHtml(cue);
+    assert.equal(html.split('一条跨帧说明').length,2);
+    assert.ok(html.indexOf('一条跨帧说明')>html.indexOf('再停留'));
+    assert.ok(html.indexOf('一条跨帧说明')<html.indexOf('无说明'));
+    assert.ok(html.indexOf('总体描述')<html.indexOf('先出现'));
+    assert.match(html,/对应帧 01、02/);
+    assert.equal((html.match(/data-comment-key=/g)||[]).length,3);
+    assert.match(context.esc('" onclick="evil'),/&quot; onclick=&quot;evil/);
+    const key=context.commentKey(cue,cue.frames[0]);
+    assert.equal(context.commentIsOpen(key),true);
+    context.rememberCommentOpen(key,false);
+    assert.equal(context.commentIsOpen(key),false);
+    assert.equal(context.commentKey({...cue,storyboardId:'new'},cue.frames[0]),key);
+    assert.equal(context.commentIsOpen(context.commentKey({...cue,objectId:'new'},cue.frames[0])),true);
+    await context.selectVersion('v2');
+    assert.equal(context.commentIsOpen(context.commentKey(cue,cue.frames[0])),true);
+  } else if(scenario==='actions') {
     assert.match(byId('actions').innerHTML,/生成完整预览/);
     assert.match(byId('actions').innerHTML,/批准当前审阅/);
     assert.doesNotMatch(byId('actions').innerHTML,/undefined/);

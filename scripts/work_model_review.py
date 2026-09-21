@@ -209,18 +209,24 @@ def make_handler(afterforge_root: Path, *, model_api: Any | None = None):
         raise ValueError("AfterForge root may not contain a symlink")
     root = raw_root.resolve()
     api = model_api
-    async_failures: dict[str, dict[str, Any]] = {}
+    async_tasks: dict[tuple[Path, str], dict[str, Any]] = {}
     async_lock = threading.Lock()
 
     def state_with_async_failures(version_root: Path) -> dict[str, Any]:
+        # Setup can take longer than the client's first refresh and precedes
+        # creation of a persistent job. Keep it visible until the worker ends.
+        with async_lock:
+            pending = {key: dict(value) for key, value in async_tasks.items() if key[0] == version_root}
         state = api.status(version_root) if api is not None else _load_model_api().status(version_root)
         if not isinstance(state, dict):
             raise ValueError("work model returned an invalid version state")
         with async_lock:
-            failures = list(async_failures.values())
+            pending.update({key: dict(value) for key, value in async_tasks.items() if key[0] == version_root})
         tasks = state.get("tasks", [])
         base_tasks = tasks if isinstance(tasks, list) else []
-        state["tasks"] = [*base_tasks, *failures]
+        # If a worker ended during status(), the earlier pending entry forces
+        # one more refresh, so a pre-publication state cannot stop polling.
+        state["tasks"] = [*base_tasks, *pending.values()]
         return state
 
     class ReviewV3Handler(BaseHTTPRequestHandler):
@@ -397,14 +403,20 @@ def make_handler(afterforge_root: Path, *, model_api: Any | None = None):
                 version_root, _ = _resolve_version(root, self._api(), version_id)
                 method = getattr(self._api(), action)
                 if action in {"preview", "deliver"}:
+                    task_key = (version_root, request['requestId'])
+                    with async_lock:
+                        async_tasks[task_key] = {'id': request['requestId'], 'action': action, 'status': 'running'}
                     def run_background() -> None:
                         try:
                             method(version_root, request)
                         except Exception as error:  # Surface setup failures through normal status polling.
                             with async_lock:
-                                async_failures[request["requestId"]] = {
+                                async_tasks[task_key] = {
                                     "id": request["requestId"], "status": "failed", "error": str(error),
                                 }
+                        else:
+                            with async_lock:
+                                async_tasks.pop(task_key, None)
                     threading.Thread(target=run_background, daemon=True).start()
                     self._json(202, {"status": "started", "requestId": request["requestId"]})
                     return

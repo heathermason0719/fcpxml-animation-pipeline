@@ -147,6 +147,14 @@ def _snapshot(root, manifest, spec, destination, review=None):
     names.update(p.relative_to(root).as_posix() for p in (root/'assets/source').glob('narration-*') if p.is_file())
     if review:
         names.update(a['path'] for a in manifest['artifacts'] if a['id'] in review['artifactIds'])
+    # Cache location is not an input identity. Copy only proven reusable bytes
+    # into this job's fixed snapshot, then reverify there before reuse.
+    if spec.get('static') and spec.get('scope') != 'exploration':
+        from scripts.work_model_storyboard import reusable_frame
+        for frame in spec['static']['frames']:
+            cached = reusable_frame(root, manifest, frame)
+            if cached:
+                names.add(cached['path'])
     for name in names:
         target=safe(destination,name,exists=False)
         target.parent.mkdir(parents=True,exist_ok=True)
@@ -270,6 +278,8 @@ def _finish_preview(root, snap, manifest, spec, job):
         installed = []
         try:
             for artifact in artifacts:
+                if sha(safe(snap, artifact['path'])) != artifact['sha256']:
+                    raise ValueError('preview bytes changed before publication')
                 target = safe(root, artifact['path'], exists=False)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 if target.exists():
@@ -288,9 +298,7 @@ def _finish_preview(root, snap, manifest, spec, job):
                     frames = [a for a in artifacts if a['cueId'] == cid]
                     board = {'id': 'storyboard-' + digest([job['id'], cid])[:20], 'cueId': cid,
                         'objectId': cue['objectId'], 'artifactIds': [a['id'] for a in frames],
-                        'narration': frames[0].get('narration') or '',
-                        'contentContext': frames[0]['contentContext'],
-                        'finalAnimationDescription': frames[0].get('finalDescription') or '', 'createdAt': now()}
+                        **copy.deepcopy(spec['static']['reviews'][cid]), 'createdAt': now()}
                     boards.append(board)
                 current['storyboards'].extend(boards)
             elif static and purpose == 'exploration':
