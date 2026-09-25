@@ -49,6 +49,8 @@ Cue 总体说明继续使用 `finalAnimationDescription`，局部说明写在 `s
 
 这里 A 是创作范围，A 与 D 是呈现范围；D 可以复用有效媒体，缓存缺失时按原实现重建。`taskId` 覆盖任务内恢复和必要重算，不授权以后新的改版。
 
+Storyboard 页可直接点击「确认本轮设计」，在范围摘要中一次确认所有待首次确认的完整 Cue；已有确认保留，存在问题的 Cue 不会被静默跳过，未保存留言须先处理。局部确认仍可逐 Cue 勾选。工作意图可折叠并按版本／页面记忆；Storyboard 专用 Cue 导览支持跳转、当前镜头高亮及确认状态，窄窗口显示横向导览，不改变 Demo 的布局与批准操作。
+
 首次设计以真实、当前的 Storyboard snapshot 的明确 `storyboardIds` 确认；每个对象须有有效 board、非空最终动画说明和完整的 Cue 内容事实。`contentContext` 分别声明 `narration` 与 `screenText` 为 `present`、`none` 或 `unknown`：实际文本仍只来自既有 Cue、显式关联的段落或屏幕文字字段；`none` 必须有 `{text, reference}` 依据，`unknown` 不能被另一渠道的文字掩盖。`review-submit` 只提交反馈轮次，不能自动确认。确认请求可附带用户来源的 `feedbackResolutions: [{feedbackId, action:"accept"|"defer"|"withdraw"}]`，与确认原子完成。完整 Demo 需要稳定 `taskId` 的 `authorize-demo` 决定，并分别声明工作 Cue、时间范围、展示 Cue 与排除 Cue。候选视觉探索仅供比较；采用时通过范围明确的 `exploration-adopt` 事务更新 canonical cue。
 
 合并批准与授权的交付请求：

@@ -80,6 +80,7 @@
     "pixelContract": 5,
     "reviewIdentity": "reviewInputKey",
     "localNotes": "cue.storyboard.animationNotes",
+    "frameNarration": "cue.storyboard.frames[].narration",
     "confirmationScope": "complete-storyboard-creative-object"
   },
   "workingIntent": {

@@ -244,7 +244,7 @@ class WorkModelReviewServerTests(unittest.TestCase):
 
     def test_review_v3_client_action_and_stale_draft_contracts(self) -> None:
         harness = Path(__file__).with_name("review_v3_client_harness.cjs")
-        for scenario in ("empty-version", "notes-and-intent", "actions", "combined", "incomplete-preview", "time-normalization", "invalid-time-draft", "stale-draft", "storyboard-round", "selection-identity", "version-draft", "late-response"):
+        for scenario in ("empty-version", "round-confirmation", "notes-and-intent", "actions", "combined", "incomplete-preview", "time-normalization", "invalid-time-draft", "stale-draft", "storyboard-round", "frame-save-status", "frame-save-sequential", "storyboard-buttons", "selection-identity", "version-draft", "late-response"):
             with self.subTest(scenario=scenario):
                 subprocess.run(["node", str(harness), scenario], check=True, cwd=Path(__file__).parents[1])
 
@@ -256,6 +256,7 @@ class RealStatusReviewClientTests(unittest.TestCase):
     def test_storyboard_handoff_uses_active_model_status_snapshot(self) -> None:
         work_model_fixtures.activate(self.root, "review-client-real")
         state = work_model.status(self.root)
+        self.assertTrue(any(task.get("requestId") == "review-client-real-storyboard" for task in state["tasks"]))
         self.assertEqual(len(state["storyboard"]["cues"]), 2)
         self.assertTrue(all(cue["canConfirm"] for cue in state["storyboard"]["cues"]))
         with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".json") as fixture:

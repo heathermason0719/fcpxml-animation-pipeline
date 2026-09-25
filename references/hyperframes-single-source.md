@@ -37,7 +37,7 @@ Cue 媒体身份绑定精确 runtime pin、构建配置、规范快照、依赖�
 
 ## Storyboard、探索与媒体复用
 
-Storyboard 是 canonical composition 在固定静帧时间的真实 PNG 投影；每帧状态含稳定 `id`、角色、标签、输入身份与 SHA。它不是第二份布局源。`cue.storyboard.frames` 声明 `id`、`role: hero|auxiliary`、有理数 Cue 本地 `time`、`mode: layout|motion`、`background: none|timeline`、可选 `stillSrc` 与 `state: {id}`；恰有一张主审帧。layout 模式忽略声明的 Motion loader，`state.id` 作为静态宿主的 `data-storyboard-state` 供 canonical CSS 选择；Motion 模式仅用于已有实现的真实取帧。背景取源帧，不先制作完整视频。探索候选可有自己的隔离 composition/assets，但采用必须通过 scope 明确的事务回写 canonical source。有效 Cue 媒体按输入身份复用；缓存缺失只触发同一输入的技术渲染，不改变创意对象、确认或授权。
+Storyboard 是 canonical composition 在固定静帧时间的真实 PNG 投影；每帧状态含稳定 `id`、角色、标签、输入身份与 SHA。它不是第二份布局源。`cue.storyboard.frames` 声明 `id`、`role: hero|auxiliary`、有理数 Cue 本地 `time`、`mode: layout|motion`、`background: none|timeline`、可选 `stillSrc`、`state: {id}` 与逐帧原句 `narration`；恰有一张主审帧。`narration` 可重复，真实原声可前缀 `原声：`；未声明时审阅页明确显示“尚未标注对应旁白”，不得按时间、Cue 旁白或局部说明推断。layout 模式忽略声明的 Motion loader，`state.id` 作为静态宿主的 `data-storyboard-state` 供 canonical CSS 选择；Motion 模式仅用于已有实现的真实取帧。背景取源帧，不先制作完整视频。探索候选可有自己的隔离 composition/assets，但采用必须通过 scope 明确的事务回写 canonical source。有效 Cue 媒体按输入身份复用；缓存缺失只触发同一输入的技术渲染，不改变创意对象、确认或授权。
 
 ## Alpha 与交付
 
@@ -47,9 +47,9 @@ Storyboard 是 canonical composition 在固定静帧时间的真实 PNG 投影�
 
 ### 局部说明与图片身份
 
-`cue.storyboard.animationNotes` 可省略（等同空数组）。每条为 `{id, frameIds, text}`：Cue 内 ID 唯一、frameIds 非空且不重复、引用必须存在；多条说明可共享帧，无说明帧合法。帧重组与引用修订通过同一次 `edit` 提交。说明描述旁白触发、状态变化和停留，不新增 Animation Unit 或独立确认。
+`cue.storyboard.animationNotes` 可省略（等同空数组）。每条为 `{id, frameIds, text}`：Cue 内 ID 唯一、frameIds 非空且不重复、引用必须存在；多条说明可共享帧，无说明帧合法。帧重组与引用修订通过同一次 `edit` 提交。说明描述旁白触发、状态变化和停留，不新增 Animation Unit 或独立确认。逐帧 `narration` 由 Storyboard 快照以 `frameNarrations` 冻结，因而映射变化会使 `reviewInputKey` 失效；它不属于图片输入。
 
-新 PNG 记录标记 `storyboardContract: 5`。`inputKey` 排除旁白、contentContext 和纯说明，仍覆盖制作源、资源闭包、状态、时间、背景、尺寸、role、屏幕文字和 runtime。Storyboard 的 `reviewInputKey` 覆盖有序完整帧集合、图片输入键、对象身份、旁白、contentContext、总体说明和 animationNotes。发布记录保存这些文字与对应 artifactIds；页面只读快照，不混入未发布草稿。
+新 PNG 记录标记 `storyboardContract: 5`。`inputKey` 排除旁白、contentContext、逐帧映射和纯说明，仍覆盖制作源、资源闭包、状态、时间、背景、尺寸、role、屏幕文字和 runtime。Storyboard 的 `reviewInputKey` 覆盖有序完整帧集合、图片输入键、对象身份、旁白、逐帧映射、contentContext、总体说明和 animationNotes。发布记录保存这些文字与对应 artifactIds；页面只读快照，不混入未发布草稿。
 
 说明变化后调用 `preview scope: "storyboard"`：固定输入副本中核验可复用 PNG 的输入键和文件 SHA，复制到新产物路径并追加 artifact/Storyboard，不覆盖旧事实。发布前复核当前输入及审阅内容。旧记录无合同标记时按合同 4 计算；复用时只用旧记录的三个审阅字段还原旧键，其他图片依赖全部重新计算，SHA 必须相符。无法证明一致则重渲。读取不迁移；旧快照不能确认改变后的审阅内容。首次资格与旧反馈继续绑定创意对象。
 

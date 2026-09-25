@@ -114,6 +114,11 @@ def _frames(cue: dict[str, Any]) -> list[dict[str, Any]]:
                  "time": format_time(time), "mode": mode, "background": background}
         if not isinstance(frame["label"], str):
             raise ValueError("storyboard frame label must be a string")
+        narration = item.get("narration")
+        if narration is not None:
+            if not isinstance(narration, str) or not narration.strip():
+                raise ValueError("storyboard frame narration must be a nonempty string")
+            frame["narration"] = narration
         if still is not None:
             frame["stillSrc"] = still
         state = item.get("state")
@@ -191,6 +196,12 @@ def review_snapshot(manifest, cue, frames):
               'contentContext': content_context(manifest, cue),
               'finalAnimationDescription': cue.get('finalAnimationDescription') or cue.get('finalDescription') or '',
               'animationNotes': animation_notes(cue)}
+    frame_narrations = [
+        {'frameId': frame['id'], **({'narration': frame['narration']} if 'narration' in frame else {})}
+        for frame in _frames(cue)
+    ]
+    if any('narration' in frame for frame in frame_narrations):
+        review['frameNarrations'] = frame_narrations
     review['reviewInputKey'] = digest({'cueId': cue['id'], 'objectId': cue.get('objectId'), **review,
         'frames': [{'frameId': f['frameId'], 'inputKey': f['inputKey']} for f in frames]})
     return review

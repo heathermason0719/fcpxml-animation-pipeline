@@ -54,6 +54,46 @@ class ReviewContentTests(unittest.TestCase):
         self.assertNotEqual(old_frame['id'], new_frame['id'])
         self.assertTrue(model.status(self.root)['storyboard']['cues'][0]['canConfirm'])
 
+    def test_frame_narration_mapping_invalidates_review_and_reuses_pngs(self):
+        frames = [
+            {'id': 'hero', 'role': 'hero', 'narration': '原声：他终于明白了。'},
+            {'id': 'hold', 'role': 'auxiliary', 'narration': '原声：他终于明白了。'},
+            {'id': 'outro', 'role': 'auxiliary'},
+        ]
+        self.edit('mapped-frames', lambda cue: cue.update(storyboard={'frames': frames}))
+        with patch('scripts.work_model_storyboard._render_one', side_effect=self.png):
+            self.board('mapped-frames-preview')
+        before = load(self.root)
+        old = copy.deepcopy(before['storyboards'][-1])
+        self.edit('changed-frame-narration', lambda cue: cue['storyboard'].update(frames=[
+            {**frames[0], 'narration': '原声：他真的明白了。'}, frames[1], frames[2]]))
+        self.assertFalse(model.status(self.root)['storyboard']['cues'][0]['canConfirm'])
+        with self.assertRaisesRegex(ValueError, 'current verified'):
+            model.update(self.root, self.req('old-mapping-confirm', operation='decision', kind='confirm-design',
+                storyboardIds=[old['id']], source=user()))
+        with patch('scripts.work_model_storyboard._render_one', side_effect=AssertionError('narration mapping must reuse PNGs')):
+            self.board('changed-frame-narration-preview')
+        board = load(self.root)['storyboards'][-1]
+        self.assertEqual(board['frameNarrations'], [
+            {'frameId': 'hero', 'narration': '原声：他真的明白了。'},
+            {'frameId': 'hold', 'narration': '原声：他终于明白了。'},
+            {'frameId': 'outro'},
+        ])
+        state = model.status(self.root)['storyboard']['cues'][0]
+        self.assertEqual([frame['frameNarration'] for frame in state['frames']], [
+            '原声：他真的明白了。', '原声：他终于明白了。', None])
+
+    def test_legacy_storyboard_without_review_key_is_stale_when_frame_narration_is_added(self):
+        manifest = load(self.root)
+        board = manifest['storyboards'][0]
+        board.pop('reviewInputKey')
+        board.pop('animationNotes')
+        save(self.root, manifest)
+        self.assertTrue(model.status(self.root)['storyboard']['cues'][0]['canConfirm'])
+        self.edit('legacy-frame-narration', lambda cue: cue.update(storyboard={'frames': [
+            {'id': 'hero', 'role': 'hero', 'label': 'Hero', 'narration': '原声：这是新增的逐帧映射。'}]}))
+        self.assertFalse(model.status(self.root)['storyboard']['cues'][0]['canConfirm'])
+
     def test_note_references_validate_on_edit_and_frame_reorder_invalidates_review(self):
         frames = [{'id': 'hero', 'role': 'hero'}, {'id': 'b', 'role': 'auxiliary'}, {'id': 'c', 'role': 'auxiliary'}]
         notes = [{'id': 'one', 'frameIds': ['hero'], 'text': '单帧'},

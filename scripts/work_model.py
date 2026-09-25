@@ -430,6 +430,7 @@ def status(version_root):
         confirmed = first_confirmed(manifest, cue.get('objectId'))
         from scripts.work_model_confirmation import confirmation_problems
         problems = confirmation_problems(root, manifest, [board]) if board else [{'code': 'missing-storyboard', 'message': 'Generate a current Storyboard first.'}]
+        frame_narrations = {item['frameId']: item.get('narration') for item in board.get('frameNarrations', [])} if board else {}
         cards.append({'id': cue['id'], 'objectId': cue.get('objectId'), 'title': cue.get('title', cue['id']),
             'animationNotes': copy.deepcopy(board.get('animationNotes', [])) if board else [],
             'reviewInputKey': board.get('reviewInputKey') if board else None,
@@ -437,7 +438,8 @@ def status(version_root):
             'contentContext': board.get('contentContext', {}) if board else content_context(manifest, cue),
             'finalAnimationDescription': board.get('finalAnimationDescription', '') if board else cue.get('finalAnimationDescription', ''),
             'storyboardId': board['id'] if board else None,
-            'frames': [{**artifacts[i], 'artifactId': i} for i in board['artifactIds']] if board else [],
+            'frames': [{**artifacts[i], 'artifactId': i, 'frameNarration': frame_narrations.get(artifacts[i]['frameId'])}
+                       for i in board['artifactIds']] if board else [],
             'canConfirm': not problems, 'confirmationProblems': problems, 'firstConfirmed': confirmed})
     result['storyboard'] = {'cues': cards, 'rounds': copy.deepcopy(manifest.get('reviewRounds', []))}
     result['explorations'] = copy.deepcopy(manifest.get('explorations', []))
@@ -463,6 +465,8 @@ def status(version_root):
             if not path.is_symlink():
                 job = json.loads(path.read_text())
                 result["tasks"].append({key: job[key] for key in ("id", "action", "status", "inputKey", "createdAt", "updatedAt", "completedCueIds", "error") if key in job})
+                if job.get("request", {}).get("requestId"):
+                    result["tasks"][-1]["requestId"] = job["request"]["requestId"]
     memory = afterforge / "工程/创作记忆.md"
     result["memorySha256"] = sha(memory) if memory.is_file() else None
     frame = afterforge / "工程/frame.md"

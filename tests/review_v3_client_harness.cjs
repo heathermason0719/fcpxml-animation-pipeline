@@ -4,13 +4,17 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 class Element {
-  constructor() { this.children=[]; this.dataset={}; this.value=''; this.checked=false; this.hidden=false; this.disabled=false; this.textContent=''; this.className=''; this.listeners={}; }
-  set innerHTML(value) { this.html=value; this.video=String(value).includes('<video') ? new Element() : null; } get innerHTML() { return this.html || this.textContent || ''; }
+  constructor() { this.children=[]; this.dataset={}; this.value=''; this.checked=false; this.hidden=false; this.disabled=false; this._textContent=''; this.className=''; this.listeners={}; }
+  set textContent(value) { this._textContent=String(value??''); } get textContent() { return this._textContent; }
+  set innerHTML(value) { this.html=value; this.video=String(value).includes('<video') ? new Element() : null; } get innerHTML() { return this.html ?? this.textContent.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
   querySelector(selector) { return selector==='video' ? this.video : null; }
   replaceChildren(...items) { this.children=items; }
   append(...items) { this.children.push(...items); }
   add(item) { this.children.push(item); }
   addEventListener(name, fn) { this.listeners[name]=fn; }
+  setAttribute(name,value) { (this.attributes ||= {})[name]=String(value); }
+  showModal() { this.open=true; }
+  close() { this.open=false; }
   classList = {toggle() {}};
 }
 const elements = new Map();
@@ -53,10 +57,71 @@ async function main() {
     await context.selectVersion('v2');
     assert.doesNotMatch(byId('media').innerHTML,/video|previews\/demo/);
     assert.equal(byId('feedbackTarget').textContent,'整个版本');
+  } else if(scenario==='round-confirmation') {
+    withStoryboard=true;
+    let data=version();
+    const first=data.storyboard.cues[0];
+    data.storyboard.cues.push({...first,id:'cue-b',title:'第二组',storyboardId:'board-b'},
+      {...first,id:'cue-active',title:'已确认组',storyboardId:'board-active',firstConfirmed:true});
+    data.cues.push({id:'source',title:'保留原片',productionMode:'source-only'});
+    const posts=[];
+    let holdRefresh=null,holdPost=null;
+    context.fetch=async(url,options)=>{
+      if(url.startsWith('/api/state')){if(holdRefresh)return new Promise(resolve=>{holdRefresh=()=>resolve({ok:true,json:async()=>structuredClone(data)})});return {ok:true,json:async()=>structuredClone(data)}}
+      if(url==='/api/action'){
+        const body=JSON.parse(options.body);posts.push(body);
+        const finish=()=>{data.editRevision++;data.storyboard.cues.forEach(c=>c.firstConfirmed=true);return {ok:true,json:async()=>({editRevision:data.editRevision,record:{id:'batch'}})}};
+        if(holdPost)return new Promise(resolve=>{holdPost=()=>resolve(finish())});
+        return finish();
+      }
+      throw new Error('Unexpected request '+url);
+    };
+    await context.selectVersion('v1');
+    assert.match(byId('storyboards').innerHTML,/data-confirm-round/,'global confirmation must be reachable without selecting individual cues');
+    context.openRoundDesignConfirmation();
+    assert.equal(byId('designConfirmDialog').open,true);
+    assert.equal(posts.length,0,'opening the scope summary must not create a decision');
+    context.cancelRoundDesignConfirmation();
+    await context.submitRoundDesignConfirmation();assert.equal(posts.length,0,'cancelled confirmation must do nothing');
+    // Do not silently skip an unconfirmable Cue and report a successful whole round.
+    data.storyboard.cues[1].canConfirm=false;
+    data.storyboard.cues[1].confirmationProblems=[{code:'unresolved-feedback'}];
+    await context.selectVersion('v1');context.openRoundDesignConfirmation();
+    await context.submitRoundDesignConfirmation();assert.equal(posts.length,0);
+    assert.match(byId('designConfirmContent').innerHTML,/第二组/);
+    data.storyboard.cues[1].canConfirm=true;
+    data.storyboard.cues[1].confirmationProblems=[];
+    await context.selectVersion('v1');
+    context.setStoryboardDraft('cue-a','board-a','hero','尚未保存的意见');
+    context.openRoundDesignConfirmation();await context.submitRoundDesignConfirmation();
+    assert.equal(posts.length,0);assert.equal(context.currentStoryboardDrafts()[0].body,'尚未保存的意见');
+    context.setStoryboardDraft('cue-a','board-a','hero','');
+    // New immutable board after opening must require another look at the scope.
+    context.openRoundDesignConfirmation();data.storyboard.cues[1].storyboardId='board-b-new';
+    await context.submitRoundDesignConfirmation();assert.equal(posts.length,0);
+    assert.match(byId('designConfirmMessage').textContent,/更新|变化/);
+    context.openRoundDesignConfirmation();holdRefresh=true;
+    const cancelled=context.submitRoundDesignConfirmation();await new Promise(setImmediate);
+    context.cancelRoundDesignConfirmation();holdRefresh();holdRefresh=null;await cancelled;
+    assert.equal(posts.length,0,'cancel during refresh must not post a decision');
+    // The second click sends exactly the current pending boards as one existing decision.
+    context.openRoundDesignConfirmation();holdPost=true;
+    const submit=context.submitRoundDesignConfirmation();await new Promise(setImmediate);
+    await context.submitRoundDesignConfirmation();assert.equal(posts.length,1);
+    assert.deepEqual(posts[0].request.storyboardIds,['board-a','board-b-new']);
+    assert.equal(posts[0].request.operation,'decision');assert.equal(posts[0].request.kind,'confirm-design');
+    assert.equal(posts[0].action,'update');assert.equal(posts[0].request.decision,undefined,'design confirmation must not authorize a Demo or delivery');
+    holdPost();await submit;assert.equal(byId('designConfirmDialog').open,false);
+    await context.selectVersion('v1');
+    assert.match(byId('storyboardQualificationStatus').textContent,/3.*首次设计确认/,'qualification must be derived from saved state on refresh');
+    context.openRoundDesignConfirmation();await context.submitRoundDesignConfirmation();assert.equal(posts.length,1);
+    data.storyboard.cues[0].firstConfirmed=false;await context.selectVersion('v1');
+    context.openRoundDesignConfirmation();await context.selectVersion('v2');
+    await context.submitRoundDesignConfirmation();assert.equal(posts.length,1,'changing version invalidates the open scope');
   } else if(scenario==='notes-and-intent') {
     withStoryboard=true; await context.selectVersion('v1');
     const cue={id:'cue-a',objectId:'object-a',storyboardId:'b',title:'S01 开场',narration:'旁白',finalAnimationDescription:'总体描述',frames:[
-      {frameId:'b',label:'先出现'}, {frameId:'a',label:'再停留'}, {frameId:'c',label:'无说明'}],animationNotes:[
+      {frameId:'b',label:'先出现',frameNarration:'原声：同一句'}, {frameId:'a',label:'再停留',frameNarration:'<script>unsafe</script>'}, {frameId:'c',label:'无说明'}],animationNotes:[
       {id:'n1',frameIds:['a','b'],text:'一条跨帧说明'}, {id:'n2',frameIds:['b'],text:'共享前帧'}]};
     const html=context.storyboardCueHtml(cue);
     assert.equal(html.split('一条跨帧说明').length,2);
@@ -64,6 +129,9 @@ async function main() {
     assert.ok(html.indexOf('一条跨帧说明')<html.indexOf('无说明'));
     assert.ok(html.indexOf('总体描述')<html.indexOf('先出现'));
     assert.match(html,/对应帧 01、02/);
+    assert.match(html,/原声：同一句/);
+    assert.match(html,/尚未标注对应旁白/);
+    assert.match(html,/&lt;script&gt;unsafe&lt;\/script&gt;/);
     assert.equal((html.match(/data-comment-key=/g)||[]).length,3);
     assert.match(context.esc('" onclick="evil'),/&quot; onclick=&quot;evil/);
     const key=context.commentKey(cue,cue.frames[0]);
@@ -74,6 +142,126 @@ async function main() {
     assert.equal(context.commentIsOpen(context.commentKey({...cue,objectId:'new'},cue.frames[0])),true);
     await context.selectVersion('v2');
     assert.equal(context.commentIsOpen(context.commentKey(cue,cue.frames[0])),true);
+  } else if(scenario==='frame-save-sequential') {
+    withStoryboard=true;
+    const baseFetch=context.fetch, reads=[], writes=[], committed=[];
+    let serverRevision=7;
+    const snapshot=()=>{const s=version();s.editRevision=serverRevision;s.storyboard.cues[0].frames.push({...s.storyboard.cues[0].frames[0],frameId:'second'});return s};
+    context.fetch=async(url,options)=>url.startsWith('/api/state')?{ok:true,json:async()=>snapshot()}:baseFetch(url,options);
+    await context.selectVersion('v1');
+    context.fetch=async(url,options)=>{
+      if(url.startsWith('/api/state')){const s=snapshot();return new Promise(resolve=>reads.push(()=>resolve({ok:true,json:async()=>s})))}
+      if(url==='/api/action'){
+        const request=JSON.parse(options.body).request;
+        writes.push(request);
+        if(request.expectedRevision!==serverRevision)return {ok:false,status:409,json:async()=>({error:'stale revision'})};
+        serverRevision++;committed.push(request.body);
+        return {ok:true,json:async()=>({editRevision:serverRevision,record:{id:'saved-'+serverRevision}})};
+      }
+      return baseFetch(url,options);
+    };
+    context.setStoryboardDraft('cue-a','board-a','hero','第一帧意见');
+    const first=context.saveStoryboardFeedback('cue-a','board-a','hero');
+    await new Promise(setImmediate); // Write acknowledged, expensive state refresh still pending.
+    context.setStoryboardDraft('cue-a','board-a','second','第二帧意见');
+    const second=context.saveStoryboardFeedback('cue-a','board-a','second');
+    await new Promise(setImmediate);
+    assert.deepEqual(writes.map(w=>w.expectedRevision),[7,8],'next frame must use the acknowledged revision before refresh finishes');
+    reads[1]();await second;reads[0]();await first;
+    assert.equal(context.requestBase().expectedRevision,9,'late revision-8 refresh must not roll revision 9 back');
+    assert.deepEqual(committed,['第一帧意见','第二帧意见']);
+    assert.equal(context.currentStoryboardDrafts().length,0);
+    // Two clicks before either POST acknowledges must also serialize, without dropping either draft.
+    let acknowledge;
+    context.fetch=async(url,options)=>{
+      if(url.startsWith('/api/state'))return {ok:true,json:async()=>snapshot()};
+      if(url==='/api/action'){
+        const request=JSON.parse(options.body).request;writes.push(request);
+        assert.equal(request.expectedRevision,serverRevision);
+        if(!acknowledge)return new Promise(resolve=>{acknowledge=()=>{serverRevision++;resolve({ok:true,json:async()=>({editRevision:serverRevision,record:{id:'fast-first'}})})}});
+        serverRevision++;return {ok:true,json:async()=>({editRevision:serverRevision,record:{id:'fast-second'}})};
+      }
+      return baseFetch(url,options);
+    };
+    context.setStoryboardDraft('cue-a','board-a','hero','连点第一帧');
+    context.setStoryboardDraft('cue-a','board-a','second','连点第二帧');
+    const fastFirst=context.saveStoryboardFeedback('cue-a','board-a','hero');
+    const fastSecond=context.saveStoryboardFeedback('cue-a','board-a','second');
+    await new Promise(setImmediate);
+    assert.equal(writes.length,3,'second POST must wait until the first POST acknowledges');
+    acknowledge();await Promise.all([fastFirst,fastSecond]);
+    assert.deepEqual(writes.map(w=>w.expectedRevision),[7,8,9,10]);
+    assert.equal(context.currentStoryboardDrafts().length,0);
+  } else if(scenario==='storyboard-buttons') {
+    withStoryboard=true;await context.selectVersion('v1');
+    const normalFetch=context.fetch;let release;let posts=0;
+    context.setStoryboardDraft('cue-a','board-a','hero','本轮修改意见');
+    context.fetch=async(url,options)=>url==='/api/action'?new Promise(resolve=>{posts++;release=()=>resolve({ok:true,json:async()=>({editRevision:8,record:{id:'round-one',feedbackIds:['f1'],status:'submitted'}})})}):normalFetch(url,options);
+    const submit=context.submitStoryboardRound();
+    assert.match(byId('storyboardActionStatus').textContent,/提交中/,'round feedback needs a nearby pending receipt');
+    await context.submitStoryboardRound();assert.equal(posts,1,'double click must not submit two rounds');
+    release();await submit;
+    assert.match(byId('storyboardActionStatus').textContent,/已提交.*1.*待处理/);
+    assert.equal(context.requestBase().expectedRevision,8);
+    assert.equal(context.currentStoryboardDrafts().length,0);
+    context.renderTasks();assert.match(byId('storyboardActionStatus').textContent,/已提交/);
+    context.fetch=async(url,options)=>url==='/api/action'?{ok:false,status:409,json:async()=>({error:'stale revision'})}:normalFetch(url,options);
+    context.setStoryboardDraft('cue-a','board-a','hero','失败后保留');
+    await context.submitStoryboardRound();
+    assert.match(byId('storyboardActionStatus').textContent,/未能确认.*stale revision/);
+    assert.equal(context.currentStoryboardDrafts()[0].body,'失败后保留');
+    context.setStoryboardDraft('cue-a','board-a','hero','');
+    await context.confirmSelectedDesigns();assert.match(byId('storyboardActionStatus').textContent,/勾选/);
+    context.toggleConfirmDesignCue('cue-a');
+    context.fetch=async(url,options)=>url==='/api/action'?{ok:true,json:async()=>({editRevision:9,record:{id:'decision-one'}})}:normalFetch(url,options);
+    await context.confirmSelectedDesigns();assert.match(byId('storyboardActionStatus').textContent,/已确认.*1/);
+    let previewRequest;
+    context.fetch=async(url,options)=>{if(url==='/api/action'){previewRequest=JSON.parse(options.body).request;return {ok:true,json:async()=>({status:'started',requestId:previewRequest.requestId})}}return normalFetch(url,options)};
+    await context.previewStoryboards();assert.match(byId('storyboardActionStatus').textContent,/生成中/);
+    const before=previewRequest.requestId;await context.previewStoryboards();assert.equal(previewRequest.requestId,before);
+    // The generated job ID differs from the request ID; old unrelated failures must not override it.
+    revision=10;
+    context.fetch=async(url,options)=>url.startsWith('/api/state')?{ok:true,json:async()=>({...version(),tasks:[{id:'old',status:'failed',error:'old failure'},{id:'job-other-id',requestId:before,status:'complete'}]})}:normalFetch(url,options);
+    await context.selectVersion('v1');assert.match(byId('storyboardActionStatus').textContent,/静帧已生成/);
+    context.fetch=async(url,options)=>{if(url==='/api/action'){previewRequest=JSON.parse(options.body).request;return {ok:true,json:async()=>({status:'started',requestId:previewRequest.requestId})}}return normalFetch(url,options)};
+    await context.previewStoryboards();
+    context.fetch=async(url,options)=>url.startsWith('/api/state')?{ok:true,json:async()=>({...version(),tasks:[{id:previewRequest.requestId,status:'failed',error:'测试生成失败'}]})}:normalFetch(url,options);
+    await context.selectVersion('v1');assert.match(byId('storyboardActionStatus').textContent,/生成失败.*测试生成失败/);
+  } else if(scenario==='frame-save-status') {
+    withStoryboard=true; await context.selectVersion('v1');
+    const html=()=>context.storyboardFrameHtml(version().storyboard.cues[0],version().storyboard.cues[0].frames[0],0);
+    await context.saveStoryboardFeedback('cue-a','board-a','hero');
+    assert.match(html(),/请先填写/,'empty save must explain why nothing happened next to the frame');
+    context.setStoryboardDraft('cue-a','board-a','hero','延长停留');
+    const normalFetch=context.fetch; let resolveSave; let posts=0;
+    context.fetch=async(url,options)=>{if(url==='/api/action'){posts++;return new Promise(resolve=>resolveSave=resolve)}return normalFetch(url,options)};
+    const pending=context.saveStoryboardFeedback('cue-a','board-a','hero');
+    assert.match(html(),/disabled[^>]*>保存中/);
+    await context.saveStoryboardFeedback('cue-a','board-a','hero');
+    assert.equal(posts,1,'double click must not create duplicate feedback');
+    resolveSave({ok:true,json:async()=>({record:{id:'feedback-saved'}})});
+    await pending;
+    context.renderTasks();
+    assert.match(html(),/已保存/,'confirmation must remain in the frame after state refresh');
+    assert.equal(context.currentStoryboardDrafts().length,0);
+    context.setStoryboardDraft('cue-a','board-a','hero','保存中的意见');
+    const savingAgain=context.saveStoryboardFeedback('cue-a','board-a','hero');
+    context.setStoryboardDraft('cue-a','board-a','hero','保存期间继续输入');
+    resolveSave({ok:true,json:async()=>({record:{id:'feedback-newer'}})});
+    await savingAgain;
+    assert.equal(context.currentStoryboardDrafts()[0].body,'保存期间继续输入');
+    assert.match(html(),/上一条反馈已保存.*新修改尚未保存/);
+    context.setStoryboardDraft('cue-a','board-a','hero','第二条意见');
+    assert.match(html(),/草稿未保存/);
+    context.fetch=async(url,options)=>url==='/api/action'?{ok:false,status:409,json:async()=>({error:'版本已更新'})}:normalFetch(url,options);
+    await context.saveStoryboardFeedback('cue-a','board-a','hero');
+    assert.match(html(),/未能确认保存.*版本已更新/);
+    assert.equal(context.currentStoryboardDrafts()[0].body,'第二条意见');
+    assert.doesNotMatch(html(),/disabled[^>]*>保存中/);
+    context.fetch=async(url,options)=>url==='/api/action'?{ok:true,json:async()=>({record:{id:'feedback-2'}})}:{ok:false,status:500,json:async()=>({error:'刷新失败'})};
+    await context.saveStoryboardFeedback('cue-a','board-a','hero');
+    assert.match(html(),/已保存.*刷新/,'refresh failure must not say the acknowledged write failed');
+    assert.equal(context.currentStoryboardDrafts().length,0);
   } else if(scenario==='actions') {
     assert.match(byId('actions').innerHTML,/生成完整预览/);
     assert.match(byId('actions').innerHTML,/批准当前审阅/);

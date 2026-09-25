@@ -85,8 +85,8 @@ CLI 与 HTTP 调用同一应用层。短写入在已有 `manifest_transaction` �
 
 ## 局部说明与本版工作上下文
 
-`animationNotes` 是 Storyboard 的描述数据，不是独立生产／审批对象。Cue 仍为连续制作容器，`finalAnimationDescription` 为唯一总说明。新 Storyboard 冻结有序帧集合、总体/局部说明、旁白与内容事实，以 `reviewInputKey` 核验当前审阅依据；PNG 单独以合同 5 的 inputKey 核验，role 等原图片依赖继续有效。合同 4 的历史记录按原键核验，不能证明一致的旧 PNG 重新生成。帧重组不消除旧反馈或产生完整 Motion 权限。
+`animationNotes` 是 Storyboard 的描述数据，不是独立生产／审批对象。Cue 仍为连续制作容器，`finalAnimationDescription` 为唯一总说明。每张帧可用 `cue.storyboard.frames[].narration` 冻结其对应原句（可用 `原声：` 标明真实原声；同句可对应多帧）；缺失映射明确投影为“尚未标注对应旁白”，不会按时间、Cue 旁白或说明推断。新 Storyboard 冻结有序帧集合、逐帧映射、总体/局部说明、旁白与内容事实，以 `reviewInputKey` 核验当前审阅依据；PNG 单独以合同 5 的 inputKey 核验，文字映射变更复用已验证图片。合同 4 的历史记录按原键核验，不能证明一致的旧 PNG 重新生成。帧重组不消除旧反馈或产生完整 Motion 权限。
 
 `workingIntent.items` 与生产数据并列存于版本 manifest，包含稳定 ID、focus/preserve、文字、定位、用户来源与 writer 时间。独立 writer 分支在版本锁内去重/校验/保存，不运行 upgrade 或生产历史纠正；仅更新意图及必要 revision/request 记录。定位失效非阻塞；Agent 更新定位与被替代条目。它不进入任何媒体、Review、资格或交付输入，不继承到新制作版，不写入系列记忆。
 
-正式 Review 在现有 API 上读取这两份数据。顶部显示单集/制作版/历史版与 Cue 跳转；桌面三列等尺寸帧，窄屏两列。说明按当前快照帧序挂在最后关联帧下，关系按钮只负责阅读高亮。图片弹窗、桌面 sticky 反馈栏、逐版本/对象/帧的留言开合偏好属于浏览器状态，不改变批准。保存反馈、交棒、完整 Cue 确认仍使用原接口；新 Storyboard 清除旧依据勾选，草稿不自动转绑。后台 hero 约束与抽帧用途不变。
+正式 Review 在现有 API 上读取这两份数据。顶部显示单集/制作版/历史版与 Cue 跳转；桌面三列等尺寸帧，窄屏两列。说明按当前快照帧序挂在最后关联帧下，关系按钮只负责阅读高亮。图片弹窗、桌面 sticky 反馈栏、逐版本/对象/帧的留言开合偏好属于浏览器状态，不改变批准。逐帧反馈写请求按制作版串行，保存回执立即推进客户端 revision；状态刷新独立进行，迟到的低 revision 响应不覆盖较新状态。版本冲突仍保留草稿，不自动重发或改绑。保存反馈、交棒、完整 Cue 确认仍使用原接口；新 Storyboard 清除旧依据勾选，草稿不自动转绑。顶部提交、确认、生成按钮在原位显示回执并防重复点击；静帧生成按 tasks 的 requestId（持久 job 的原请求身份）关联本次异步任务，成功／失败不从无关历史任务推断。后台 hero 约束与抽帧用途不变。

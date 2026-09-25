@@ -181,7 +181,7 @@ def storyboard_current(root, manifest, record):
         else:
             # Legacy publication froze prose but had no independent review key.
             # Never interpret new notes or changed prose as historical evidence.
-            if expected['animationNotes'] or any(record.get(k) != expected[k] for k in
+            if expected['animationNotes'] or expected.get('frameNarrations') or any(record.get(k) != expected[k] for k in
                     ('narration', 'contentContext', 'finalAnimationDescription')):
                 return False
     except (ValueError, KeyError, OSError):

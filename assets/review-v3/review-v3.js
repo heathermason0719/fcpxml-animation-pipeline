@@ -1,5 +1,6 @@
 const $=id=>document.getElementById(id);let project=null,state=null,versionId=null,target={},pollTimer=null,comparisonState=null,draftBasisRevision=null,draftStale=false;
-const storyboardDrafts=new Map(),confirmedDesignCueIds=new Set(),savedStoryboardFeedbackIds=new Set();
+const frameFeedbackWrites=new Map(),reviewRevisions=new Map(),storyboardActionStates=new Map();
+const storyboardSaveStates=new Map(),storyboardDrafts=new Map(),confirmedDesignCueIds=new Set(),savedStoryboardFeedbackIds=new Set();
 const storyboardStorageKey=(id=versionId)=>`afterforge-review-v3:storyboard:${id||'none'}`;
 const storageKey=()=>`afterforge-review-v3:${versionId||'none'}:${target.artifactId||'all'}:${state?.editRevision??'none'}`;const draftPointerKey=()=>`afterforge-review-v3:pointer:${versionId||'none'}:${state?.editRevision??'none'}`;
 const api=async(path,options)=>{const r=await fetch(path,options);const body=await r.json();if(!r.ok){const e=new Error(body.error||'请求失败');e.status=r.status;throw e}return body};
@@ -15,43 +16,187 @@ function storyboardDraftIsStale(draft){const cue=storyboardCues().find(item=>ite
 function persistStoryboardDrafts(id=versionId){localStorage.setItem(storyboardStorageKey(id),JSON.stringify([...storyboardDrafts.values()].filter(draft=>draft.target?.versionId===id)))}
 function clearSubmittedDraft(draft){const key=JSON.stringify([draft.target.versionId,draft.cueId,draft.storyboardId,draft.frameId]),current=storyboardDrafts.get(key);if(current?.body===draft.body&&current?.anchor===draft.anchor)storyboardDrafts.delete(key)}
 function restoreStoryboardDrafts(){const raw=localStorage.getItem(storyboardStorageKey());if(!raw)return;try{for(const draft of JSON.parse(raw)){if(draft?.target?.versionId===versionId&&draft.cueId&&draft.storyboardId&&draft.frameId&&draft.body)storyboardDrafts.set(JSON.stringify([versionId,draft.cueId,draft.storyboardId,draft.frameId]),draft)}}catch{}}
-function setStoryboardDraft(cueId,storyboardId,frameId,body){const cue=storyboardCues().find(item=>item.id===cueId&&item.storyboardId===storyboardId),frame=cue&&storyboardFrame(cue,{frameId});if(!cue||!frame)return;const key=storyboardKey(cue,frame);if(!String(body||'').trim())storyboardDrafts.delete(key);else storyboardDrafts.set(key,{cueId,storyboardId,frameId,body:String(body),anchor:storyboardAnchor(frame),target:{versionId,cueIds:[cueId],artifactId:frame.artifactId,storyboardId,frameId}});persistStoryboardDrafts()}
+function setStoryboardDraft(cueId,storyboardId,frameId,body){const cue=storyboardCues().find(item=>item.id===cueId&&item.storyboardId===storyboardId),frame=cue&&storyboardFrame(cue,{frameId});if(!cue||!frame)return;const key=storyboardKey(cue,frame);if((storyboardDrafts.get(key)?.body||'')!==String(body||'')&&storyboardSaveStates.has(key)&&storyboardSaveStates.get(key).kind!=='pending')updateFrameSaveState(key,'draft',String(body||'').trim()?'草稿未保存。':'');if(!String(body||'').trim())storyboardDrafts.delete(key);else storyboardDrafts.set(key,{cueId,storyboardId,frameId,body:String(body),anchor:storyboardAnchor(frame),target:{versionId,cueIds:[cueId],artifactId:frame.artifactId,storyboardId,frameId}});persistStoryboardDrafts()}
 function captureStoryboardDrafts(){document.querySelectorAll('[data-storyboard-draft]').forEach(area=>setStoryboardDraft(area.dataset.cueId,area.dataset.storyboardId,area.dataset.frameId,area.value))}
 function source(text){return {channel:'review',text,reference:`review:${versionId}:${crypto.randomUUID()}`}}
 function toggleConfirmDesignCue(cueId){confirmedDesignCueIds.has(cueId)?confirmedDesignCueIds.delete(cueId):confirmedDesignCueIds.add(cueId);renderStoryboards()}
-async function confirmSelectedDesigns(){
-  const actionVersion=versionId,cues=storyboardCues().filter(cue=>confirmedDesignCueIds.has(cue.id)&&cue.canConfirm&&cue.storyboardId),storyboardIds=cues.map(cue=>cue.storyboardId);
-  if(!storyboardIds.length){$('message').className='message error';$('message').textContent='请选择可确认的镜头。';return}
-  if(await sendAction('update',{...requestBase(),operation:'decision',kind:'confirm-design',storyboardIds,source:source('确认所选 storyboard 设计')})&&versionId===actionVersion){for(const cue of cues)confirmedDesignCueIds.delete(cue.id);renderStoryboards()}
+function storyboardActionBusy(id=versionId){const item=storyboardActionStates.get(id);return !!(item&&(item.inFlight||['pending','running'].includes(item.kind)))}
+function renderStoryboardActionStatus(){
+  let item=storyboardActionStates.get(versionId);
+  if(item?.action==='preview'&&item.kind==='running'){
+    const task=(state.tasks||[]).find(t=>t.requestId===item.requestId||t.id===item.requestId);
+    if(task?.status==='failed')item={...item,kind:'error',message:`静帧生成失败：${task.error||'请查看任务详情。'}`};
+    else if(['complete','completed'].includes(task?.status))item={...item,kind:'success',message:'✓ 静帧已生成，图片与说明已更新。'};
+    else if(task?.completedCueIds?.length)item={...item,message:`静帧生成中，已完成 ${task.completedCueIds.length} 个镜头…`};
+    storyboardActionStates.set(versionId,item);
+  }
+  const lastRound=state?.storyboard?.rounds?.at(-1),fallback=lastRound?`最近一轮反馈已提交：${lastRound.feedbackIds?.length||0} 条 · ${{submitted:'待处理',processing:'处理中',processed:'已处理'}[lastRound.status]||lastRound.status}。`:'';
+  const message=$('storyboardActionStatus');if(message){message.textContent=item?.message||fallback;message.className=`storyboard-action-status ${item?.kind||(fallback?'success':'')}`}
+  renderStoryboardQualification();
+  const busy=storyboardActionBusy(),labels={preview:'生成静帧',submit:'提交本轮反馈',confirm:`确认所选设计（${confirmedDesignCueIds.size}）`},pending={preview:'生成中…',submit:'提交中…',confirm:'确认中…'};
+  for(const [action,selector] of Object.entries({preview:'[data-storyboard-preview]',submit:'[data-storyboard-submit]',confirm:'[data-confirm-design]'}))document.querySelectorAll(selector).forEach(button=>{button.disabled=busy||(action==='confirm'&&!confirmedDesignCueIds.size);button.textContent=busy&&item?.action===action?pending[action]:labels[action]})
 }
+function setStoryboardActionState(id,item){storyboardActionStates.set(id,item);if(versionId===id)renderStoryboardActionStatus()}
+async function runStoryboardAction(action,request,success,onSaved=()=>{}){
+  const actionVersion=versionId;
+  if(storyboardActionBusy())return false;
+  if(frameFeedbackWrites.has(actionVersion)){setStoryboardActionState(actionVersion,{kind:'error',message:'逐帧反馈正在保存，请等保存完成后再操作。'});return false}
+  const pending={preview:'静帧生成请求发送中…',submit:'本轮反馈提交中…',confirm:'所选设计确认中…'};
+  setStoryboardActionState(actionVersion,{action,kind:'pending',inFlight:true,message:pending[action]});
+  let saved=false;
+  try{
+    const result=await postVersionAction(actionVersion,request,action==='preview'?'preview':'update');
+    saved=true;onSaved(result);
+    const started=action==='preview'&&result.status==='started';
+    setStoryboardActionState(actionVersion,{action,kind:started?'running':'success',inFlight:true,requestId:result.requestId||request.requestId,message:started?'静帧生成中，完成后会自动更新图片。':success(result)});
+    if(versionId===actionVersion)await selectVersion(actionVersion,{preserveTarget:true});
+    return true;
+  }catch(error){
+    const item=storyboardActionStates.get(actionVersion);
+    setStoryboardActionState(actionVersion,saved?{...item,message:`${item.message} 状态刷新失败：${error.message}；可点击「刷新状态」。`}:{action,kind:'error',message:`未能确认${action==='submit'?'提交':action==='confirm'?'确认':'生成请求'}：${error.message}。草稿与选择已保留。`});
+    return saved;
+  }finally{
+    const item=storyboardActionStates.get(actionVersion);if(item)setStoryboardActionState(actionVersion,{...item,inFlight:false});
+    if(versionId===actionVersion&&storyboardActionStates.get(actionVersion)?.kind==='running'){clearInterval(pollTimer);pollTimer=setInterval(()=>selectVersion(actionVersion,{preserveTarget:true}).catch(error=>{if(versionId===actionVersion)setStoryboardActionState(actionVersion,{...storyboardActionStates.get(actionVersion),message:`生成任务已启动，状态刷新失败：${error.message}。正在重试…`})}),4000)}
+  }
+}
+async function previewStoryboards(){captureStoryboardDrafts();return runStoryboardAction('preview',{...requestBase(),scope:'storyboard',cueIds:storyboardCues().map(c=>c.id)},()=> '✓ 静帧已生成。')}
+async function confirmSelectedDesigns(){
+  if(storyboardActionBusy())return false;
+  const actionVersion=versionId,cues=storyboardCues().filter(cue=>confirmedDesignCueIds.has(cue.id)&&cue.canConfirm&&cue.storyboardId),storyboardIds=cues.map(cue=>cue.storyboardId);
+  if(!storyboardIds.length){setStoryboardActionState(actionVersion,{kind:'error',message:'请先勾选镜头旁的「确认完整 Cue」，再确认所选设计。'});return false}
+  return runStoryboardAction('confirm',{...requestBase(),operation:'decision',kind:'confirm-design',storyboardIds,source:source('确认所选 storyboard 设计')},()=>`✓ 已确认 ${storyboardIds.length} 组设计。`,()=>{if(versionId===actionVersion){for(const cue of cues)confirmedDesignCueIds.delete(cue.id);renderStoryboards()}})
+}
+
+let designConfirmation=null,roundConfirmationChecking=false;
+function roundDesignPlan(){
+  const cues=storyboardCues(),pending=cues.filter(c=>!c.firstConfirmed);
+  return {cues,pending,existing:cues.filter(c=>c.firstConfirmed),blocked:pending.filter(c=>!c.canConfirm||!c.storyboardId)};
+}
+function roundDesignAnchor(){
+  return JSON.stringify(storyboardCues().map(c=>[c.id,c.objectId,c.reviewInputKey,selectionAnchor(c),!!c.firstConfirmed,!!c.canConfirm,c.confirmationProblems]));
+}
+function designDraftProblem(){
+  if(frameFeedbackWrites.has(versionId))return '逐帧反馈正在保存，请等保存完成后再确认。';
+  if(currentStoryboardDrafts().length||$('feedbackBody').value.trim())return '还有未保存的留言草稿，请先保存／提交意见，或清空不再需要的草稿后再确认。';
+  return '';
+}
+function cancelRoundDesignConfirmation(){designConfirmation=null;$('designConfirmDialog').close()}
+function openRoundDesignConfirmation(){
+  if(storyboardActionBusy()||roundConfirmationChecking)return;
+  captureStoryboardDrafts();
+  const plan=roundDesignPlan();
+  designConfirmation={versionId,anchor:roundDesignAnchor(),storyboardIds:plan.pending.map(c=>c.storyboardId)};
+  const list=(cues)=>`<ul>${cues.map(c=>`<li>${esc(c.title||c.id)}${!c.firstConfirmed&&(!c.canConfirm||!c.storyboardId)?`<p class="stale-frame">${esc((c.confirmationProblems||[]).map(confirmationProblemText).join('；')||'请先生成当前 Storyboard。')}</p>`:''}</li>`).join('')}</ul>`;
+  const original=(state.cues||[]).filter(c=>c.productionMode==='source-only');
+  $('designConfirmContent').innerHTML=`<p><strong>本次确认 ${plan.pending.length} 组</strong> · 已有首次确认 ${plan.existing.length} 组</p>${list(plan.pending)}${plan.existing.length?`<details><summary>已有确认 · 保留现有记录</summary>${list(plan.existing)}</details>`:''}${original.length?`<details><summary>保留原片 · 不在本次确认范围（${original.length} 组）</summary>${list(original)}</details>`:''}<p class="muted">范围仅限以上待确认的完整 Cue；尚未建立为动画 Cue 的段落不包含在内。此操作只记录设计确认，动画完成后仍需审阅。</p>`;
+  const problem=designDraftProblem()||(plan.blocked.length?'上述设计仍有待处理事项，请处理后再整体确认。':'');
+  $('designConfirmMessage').textContent=problem||(!plan.pending.length?'当前设计均已有首次确认，无需重复确认。':'');
+  $('submitDesignConfirm').disabled=!!problem||!plan.pending.length;
+  $('submitDesignConfirm').textContent='确认这些设计';
+  if(!$('designConfirmDialog').open)$('designConfirmDialog').showModal();
+}
+async function submitRoundDesignConfirmation(){
+  const confirmation=designConfirmation;
+  if(!confirmation||confirmation.versionId!==versionId||roundConfirmationChecking||storyboardActionBusy())return false;
+  captureStoryboardDrafts();
+  const initial=roundDesignPlan(),problem=designDraftProblem();
+  if(problem||initial.blocked.length||!initial.pending.length){$('designConfirmMessage').textContent=problem||'请先处理待确认设计中的问题。';return false}
+  roundConfirmationChecking=true;$('submitDesignConfirm').disabled=true;$('submitDesignConfirm').textContent='核对中…';
+  let changed=false;
+  try{
+    // Re-read before committing: the summary belongs to the exact boards the user saw.
+    await selectVersion(confirmation.versionId,{preserveTarget:true});
+    if(designConfirmation!==confirmation||versionId!==confirmation.versionId)return false;
+    if(roundDesignAnchor()!==confirmation.anchor){changed=true;$('designConfirmMessage').textContent='设计、确认状态或范围已更新，请返回检查后重新打开本轮确认。';return false}
+    captureStoryboardDrafts();
+    const draftProblem=designDraftProblem();
+    if(draftProblem){$('designConfirmMessage').textContent=draftProblem;return false}
+    $('submitDesignConfirm').textContent='确认中…';
+    const saved=await runStoryboardAction('confirm',{...requestBase(),operation:'decision',kind:'confirm-design',storyboardIds:confirmation.storyboardIds,source:source(`确认本轮设计：${initial.pending.map(c=>c.title||c.id).join('、')}。可以开始动画制作，后续继续打磨。`)},()=>`✓ 已确认本轮 ${confirmation.storyboardIds.length} 组设计，可以开始动画制作。`,()=>{
+      if(versionId===confirmation.versionId){for(const cue of initial.pending)confirmedDesignCueIds.delete(cue.id);cancelRoundDesignConfirmation()}
+    });
+    if(!saved&&designConfirmation===confirmation)$('designConfirmMessage').textContent=storyboardActionStates.get(versionId)?.message||'确认未成功，请重试。';
+    return saved;
+  }catch(error){if(designConfirmation===confirmation)$('designConfirmMessage').textContent=`未能核对当前设计：${error.message}。尚未提交确认。`;return false}
+  finally{
+    roundConfirmationChecking=false;
+    if(designConfirmation===confirmation){$('submitDesignConfirm').disabled=changed;$('submitDesignConfirm').textContent='确认这些设计'}
+  }
+}
+function renderStoryboardQualification(){
+  const {cues,pending,existing}=roundDesignPlan(),root=$('storyboardQualificationStatus');
+  if(root)root.textContent=!cues.length?'':!pending.length?`✓ 当前 ${cues.length} 组均已完成首次设计确认，可继续制作与修改。`:`${cues.length} 组设计 · ${existing.length} 组已有确认 · ${pending.length} 组待首次确认`;
+  for(const button of document.querySelectorAll('[data-confirm-round]')){button.disabled=storyboardActionBusy()||!pending.length;button.textContent=pending.length?'确认本轮设计':'本轮首次设计已确认'}
+}
+
 function currentStoryboardDrafts(){return [...storyboardDrafts.values()].filter(draft=>draft.target?.versionId===versionId&&draft.body.trim())}
 function validStoryboardDrafts(){return currentStoryboardDrafts().filter(draft=>!storyboardDraftIsStale(draft))}
+function updateFrameSaveState(key,kind,message){
+  storyboardSaveStates.set(key,{kind,message});
+  document.querySelectorAll('[data-frame-save-status]').forEach(el=>{if(el.dataset.frameSaveStatus===key){el.textContent=message;el.className=`frame-save-status ${kind}`}});
+  document.querySelectorAll('[data-save-frame]').forEach(button=>{if(JSON.stringify([versionId,button.dataset.cueId,button.dataset.storyboardId,button.dataset.saveFrame])===key){button.disabled=kind==='pending';button.textContent=kind==='pending'?'保存中…':'保存此帧反馈'}})
+}
+async function postVersionAction(actionVersion,request,action='update'){
+  // Serialize writes for this version, but do not wait for its expensive display refresh.
+  const send=async()=>{
+    request.expectedRevision=Math.max(request.expectedRevision,reviewRevisions.get(actionVersion)||0);
+    const response=await api('/api/action',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({version:actionVersion,action,request})});
+    if(Number.isInteger(response.editRevision)){
+      const revision=Math.max(response.editRevision,reviewRevisions.get(actionVersion)||0);
+      reviewRevisions.set(actionVersion,revision);
+      if(versionId===actionVersion&&state?.identity?.versionId===actionVersion){
+        state.editRevision=revision;$('revision').textContent=`编辑版本 ${revision}`;
+      }
+    }
+    return response;
+  };
+  const previous=frameFeedbackWrites.get(actionVersion),pending=previous?previous.catch(()=>{}).then(send):send();
+  frameFeedbackWrites.set(actionVersion,pending);
+  try{return await pending}finally{if(frameFeedbackWrites.get(actionVersion)===pending)frameFeedbackWrites.delete(actionVersion)}
+}
 async function saveStoryboardFeedback(cueId,storyboardId,frameId){
-  const actionVersion=versionId;captureStoryboardDrafts();
-  const draft=[...storyboardDrafts.values()].find(item=>item.target?.versionId===actionVersion&&item.cueId===cueId&&item.storyboardId===storyboardId&&item.frameId===frameId);
-  if(!draft||storyboardDraftIsStale(draft))return;
+  const actionVersion=versionId,key=JSON.stringify([actionVersion,cueId,storyboardId,frameId]);
+  if(storyboardSaveStates.get(key)?.kind==='pending')return;
+  if(storyboardActionStates.get(actionVersion)?.inFlight){updateFrameSaveState(key,'error','顶部操作正在处理，请完成后再保存此帧反馈。');return}
+  captureStoryboardDrafts();
+  const draft=storyboardDrafts.get(key);
+  if(!draft){updateFrameSaveState(key,'error','请先填写此帧反馈。');return}
+  if(storyboardDraftIsStale(draft)){updateFrameSaveState(key,'error','静帧已更新；请核对并重新绑定草稿后保存。');return}
+  updateFrameSaveState(key,'pending','正在保存此帧反馈…');
+  let saved=false;
   try{
-    const response=await api('/api/action',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({version:actionVersion,action:'update',request:{...requestBase(),operation:'feedback',body:draft.body,source:source(draft.body),target:draft.target}})});
+    const response=await postVersionAction(actionVersion,{...requestBase(),operation:'feedback',body:draft.body,source:source(draft.body),target:draft.target});
+    saved=true;
     const feedbackId=response?.record?.id||response?.feedback?.id||response?.result?.feedback?.id;
     clearSubmittedDraft(draft);persistStoryboardDrafts(actionVersion);
+    const newerDraft=storyboardDrafts.has(key);
+    updateFrameSaveState(key,'success',newerDraft?'上一条反馈已保存；新修改尚未保存。':'✓ 此帧反馈已保存。审阅完可「提交本轮反馈」。');
     if(versionId!==actionVersion)return;
-    if(feedbackId)savedStoryboardFeedbackIds.add(feedbackId);$('message').className='message';$('message').textContent='此帧反馈已保存。';
+    document.querySelectorAll('[data-storyboard-draft]').forEach(area=>{if(area.dataset.cueId===cueId&&area.dataset.storyboardId===storyboardId&&area.dataset.frameId===frameId&&area.value===draft.body)area.value=''});
+    if(feedbackId)savedStoryboardFeedbackIds.add(feedbackId);
     await selectVersion(actionVersion,{preserveTarget:true});
-  }catch(error){if(versionId===actionVersion){$('message').className='message error';$('message').textContent=error.message}}
+  }catch(error){
+    updateFrameSaveState(key,saved?'success':'error',saved?`✓ 此帧反馈已保存，但列表刷新失败：${error.message}。请刷新状态。`:`未能确认保存：${error.message}；草稿已保留。`)
+  }
 }
 function recoverStoryboardFeedbackIds(){const submitted=new Set((state?.storyboard?.rounds||[]).flatMap(round=>round.feedbackIds||[]));for(const id of submitted)savedStoryboardFeedbackIds.delete(id);for(const feedback of state?.feedback||[]){if(feedback.target?.versionId===versionId&&feedback.target?.storyboardId&&!submitted.has(feedback.id))savedStoryboardFeedbackIds.add(feedback.id)}}
 async function submitStoryboardRound(){
+  if(storyboardActionBusy())return false;
   const actionVersion=versionId;captureStoryboardDrafts();
   const all=currentStoryboardDrafts(),stale=all.filter(storyboardDraftIsStale);
-  if(stale.length){$('message').className='message error';$('message').textContent='有静帧草稿属于旧静帧；请逐条重新绑定或保留供复制后再提交。';return false}
+  if(stale.length){setStoryboardActionState(actionVersion,{kind:'error',message:'有草稿属于旧静帧；请核对并重新绑定后再提交，草稿已保留。'});return false}
   recoverStoryboardFeedbackIds();
   const viewed=storyboardCues().map(cue=>cue.storyboardId).filter(Boolean),feedbackIds=[...savedStoryboardFeedbackIds],drafts=all.map(draft=>({body:draft.body,target:draft.target,source:source(draft.body)}));
-  if(await sendAction('update',{...requestBase(),operation:'review-submit',storyboardIds:viewed,feedbackIds,drafts,source:source('提交本轮静帧反馈')})){
+  return runStoryboardAction('submit',{...requestBase(),operation:'review-submit',storyboardIds:viewed,feedbackIds,drafts,source:source('提交本轮静帧反馈')},result=>`✓ 本轮反馈已提交：${result.record?.feedbackIds?.length??(feedbackIds.length+drafts.length)} 条，待处理。`,result=>{
     for(const draft of all)clearSubmittedDraft(draft);persistStoryboardDrafts(actionVersion);
     if(versionId!==actionVersion)return;
-    for(const id of feedbackIds)savedStoryboardFeedbackIds.delete(id);renderStoryboards();
-  }
+    for(const id of feedbackIds)savedStoryboardFeedbackIds.delete(id);
+    if(Array.isArray(result.record?.feedbackIds)&&result.record.id){state.storyboard.rounds.push(result.record)}
+    renderStoryboards();
+  })
 }
+
 function rebindStoryboardDraft(cueId,storyboardId,frameId,fromKey){const cue=storyboardCues().find(item=>item.id===cueId&&item.storyboardId===storyboardId),frame=cue&&storyboardFrame(cue,{frameId}),key=cue&&frame&&storyboardKey(cue,frame),draft=(fromKey&&storyboardDrafts.get(fromKey))||(key&&storyboardDrafts.get(key));if(draft&&frame){storyboardDrafts.delete(fromKey||key);storyboardDrafts.set(key,{...draft,storyboardId,frameId,anchor:storyboardAnchor(frame),target:{versionId,cueIds:[cueId],artifactId:frame.artifactId,storyboardId,frameId}});persistStoryboardDrafts();renderStoryboards()}}
 const noteExpansion=new Map();
 function commentKey(cue,frame){return JSON.stringify([versionId,cue.objectId||cue.id,frame.frameId])}
@@ -67,21 +212,63 @@ function localNotesHtml(cue,frame){return (cue.animationNotes||[]).filter(note=>
 function storyboardFrameHtml(cue,frame,index){
   const key=storyboardKey(cue,frame),draft=storyboardDrafts.get(key),stale=draft&&storyboardDraftIsStale(draft),url=artifactUrl({id:frame.artifactId,path:frame.path,sha256:frame.sha256}),alt=String(cue.title||cue.id)+' '+String(frame.label||frame.frameId),commentId=commentKey(cue,frame);
   const comments=(state.feedback||[]).filter(item=>item.target?.storyboardId===cue.storyboardId&&item.target?.frameId===frame.frameId).map(item=>`<p class="muted saved-frame-feedback">${esc(item.body)} · ${esc(feedbackStatus[item.status]||item.status)}</p>`).join('');
-  const action=stale?`<button data-rebind-frame="${esc(frame.frameId)}" data-cue-id="${esc(cue.id)}" data-storyboard-id="${esc(cue.storyboardId)}" type="button">重新绑定草稿</button>`:`<button data-save-frame="${esc(frame.frameId)}" data-cue-id="${esc(cue.id)}" data-storyboard-id="${esc(cue.storyboardId)}" type="button">保存此帧反馈</button>`;
-  return `<figure class="review-frame storyboard-frame" data-frame="${esc(frame.frameId)}" data-frame-cue="${esc(cue.id)}"><button class="frame-preview" type="button" data-frame-preview data-image-url="${esc(url)}" data-image-title="${esc(alt)}" aria-label="放大 ${esc(alt)}"><img src="${esc(url)}" alt="${esc(alt)}" loading="lazy"></button><figcaption class="frame-meta"><span class="frame-number">${String(index+1).padStart(2,'0')}</span><span class="frame-name">${esc(frame.label||frame.frameId)}</span>${frame.current?'':'<span class="stale-frame">历史图片</span>'}</figcaption>${localNotesHtml(cue,frame)}${comments}<details class="frame-comment" data-comment-key="${esc(commentId)}" ${commentIsOpen(commentId)?'open':''}><summary>此帧留言</summary><textarea data-storyboard-draft data-cue-id="${esc(cue.id)}" data-storyboard-id="${esc(cue.storyboardId)}" data-frame-id="${esc(frame.frameId)}" ${stale?'disabled':''} placeholder="对这张静帧留下意见">${esc(draft?.body||'')}</textarea>${stale?'<p class="stale-frame">静帧已更新；草稿保留在原帧，核对后才可重新绑定。</p>':''}<div>${action}</div></details></figure>`
+  const saveState=storyboardSaveStates.get(key),pending=saveState?.kind==='pending';
+  const action=stale?`<button data-rebind-frame="${esc(frame.frameId)}" data-cue-id="${esc(cue.id)}" data-storyboard-id="${esc(cue.storyboardId)}" type="button">重新绑定草稿</button>`:`<button data-save-frame="${esc(frame.frameId)}" data-cue-id="${esc(cue.id)}" data-storyboard-id="${esc(cue.storyboardId)}" type="button" ${pending?'disabled':''}>${pending?'保存中…':'保存此帧反馈'}</button>`;
+  const narration=typeof frame.frameNarration==='string'?frame.frameNarration:'尚未标注对应旁白';
+  return `<figure class="review-frame storyboard-frame" data-frame="${esc(frame.frameId)}" data-frame-cue="${esc(cue.id)}"><button class="frame-preview" type="button" data-frame-preview data-image-url="${esc(url)}" data-image-title="${esc(alt)}" aria-label="放大 ${esc(alt)}"><img src="${esc(url)}" alt="${esc(alt)}" loading="lazy"></button><figcaption class="frame-meta"><span class="frame-number">${String(index+1).padStart(2,'0')}</span><span class="frame-name">${esc(frame.label||frame.frameId)}</span>${frame.current?'':'<span class="stale-frame">历史图片</span>'}</figcaption><p class="frame-narration"><span class="eyebrow">对应旁白</span> ${esc(narration)}</p>${localNotesHtml(cue,frame)}${comments}<details class="frame-comment" data-comment-key="${esc(commentId)}" ${commentIsOpen(commentId)?'open':''}><summary>此帧留言</summary><textarea data-storyboard-draft data-cue-id="${esc(cue.id)}" data-storyboard-id="${esc(cue.storyboardId)}" data-frame-id="${esc(frame.frameId)}" ${stale?'disabled':''} placeholder="对这张静帧留下意见">${esc(draft?.body||'')}</textarea>${stale?'<p class="stale-frame">静帧已更新；草稿保留在原帧，核对后才可重新绑定。</p>':''}<div>${action}</div><p class="frame-save-status ${esc(saveState?.kind||'')}" data-frame-save-status="${esc(key)}" role="status" aria-live="polite" aria-atomic="true">${esc(saveState?.message||'')}</p></details></figure>`
 }
-function confirmationProblemText(problem){return ({'storyboard-not-current':'图片或说明已更新，请生成当前 Storyboard 后再确认。','missing-final-animation-description':'请先补充总体动画说明。','unresolved-feedback':'此 Cue 还有待处理或待澄清的反馈。'}[problem.code]||'旁白或屏幕文字的内容依据仍待补全。')}
+function confirmationProblemText(problem){return ({'missing-storyboard':'请先生成当前 Storyboard。','storyboard-not-current':'图片或说明已更新，请生成当前 Storyboard 后再确认。','missing-final-animation-description':'请先补充总体动画说明。','unresolved-feedback':'此 Cue 还有待处理或待澄清的反馈。'}[problem.code]||'旁白或屏幕文字的内容依据仍待补全。')}
 function storyboardCueHtml(cue){
   const selected=confirmedDesignCueIds.has(cue.id),frames=(cue.frames||[]).map((frame,index)=>storyboardFrameHtml(cue,frame,index)).join(''),hasNotes=!!cue.animationNotes?.length;
   return `<article class="storyboard-card" id="frames-${esc(cue.id)}"><div class="storyboard-head"><div><h3>${esc(cue.title||cue.id)}</h3><p class="narration-anchor"><span class="eyebrow">对应旁白</span> ${esc(cue.narration||'—')}</p><p class="muted">${cue.firstConfirmed?'首次设计已确认 · 可继续修改':'尚未首次确认'}</p></div><label><input type="checkbox" data-confirm-cue="${esc(cue.id)}" ${selected?'checked':''} ${cue.canConfirm?'':'disabled'}> 确认完整 Cue</label></div><section class="cue-intent"><span class="intent-label">总体意图 · 最终动画说明</span><p>${esc(cue.finalAnimationDescription||'尚未填写')}</p></section>${!cue.canConfirm&&cue.storyboardId?`<p class="stale-frame">${esc((cue.confirmationProblems||[]).map(confirmationProblemText).join('；')||'审阅依据已更新，请生成当前 Storyboard。')}</p>`:''}<div class="frame-toolbar"><span>${(cue.frames||[]).length} 张静帧 · 编号为 Cue 内帧序号</span>${hasNotes?`<button class="all-notes" data-all-notes="${esc(cue.id)}" type="button">展开全部说明</button>`:''}</div><div class="review-frame-grid frame-grid">${frames}</div></article>`
 }
+let activeTab='overview',activeStoryboardCue=null;
+function intentPreferenceKey(){return `afterforge-review-v3:intent-open:${versionId}:${activeTab}`}
+function workingIntentIsOpen(){try{const value=localStorage.getItem(intentPreferenceKey());return value===null?activeTab!=='storyboard':value==='true'}catch{return activeTab!=='storyboard'}}
+function toggleWorkingIntent(){
+  const open=!workingIntentIsOpen();
+  try{localStorage.setItem(intentPreferenceKey(),String(open))}catch{}
+  applyWorkingIntentOpen(open);
+}
+function applyWorkingIntentOpen(open){
+  const button=$('toggleWorkingIntent'),body=$('workingIntentBody');
+  if(button){button.setAttribute('aria-expanded',String(open));button.textContent=open?'收起 ▴':'展开 ▾'}
+  if(body)body.hidden=!open;
+}
 function renderWorkingIntent(){
   const items=state?.workingIntent?.items||[],root=$('workingIntent');root.hidden=!items.length;
-  root.innerHTML=items.length?`<p class="working-intent-label">工作意图 <span>本版备忘</span></p>`+['focus','preserve'].map(kind=>items.filter(item=>item.kind===kind).map(item=>`<section><div class="intent-row ${kind}"><strong>${kind==='focus'?'本轮重点':'暂时保持'}</strong><p>${esc(item.text)}${item.locator?.description?`<small class="intent-location">${esc(item.locator.description)}</small>`:''}</p></div><details class="intent-source"><summary>用户来源</summary><p>${esc(item.source?.text)}<br>${esc(item.source?.reference)}</p></details></section>`).join('')).join(''):'';
+  root.innerHTML=items.length?`<div class="working-intent-head"><p class="working-intent-label">工作意图 <span>本版备忘 · ${items.length} 条</span></p><button id="toggleWorkingIntent" type="button" aria-controls="workingIntentBody">展开</button></div><div id="workingIntentBody">`+['focus','preserve'].map(kind=>items.filter(item=>item.kind===kind).map(item=>`<section><div class="intent-row ${kind}"><strong>${kind==='focus'?'本轮重点':'暂时保持'}</strong><p>${esc(item.text)}${item.locator?.description?`<small class="intent-location">${esc(item.locator.description)}</small>`:''}</p></div><details class="intent-source"><summary>用户来源</summary><p>${esc(item.source?.text)}<br>${esc(item.source?.reference)}</p></details></section>`).join('')).join('')+'</div>':'';
+  if(items.length){$('toggleWorkingIntent').onclick=toggleWorkingIntent;applyWorkingIntentOpen(workingIntentIsOpen())}
+}
+function setActiveStoryboardCue(id){
+  activeStoryboardCue=id;
+  document.querySelectorAll('[data-storyboard-jump]').forEach(link=>{const active=link.dataset.storyboardJump===id;link.classList.toggle('is-current',active);link.setAttribute('aria-current',active?'location':'false')});
+}
+function jumpToStoryboardCue(id){
+  if(!storyboardCues().some(c=>c.id===id))return;
+  activateTab('storyboard');setActiveStoryboardCue(id);
+  $('frames-'+id)?.scrollIntoView?.({block:'start'});
 }
 function renderCueNavigation(){
-  $('cueNavigation').innerHTML=storyboardCues().map(cue=>`<a href="#${esc(encodeURIComponent('frames-'+cue.id))}" data-cue-jump="${esc(cue.id)}">${esc(cue.title||cue.id)}</a>`).join('');
-  document.querySelectorAll('[data-cue-jump]').forEach(link=>link.onclick=()=>{activateTab('storyboard');$('frames-'+link.dataset.cueJump)?.scrollIntoView?.({block:'start'})});
+  const cues=storyboardCues();
+  $('cueNavigation').hidden=activeTab==='storyboard';
+  $('cueNavigation').innerHTML=cues.map(cue=>`<a href="#${esc(encodeURIComponent('frames-'+cue.id))}" data-cue-jump="${esc(cue.id)}">${esc(cue.title||cue.id)}</a>`).join('');
+  document.querySelectorAll('[data-cue-jump]').forEach(link=>link.onclick=event=>{event.preventDefault();jumpToStoryboardCue(link.dataset.cueJump)});
+  $('storyboardNavigator').hidden=activeTab!=='storyboard'||!cues.length;
+  $('storyboardNavProgress').textContent=`${cues.length} 组 · ${cues.filter(c=>!c.firstConfirmed).length} 组待确认`;
+  $('storyboardCueNavigation').innerHTML=cues.map((cue,index)=>{
+    const status=cue.firstConfirmed?'已确认':cue.canConfirm?'待确认':'待处理',tone=cue.firstConfirmed?'confirmed':cue.canConfirm?'pending':'blocked';
+    return `<a href="#${esc(encodeURIComponent('frames-'+cue.id))}" data-storyboard-jump="${esc(cue.id)}" class="storyboard-nav-link"><span class="storyboard-nav-number">${String(index+1).padStart(2,'0')}</span><span class="storyboard-nav-label">${esc(cue.title||cue.id)}<small class="${tone}">${status}</small></span></a>`;
+  }).join('');
+  document.querySelectorAll('[data-storyboard-jump]').forEach(link=>link.onclick=event=>{event.preventDefault();jumpToStoryboardCue(link.dataset.storyboardJump)});
+  setActiveStoryboardCue(cues.some(c=>c.id===activeStoryboardCue)?activeStoryboardCue:cues[0]?.id);
+}
+function updateStoryboardPosition(){
+  if(activeTab!=='storyboard')return;
+  const cards=[...document.querySelectorAll('#storyboard .storyboard-card[id]')];
+  let current=cards[0];for(const card of cards){if(card.getBoundingClientRect().top<=150)current=card;else break}
+  if(typeof window!=='undefined'&&window.scrollY+window.innerHeight>=document.documentElement.scrollHeight-2)current=cards.at(-1);
+  if(current)setActiveStoryboardCue(current.id.slice('frames-'.length));
 }
 function updateAllNotesLabels(){document.querySelectorAll('[data-all-notes]').forEach(button=>{const cue=storyboardCues().find(c=>c.id===button.dataset.allNotes);button.textContent=cue?.animationNotes?.every(n=>noteExpansion.get(noteKey(cue,n)))?'收起全部说明':'展开全部说明'})}
 function setNoteOpen(key,open){noteExpansion.set(key,open);document.querySelectorAll('[data-note-key]').forEach(note=>{if(note.dataset.noteKey!==key)return;note.querySelector('p').hidden=!open;note.querySelector('[data-note-toggle]').setAttribute('aria-expanded',String(open))});updateAllNotesLabels()}
@@ -101,7 +288,7 @@ function bindStoryboardPresentation(){
 }
 function orphanStoryboardHtml(){return currentStoryboardDrafts().filter(storyboardDraftIsStale).map(draft=>{const cue=storyboardCues().find(item=>item.id===draft.cueId),frame=cue&&storyboardFrame(cue,draft);return `<article class="storyboard-card"><h3>${esc(draft.cueId)} · 旧静帧草稿</h3><p class="stale-frame">${esc(draft.body)}。此草稿绑定 ${esc(draft.storyboardId)}，不会自动绑定新静帧。</p>${frame?`<button data-orphan-rebind="${esc(JSON.stringify([versionId,draft.cueId,draft.storyboardId,draft.frameId]))}" data-cue-id="${esc(cue.id)}" data-storyboard-id="${esc(cue.storyboardId)}" data-frame-id="${esc(frame.frameId)}">核对后绑定当前同名帧</button>`:'<p class="muted">当前没有同名帧；草稿保留供复制。</p>'}</article>`}).join('')}
 function captureCommentPreferences(){document.querySelectorAll('[data-comment-key]').forEach(details=>rememberCommentOpen(details.dataset.commentKey,details.open))}
-function renderStoryboards(){captureCommentPreferences();const root=$('storyboards'),cues=storyboardCues();if(!cues.length){root.innerHTML=orphanStoryboardHtml();return}recoverStoryboardFeedbackIds();const selected=cues.filter(cue=>confirmedDesignCueIds.has(cue.id)).length,rounds=(state.storyboard.rounds||[]).map(round=>({submitted:'已交棒，待 Agent 处理',processing:'Agent 处理中',processed:'本轮意见已处理，设计确认单独记录'}[round.status]||round.status)).join('；')||'尚未提交',header=`<section class="storyboard-round-actions"><div><h2>Storyboard · 设计审阅</h2><p class="muted">旁白、静帧和最终动画说明在同一处审阅；确认始终针对完整 Cue 的 Storyboard。审阅轮次：${esc(rounds)}</p></div><div><button data-storyboard-preview type="button">生成静帧</button> <button data-storyboard-submit type="button">提交本轮反馈</button> <button class="primary" data-confirm-design type="button" ${selected?'':'disabled'}>确认所选设计（${selected}）</button></div></section>`;root.innerHTML=header+cues.map(storyboardCueHtml).join('')+orphanStoryboardHtml();document.querySelectorAll('[data-storyboard-draft]').forEach(area=>area.oninput=()=>setStoryboardDraft(area.dataset.cueId,area.dataset.storyboardId,area.dataset.frameId,area.value));document.querySelectorAll('[data-confirm-cue]').forEach(box=>box.onchange=()=>toggleConfirmDesignCue(box.dataset.confirmCue));document.querySelectorAll('[data-save-frame]').forEach(button=>button.onclick=()=>saveStoryboardFeedback(button.dataset.cueId,button.dataset.storyboardId,button.dataset.saveFrame));document.querySelectorAll('[data-rebind-frame]').forEach(button=>button.onclick=()=>rebindStoryboardDraft(button.dataset.cueId,button.dataset.storyboardId,button.dataset.rebindFrame));document.querySelectorAll('[data-orphan-rebind]').forEach(button=>button.onclick=()=>rebindStoryboardDraft(button.dataset.cueId,button.dataset.storyboardId,button.dataset.frameId,button.dataset.orphanRebind));const preview=document.querySelectorAll('[data-storyboard-preview]')[0],submit=document.querySelectorAll('[data-storyboard-submit]')[0],confirm=document.querySelectorAll('[data-confirm-design]')[0];if(preview)preview.onclick=()=>sendAction('preview',{...requestBase(),scope:'storyboard',cueIds:cues.map(cue=>cue.id)});if(submit)submit.onclick=submitStoryboardRound;if(confirm)confirm.onclick=confirmSelectedDesigns;bindStoryboardPresentation()}
+function renderStoryboards(){captureCommentPreferences();const root=$('storyboards'),cues=storyboardCues();if(!cues.length){root.innerHTML=orphanStoryboardHtml();renderCueNavigation();return}recoverStoryboardFeedbackIds();const selected=cues.filter(cue=>confirmedDesignCueIds.has(cue.id)).length,rounds=(state.storyboard.rounds||[]).map(round=>({submitted:'已交棒，待 Agent 处理',processing:'Agent 处理中',processed:'本轮意见已处理，设计确认单独记录'}[round.status]||round.status)).join('；')||'尚未提交',header=`<section class="storyboard-round-actions"><div><h2>Storyboard · 设计审阅</h2><p class="muted">旁白、静帧和最终动画说明在同一处审阅；确认始终针对完整 Cue 的 Storyboard。审阅轮次：${esc(rounds)}</p></div><div><button data-storyboard-preview type="button">生成静帧</button> <button data-storyboard-submit type="button">提交本轮反馈</button> <button data-confirm-design type="button" ${selected?'':'disabled'}>确认所选设计（${selected}）</button> <button class="primary" data-confirm-round type="button">确认本轮设计</button></div><p id="storyboardQualificationStatus" class="storyboard-qualification" role="status"></p><p id="storyboardActionStatus" class="storyboard-action-status" role="status" aria-live="polite" aria-atomic="true"></p><p class="storyboard-action-help">整轮通过请直接「确认本轮设计」；只通过部分设计时，再勾选「确认完整 Cue」。</p></section>`;root.innerHTML=header+cues.map(storyboardCueHtml).join('')+orphanStoryboardHtml();document.querySelectorAll('[data-storyboard-draft]').forEach(area=>area.oninput=()=>setStoryboardDraft(area.dataset.cueId,area.dataset.storyboardId,area.dataset.frameId,area.value));document.querySelectorAll('[data-confirm-cue]').forEach(box=>box.onchange=()=>toggleConfirmDesignCue(box.dataset.confirmCue));document.querySelectorAll('[data-save-frame]').forEach(button=>button.onclick=()=>saveStoryboardFeedback(button.dataset.cueId,button.dataset.storyboardId,button.dataset.saveFrame));document.querySelectorAll('[data-rebind-frame]').forEach(button=>button.onclick=()=>rebindStoryboardDraft(button.dataset.cueId,button.dataset.storyboardId,button.dataset.rebindFrame));document.querySelectorAll('[data-orphan-rebind]').forEach(button=>button.onclick=()=>rebindStoryboardDraft(button.dataset.cueId,button.dataset.storyboardId,button.dataset.frameId,button.dataset.orphanRebind));const preview=document.querySelectorAll('[data-storyboard-preview]')[0],submit=document.querySelectorAll('[data-storyboard-submit]')[0],confirm=document.querySelectorAll('[data-confirm-design]')[0];if(preview)preview.onclick=previewStoryboards;if(submit)submit.onclick=submitStoryboardRound;if(confirm)confirm.onclick=confirmSelectedDesigns;const round=document.querySelectorAll('[data-confirm-round]')[0];if(round)round.onclick=openRoundDesignConfirmation;bindStoryboardPresentation();renderStoryboardActionStatus();renderCueNavigation()}
 const explorationSelection=new Map();
 function explorationReferences(variant){return (variant?.references||[]).map(ref=>{const label=ref.title||ref.label||ref.description||ref.url||ref.path||'参考资料';return /^https?:\/\//i.test(ref.url||'')?`<p class="muted"><a href="${esc(ref.url)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a></p>`:`<p class="muted">参考：${esc(label)}</p>`}).join('')}
 function renderExplorations(){const root=$('explorations'),items=state?.explorations||[],artifacts=new Map((state?.artifacts||[]).map(item=>[item.id,item]));$('explorationTab').hidden=!items.length;if(!items.length){root.innerHTML='';return}root.innerHTML=`<section class="exploration"><h2>可选视觉探索</h2><p class="muted">切换候选只改变当前浏览；采用意向会作为普通反馈提交，实际采用由 Agent 按确认范围落实到制作源。</p>${items.map(item=>{const chosen=explorationSelection.get(item.id)||item.variants?.[0]?.id,variant=item.variants?.find(value=>value.id===chosen)||item.variants?.[0],images=(variant?.artifactIds||[]).map(id=>artifacts.get(id)).filter(Boolean).map(artifact=>`<img class="exploration-image" src="${esc(artifactUrl(artifact))}" alt="${esc(variant.label||variant.id)}">`).join('')||'<p class="muted">候选尚无 PNG。</p>';return `<details open><summary>${esc(item.question||item.id)} · ${esc(item.description||'')}</summary><div class="exploration-switch">${(item.variants||[]).map(value=>`<button data-exploration-id="${esc(item.id)}" data-variant-id="${esc(value.id)}" class="${value.id===chosen?'active':''}">${esc(value.label||value.id)}</button>`).join('')}</div><article class="exploration-variant"><strong>${esc(variant?.label||variant?.id)}</strong><p>${esc(variant?.description||'')}</p><div class="exploration-gallery">${images}</div>${explorationReferences(variant)}<button data-adopt-exploration="${esc(item.id)}" data-variant-id="${esc(variant?.id)}" type="button">作为反馈目标</button></article></details>`}).join('')}</section>`;document.querySelectorAll('[data-exploration-id]').forEach(button=>button.onclick=()=>{explorationSelection.set(button.dataset.explorationId,button.dataset.variantId);renderExplorations()});document.querySelectorAll('[data-adopt-exploration]').forEach(button=>button.onclick=()=>{choose({explorationId:button.dataset.adoptExploration,variantId:button.dataset.variantId,cueIds:target.cueIds||[]});$('feedbackBody').focus?.()})}
@@ -128,18 +315,19 @@ function selectionAnchor(cue){return JSON.stringify([cue.storyboardId,(cue.frame
 async function selectVersion(id,{preserveTarget=false}={}){
   captureCommentPreferences();
   const previous=target,hadDraft=!!$('feedbackBody').value.trim(),basis=draftBasisRevision??state?.editRevision;
-  if(versionId!==id){$('feedbackTarget').textContent='整个版本';$('media').innerHTML='<div class="empty">此版本尚无预览素材。</div>';delete $('media').dataset.artifactId;$('mediaTime').textContent='全局时间：—';if(versionId&&hadDraft)saveDraft();for(const field of ['feedbackBody','timeStart','timeEnd'])$(field).value='';draftBasisRevision=null;draftStale=false;confirmedDesignCueIds.clear();savedStoryboardFeedbackIds.clear()}
+  if(versionId!==id){cancelRoundDesignConfirmation();activeStoryboardCue=null;$('feedbackTarget').textContent='整个版本';$('media').innerHTML='<div class="empty">此版本尚无预览素材。</div>';delete $('media').dataset.artifactId;$('mediaTime').textContent='全局时间：—';if(versionId&&hadDraft)saveDraft();for(const field of ['feedbackBody','timeStart','timeEnd'])$(field).value='';draftBasisRevision=null;draftStale=false;confirmedDesignCueIds.clear();savedStoryboardFeedbackIds.clear()}
   const selectedBasis=new Map(storyboardCues().filter(cue=>confirmedDesignCueIds.has(cue.id)).map(cue=>[cue.id,selectionAnchor(cue)]));
   versionId=id;target=preserveTarget&&previous.versionId===id?previous:{versionId};comparisonState=null;
   $('draftNotice').hidden=true;$('retargetDraft').hidden=true;$('submitFeedback').disabled=false;
   const nextState=await api(`/api/state?version=${encodeURIComponent(id)}`);
-  if(versionId!==id)return;
+  if(versionId!==id||nextState.editRevision<(reviewRevisions.get(id)||0))return;
+  reviewRevisions.set(id,nextState.editRevision);
   state=nextState;
   for(const cueId of confirmedDesignCueIds){const cue=storyboardCues().find(item=>item.id===cueId);if(!cue?.canConfirm||selectedBasis.get(cueId)!==selectionAnchor(cue))confirmedDesignCueIds.delete(cueId)}
   restoreStoryboardDrafts();renderProject();renderState();
   if(preserveTarget&&hadDraft&&basis!==state.editRevision)markDraftStale(basis);
   renderDeliveries();clearInterval(pollTimer);
-  if((state.tasks||[]).some(t=>!['complete','completed','failed'].includes(t.status)))pollTimer=setInterval(()=>selectVersion(versionId,{preserveTarget:true}),4000)
+  if((state.tasks||[]).some(t=>!['complete','completed','failed'].includes(t.status))||storyboardActionStates.get(id)?.kind==='running')pollTimer=setInterval(()=>selectVersion(id,{preserveTarget:true}).catch(error=>{if(versionId===id&&storyboardActionStates.get(id)?.kind==='running')setStoryboardActionState(id,{...storyboardActionStates.get(id),message:`静帧任务状态刷新失败：${error.message}。正在重试…`})}),4000)
 }
 function requestBase(){return {requestId:crypto.randomUUID(),expectedRevision:state.editRevision}}
 async function submitFeedback(e){
@@ -170,7 +358,12 @@ async function sendAction(action,request){
 async function decision(kind,label){const source={channel:'review',text:label,reference:`review:${versionId}:${crypto.randomUUID()}`};if(kind==='approve-and-deliver')return sendAction('deliver',{...requestBase(),decision:{kind,reviewSetId:state.reviewSet?.id,source}});return sendAction('update',{...requestBase(),operation:'decision',kind,reviewSetId:state.reviewSet?.id,source})}
 function demoScopes(){const workScopeCueIds=state.workScopeCueIds||[],presentationCueIds=state.presentationCueIds||state.cues?.map(cue=>cue.id)||[],excludedCueIds=state.excludedCueIds||[];return {workScopeCueIds,presentationCueIds,excludedCueIds}}
 async function runAction(action,label){if(action==='preview'){if(!state.storyboard)return sendAction('preview',{...requestBase(),scope:'full'});const taskId=crypto.randomUUID(),scopes=demoScopes(),detail=`完整 Demo：工作 cue ${scopes.workScopeCueIds.join('、')||'无'}；展示 cue ${scopes.presentationCueIds.join('、')||'无'}；排除 ${scopes.excludedCueIds.join('、')||'无'}`,decisionSource=source(detail);return sendAction('preview',{requestId:taskId,taskId,expectedRevision:state.editRevision,scope:'full',cueIds:scopes.workScopeCueIds,workCueIds:scopes.workScopeCueIds,excludedCueIds:scopes.excludedCueIds,decision:{kind:'authorize-demo',taskId,cueIds:scopes.workScopeCueIds,presentationCueIds:scopes.presentationCueIds,excludedCueIds:scopes.excludedCueIds,source:decisionSource}})}if(action==='deliver')return sendAction('deliver',requestBase());return decision(action,label)}
-function activateTab(name){document.querySelectorAll('.tab').forEach(el=>el.hidden=el.id!==name);document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===name));if(name==='delivery')renderDeliveries()}document.querySelectorAll('[data-tab]').forEach(el=>el.onclick=()=>activateTab(el.dataset.tab));$('feedbackForm').onsubmit=submitFeedback;$('locateTime').onclick=()=>{const art=(state.artifacts||[]).find(a=>a.id===target.artifactId)||currentArtifact(state),player=$('media').querySelector?.('video');if(art)jumpToTime(secondsToTime(parseTime(art.range?.start)+(player?.currentTime||0)))};['feedbackBody','timeStart','timeEnd'].forEach(id=>$(id).oninput=saveDraft);$('refresh').onclick=()=>versionId&&selectVersion(versionId,{preserveTarget:true});$('retargetDraft').onclick=()=>{draftStale=false;draftBasisRevision=state.editRevision;$('submitFeedback').disabled=false;$('retargetDraft').hidden=true;setDraftNotice('草稿已按当前版本重新定位。');saveDraft()};$('compareVersion').onchange=async event=>{comparisonState=event.target.value?await api(`/api/state?version=${encodeURIComponent(event.target.value)}`):null;renderComparison()};
+function activateTab(name){activeTab=name;$('reviewShell').dataset.activeTab=name;renderWorkingIntent();renderCueNavigation();document.querySelectorAll('.tab').forEach(el=>el.hidden=el.id!==name);document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===name));if(name==='delivery')renderDeliveries()}document.querySelectorAll('[data-tab]').forEach(el=>el.onclick=()=>activateTab(el.dataset.tab));$('feedbackForm').onsubmit=submitFeedback;$('locateTime').onclick=()=>{const art=(state.artifacts||[]).find(a=>a.id===target.artifactId)||currentArtifact(state),player=$('media').querySelector?.('video');if(art)jumpToTime(secondsToTime(parseTime(art.range?.start)+(player?.currentTime||0)))};['feedbackBody','timeStart','timeEnd'].forEach(id=>$(id).oninput=saveDraft);$('refresh').onclick=()=>versionId&&selectVersion(versionId,{preserveTarget:true});$('retargetDraft').onclick=()=>{draftStale=false;draftBasisRevision=state.editRevision;$('submitFeedback').disabled=false;$('retargetDraft').hidden=true;setDraftNotice('草稿已按当前版本重新定位。');saveDraft()};$('compareVersion').onchange=async event=>{comparisonState=event.target.value?await api(`/api/state?version=${encodeURIComponent(event.target.value)}`):null;renderComparison()};
+$('cancelDesignConfirm').onclick=cancelRoundDesignConfirmation;
+$('submitDesignConfirm').onclick=submitRoundDesignConfirmation;
+$('designConfirmDialog').addEventListener('cancel',cancelRoundDesignConfirmation);
+$('storyboardNavTop').onclick=event=>{event.preventDefault();$('storyboard').scrollIntoView?.({block:'start'})};
+if(typeof window!=='undefined'){let scrollQueued=false;window.addEventListener('scroll',()=>{if(activeTab!=='storyboard'||scrollQueued)return;scrollQueued=true;window.requestAnimationFrame(()=>{scrollQueued=false;updateStoryboardPosition()})},{passive:true})}
 $('closeLightbox').onclick=()=>$('frameLightbox').close();
 function restoreCueHash(){if(typeof location==='undefined')return;let id;try{id=decodeURIComponent(location.hash.slice(1))}catch{return}if(storyboardCues().some(c=>'frames-'+c.id===id)){activateTab('storyboard');$(id)?.scrollIntoView?.({block:'start'})}}
 (async()=>{project=await api('/api/project');renderProject();const initial=project.episodes?.flatMap(e=>e.versions||[]).find(v=>!v.legacy)||project.episodes?.flatMap(e=>e.versions||[])[0];if(initial){await selectVersion(initial.id);restoreCueHash()}})().catch(error=>{$('summary').textContent=error.message});

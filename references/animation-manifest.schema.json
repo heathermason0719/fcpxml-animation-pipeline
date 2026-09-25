@@ -1235,6 +1235,26 @@
         "animationNotes": {
           "$ref": "#/$defs/animationNotes"
         },
+        "frameNarrations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "frameId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "narration": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "frameId"
+            ],
+            "additionalProperties": false
+          }
+        },
         "reviewInputKey": {
           "type": "string",
           "pattern": "^[a-f0-9]{64}$"
@@ -1734,6 +1754,10 @@
                   },
                   "label": {
                     "type": "string"
+                  },
+                  "narration": {
+                    "type": "string",
+                    "minLength": 1
                   },
                   "time": {
                     "$ref": "#/$defs/time"
