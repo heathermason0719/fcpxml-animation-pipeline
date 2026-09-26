@@ -15,6 +15,10 @@ class Element {
   setAttribute(name,value) { (this.attributes ||= {})[name]=String(value); }
   showModal() { this.open=true; }
   close() { this.open=false; }
+  pause() {this.paused=true;}
+  play() {this.paused=false;this.playCalls=(this.playCalls||0)+1;return Promise.resolve();}
+  focus() {}
+  scrollIntoView() {}
   classList = {toggle() {}};
 }
 const elements = new Map();
@@ -50,7 +54,109 @@ async function main() {
   vm.runInContext(fs.readFileSync('assets/review-v3/review-v3.js','utf8'),context);
   await new Promise(setImmediate);
   const scenario=process.argv[2];
-  if(scenario==='empty-version') {
+  if(scenario==='demo-reencoded-feedback') {
+    const data=version();data.artifacts[0].inputKey='same-content';data.artifacts.push({...data.artifacts[0],id:'new-encode',createdAt:'2026-09-26'});
+    data.artifacts.push({...data.artifacts[0],id:'changed',inputKey:'different',createdAt:'2020-01-01'});
+    data.feedback=[{id:'old-note',body:'keep my note',target:{artifactId:'demo',timeStart:'15s'}},{id:'different-note',body:'other',target:{artifactId:'changed'}}];
+    context.fetch=async()=>({ok:true,json:async()=>data});await context.selectVersion('v1');
+    assert.deepEqual(Array.from(context.demoFeedbackSelection().pending,f=>f.id),['old-note']);
+    assert.equal(data.feedback[0].target.artifactId,'demo','retain original evidence binding');
+    assert.match(byId('demoFeedbackList').innerHTML,/data-demo-feedback-artifact="new-encode"/);
+  } else if(scenario==='demo-auto-time') {
+    context.activateTab('preview');const p=byId('media').querySelector('video');p.currentTime=3;p.paused=false;
+    byId('feedbackBody').value='first';byId('feedbackBody').oninput();
+    assert.equal(byId('timeStart').value,'15s');assert.equal(p.paused,true);
+    p.currentTime=9;byId('feedbackBody').value='first more';byId('feedbackBody').oninput();assert.equal(byId('timeStart').value,'15s');
+    await context.submitFeedback({preventDefault(){}});assert.equal(byId('timeStart').value,'','next feedback must get its own time');
+    byId('feedbackBody').value='second';byId('feedbackBody').oninput();assert.equal(byId('timeStart').value,'21s');
+    byId('demoWholeFeedback').checked=true;byId('demoWholeFeedback').onchange();assert.equal(byId('timeStart').value,'');
+    byId('feedbackBody').value='whole';byId('feedbackBody').oninput();assert.equal(byId('timeStart').value,'');
+    context.restoreDraft();assert.equal(byId('demoWholeFeedback').checked,true);
+    await context.submitFeedback({preventDefault(){}});
+    const posts=requests.filter(r=>r.url==='/api/action').map(r=>JSON.parse(r.options.body).request);
+    assert.equal(posts[0].target.timeStart,'15s');assert.equal(posts[1].target.timeStart,undefined);
+    assert.equal(byId('demoWholeFeedback').checked,false);
+  } else if(scenario==='demo-withdraw') {
+    context.activateTab('preview');const data=version();data.storyboard={rounds:[]};
+    data.feedback=[{id:'f1',body:'keep',status:'pending',target:{artifactId:'demo'}},{id:'f2',body:'withdraw me',status:'pending',target:{artifactId:'demo'}}];
+    let fail=false,release;const posts=[];
+    context.fetch=async(url,options)=>{if(url.startsWith('/api/state'))return {ok:true,json:async()=>structuredClone(data)};
+      const request=JSON.parse(options.body).request;posts.push(request);
+      if(fail)return {ok:false,json:async()=>({error:'conflict'})};
+      return new Promise(resolve=>{release=()=>{const record=data.feedback.find(f=>f.id===request.feedbackId);record.applicability={kind:request.kind,source:request.source};data.editRevision++;resolve({ok:true,json:async()=>({record:structuredClone(record),editRevision:data.editRevision})})}})};
+    await context.selectVersion('v1');
+    assert.match(byId('demoFeedbackList').innerHTML,/撤回意见/);
+    const saving=context.setDemoFeedbackWithdrawn('f2',true);await new Promise(setImmediate);
+    await context.setDemoFeedbackWithdrawn('f2',true);assert.equal(posts.length,1);
+    assert.equal(byId('submitDemoRound').disabled,true);
+    release();await saving;
+    assert.equal(posts[0].operation,'feedback-applicability');assert.equal(posts[0].kind,'not-applicable');
+    assert.equal(context.demoFeedbackSelection().pending.length,1);
+    assert.doesNotMatch(byId('demoFeedbackList').innerHTML,/withdraw me/);
+    assert.match(byId('demoFeedbackHistory').innerHTML,/已撤回/);assert.match(byId('demoFeedbackHistory').innerHTML,/恢复意见/);
+    fail=true;await context.setDemoFeedbackWithdrawn('f2',false);
+    assert.equal(context.demoFeedbackSelection().pending.length,1);assert.match(byId('demoRoundStatus').textContent,/失败/);
+    fail=false;const restoring=context.setDemoFeedbackWithdrawn('f2',false);await new Promise(setImmediate);release();await restoring;
+    assert.equal(context.demoFeedbackSelection().pending.length,2);
+    data.storyboard.rounds=[{id:'r',feedbackIds:['f2'],status:'submitted'}];await context.selectVersion('v1');
+    const withdrawn=context.setDemoFeedbackWithdrawn('f2',true);await new Promise(setImmediate);release();await withdrawn;
+    assert.deepEqual(data.storyboard.rounds[0].feedbackIds,['f2'],'withdrawal preserves handoff history');
+  } else if(scenario==='demo-capture') {
+    context.activateTab('preview');
+    const player=byId('media').querySelector('video');player.currentTime=2.5;player.paused=false;
+    byId('locateTime').onclick();
+    assert.equal(byId('media').querySelector('video'),player,'capture must not replace the player');
+    assert.equal(player.paused,true,'capture must pause rather than restart playback');
+    assert.equal(player.playCalls||0,0);
+    assert.equal(byId('timeStart').value,'29/2s');
+    context.jumpToTime('18s');
+    assert.equal(byId('timeStart').value,'29/2s','navigation must not retarget the feedback');
+    assert.equal(player.currentTime,6);
+  } else if(scenario==='demo-save-refresh') {
+    context.activateTab('preview');let data=version(),releasePost;const refreshes=[],posts=[];
+    context.fetch=async(url,options)=>{if(url.startsWith('/api/state')){const snapshot=structuredClone(data);return new Promise(resolve=>refreshes.push(()=>resolve({ok:true,json:async()=>snapshot})))}
+      const payload=JSON.parse(options.body);posts.push(payload);return new Promise(resolve=>{releasePost=()=>{data.editRevision++;const record={id:'f'+data.editRevision,body:payload.request.body,target:payload.request.target,status:'pending'};data.feedback.push(record);resolve({ok:true,json:async()=>({editRevision:data.editRevision,record})})}})};
+    byId('feedbackBody').value='first';context.saveDraft();const first=context.submitFeedback({preventDefault(){}});await new Promise(setImmediate);
+    await context.submitFeedback({preventDefault(){}});assert.equal(posts.length,1,'double-click during POST must not duplicate feedback');
+    releasePost();await new Promise(setImmediate);assert.equal(byId('submitFeedback').disabled,false,'saved receipt must free the editor before slow refresh');
+    byId('feedbackBody').value='second';context.saveDraft();const second=context.submitFeedback({preventDefault(){}});await new Promise(setImmediate);
+    assert.equal(posts[1].request.expectedRevision,8,'next save uses acknowledged revision');releasePost();await new Promise(setImmediate);
+    refreshes[1]();await second;refreshes[0]();await first;
+    assert.match(byId('demoFeedbackList').innerHTML,/first/);assert.match(byId('demoFeedbackList').innerHTML,/second/);
+    context.fetch=async(url,options)=>url==='/api/action'?{ok:false,status:409,json:async()=>({error:'conflict'})}:{ok:true,json:async()=>data};
+    byId('feedbackBody').value='retain on failure';context.saveDraft();await context.submitFeedback({preventDefault(){}});
+    assert.equal(byId('feedbackBody').value,'retain on failure');assert.match(byId('message').textContent,/草稿.*保留/);
+  } else if(scenario==='demo-space') {
+    context.activateTab('preview');const player=byId('media').querySelector('video');player.paused=true;
+    let prevented=0;const event=(type,target={},repeat=false)=>({type,code:'Space',target,repeat,preventDefault(){prevented++},stopImmediatePropagation(){}});
+    context.handleDemoSpace(event('keydown',{tagName:'BUTTON'}));assert.equal(player.paused,false);
+    context.handleDemoSpace(event('keydown',{tagName:'BUTTON'},true));assert.equal(player.paused,false,'held space must not toggle repeatedly');
+    context.handleDemoSpace(event('keyup',{tagName:'BUTTON'}));context.handleDemoSpace(event('keydown',{tagName:'BUTTON'}));assert.equal(player.paused,true);
+    context.handleDemoSpace(event('keyup',{tagName:'BUTTON'}));
+    for(const target of [{tagName:'TEXTAREA'},{tagName:'INPUT',type:'text'},{isContentEditable:true}]){
+      const before=prevented;context.handleDemoSpace(event('keydown',target));assert.equal(prevented,before);assert.equal(player.paused,true);
+    }
+    context.activateTab('storyboard');const before=prevented;context.handleDemoSpace(event('keydown',{tagName:'BUTTON'}));assert.equal(prevented,before);
+  } else if(scenario==='demo-artifacts') {
+    const data=version();data.artifacts.push({id:'frame',kind:'storyboard-frame',path:'x.png',current:true,range:{start:'0s'},createdAt:'2099'});
+    context.fetch=async()=>({ok:true,json:async()=>data});await context.selectVersion('v1');context.activateTab('preview');
+    assert.doesNotMatch(byId('artifacts').innerHTML,/storyboard-frame|x.png/);
+    assert.match(byId('media').innerHTML,/demo.mp4/);
+    byId('message').textContent='saved';data.tasks=[{id:'old',status:'failed',error:'old alpha'}];await context.selectVersion('v1',{preserveTarget:true});
+    assert.doesNotMatch(byId('message').textContent,/old alpha/,'historical failure must not overwrite current feedback status');
+  } else if(scenario==='demo-round') {
+    const data=version();data.storyboard={cues:[],rounds:[]};data.feedback=[
+      {id:'movie-note',body:'slower',target:{versionId:'v1',artifactId:'demo'},status:'pending'},
+      {id:'board-note',body:'still',target:{versionId:'v1',storyboardId:'board',artifactId:'frame'},status:'pending'}];
+    const posts=[];context.fetch=async(url,options)=>{if(url.startsWith('/api/state'))return {ok:true,json:async()=>structuredClone(data)};
+      const req=JSON.parse(options.body);posts.push(req);data.editRevision++;data.storyboard.rounds.push({id:'round-demo',feedbackIds:req.request.feedbackIds,storyboardIds:[],status:'submitted'});return {ok:true,json:async()=>({editRevision:data.editRevision,record:data.storyboard.rounds.at(-1)})}};
+    await context.selectVersion('v1');context.activateTab('preview');await context.submitDemoRound();
+    assert.equal(posts.length,1);assert.equal(posts[0].request.operation,'review-submit');
+    assert.deepEqual(posts[0].request.feedbackIds,['movie-note']);assert.deepEqual(posts[0].request.storyboardIds,[]);
+    assert.equal(posts[0].request.kind,undefined,'feedback handoff must not approve or authorize');
+    await context.submitDemoRound();assert.equal(posts.length,1,'submitted notes must not be handed off twice');
+    assert.match(byId('demoFeedbackList').innerHTML,/slower/);assert.doesNotMatch(byId('demoFeedbackList').innerHTML,/still/);
+  } else if(scenario==='empty-version') {
     assert.match(byId('media').innerHTML,/video/);
     const normalFetch=context.fetch;
     context.fetch=async(url,options)=>url==='/api/state?version=v2'?{ok:true,json:async()=>({...version(),artifacts:[],cues:[]})}:normalFetch(url,options);
@@ -264,7 +370,8 @@ async function main() {
     assert.equal(context.currentStoryboardDrafts().length,0);
   } else if(scenario==='actions') {
     assert.match(byId('actions').innerHTML,/生成完整预览/);
-    assert.match(byId('actions').innerHTML,/批准当前审阅/);
+    assert.match(byId('actions').innerHTML,/data-action="approve"/);
+    assert.doesNotMatch(byId('actions').innerHTML,/data-action="(?:authorize|deliver|approve-and-deliver)"/,'delivery controls stay hidden before approval');
     assert.doesNotMatch(byId('actions').innerHTML,/undefined/);
     assert.doesNotMatch(byId('actions').innerHTML,/更新/);
   } else if(scenario==='combined') {

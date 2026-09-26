@@ -7,6 +7,8 @@ import json
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
+from tests.delivery_test_media import fake_probe
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -23,6 +25,12 @@ SOURCE = b'''<?xml version="1.0" encoding="UTF-8"?>
 
 
 class WorkModelDeliveryTests(unittest.TestCase):
+    def setUp(self):
+        mock = patch("scripts.delivery_validation.probe_formal_movie", side_effect=fake_probe)
+        mock.start(); self.addCleanup(mock.stop)
+        authority = patch("scripts.work_model_delivery._publication_authority", return_value="test-review")
+        authority.start(); self.addCleanup(authority.stop)
+
     def make_inputs(self, directory: str) -> tuple[Path, Path, dict]:
         afterforge = Path(directory) / "AfterForge"
         afterforge.mkdir()
@@ -79,25 +87,25 @@ class WorkModelDeliveryTests(unittest.TestCase):
                 input_key="input-abc", dependency_paths=["fonts/face.otf"], input_root=input_root,
             )
             self.assertTrue(Path(prepared["stagingPackage"]).is_dir())
-            self.assertEqual(prepared["packagePath"], "交付/Episode-One--ep-01/交付0001/Episode-One.fcpxmld")
+            self.assertEqual(prepared["packagePath"], "交付/Episode-One-D0001")
             self.assertEqual(prepared["snapshotPath"], "releases/d0001")
             frozen = prepared["manifest"]
             self.assertEqual(frozen["delivery"]["identity"], "AfterForge__project-01__ep-01__v3__d0001")
-            self.assertEqual(frozen["delivery"]["protocolVersion"], "2")
+            self.assertEqual(frozen["delivery"]["protocolVersion"], "3")
             self.assertEqual(frozen["project"]["source"]["fcpxml"], "source/source.fcpxml")
-            self.assertEqual(frozen["cues"][0]["deliveryAsset"]["relativePath"], "delivery-assets/AF__cue.mov")
-            self.assertNotEqual((Path(prepared["stagingSnapshot"]) / "delivery-assets" / "AF__cue.mov").stat().st_ino,
-                                (root / "renders" / "cue.mov").stat().st_ino)
-            self.assertEqual((Path(prepared["stagingSnapshot"]) / "files/fonts/face.otf").read_bytes(), b"font bytes")
-            staged_root = ET.parse(Path(prepared["stagingPackage"]) / "Info.fcpxml").getroot()
+            self.assertFalse((Path(prepared['stagingSnapshot']) / 'delivery-assets').exists())
+            self.assertFalse((Path(prepared['stagingSnapshot']) / 'files').exists())
+            self.assertEqual(prepared['inventory']['dependencies'][0]['path'], 'fonts/face.otf')
+            staged_root = ET.parse(Path(prepared["stagingPackage"]) / "Episode-One-D0001.fcpxml").getroot()
             anchor = next(item for item in staged_root.iter("asset-clip") if item.get("name") == "AF__cue_one")
             self.assertEqual(anchor.get("lane"), "4")
 
             record = publish_release(root, prepared)
             self.assertEqual(record["id"], "d0001")
-            self.assertEqual(record["media"], [{"cueId": "cue_one", "path": "releases/d0001/delivery-assets/AF__cue.mov"}])
+            self.assertEqual(record["media"][0]["cueIds"], ["cue_one"])
+            self.assertEqual(record["media"][0]["path"], "交付/Episode-One-D0001/AF__cue.mov")
             self.assertTrue(verify_release(root, afterforge, record))
-            self.assertTrue((afterforge / record["packagePath"] / "Info.fcpxml").is_file())
+            self.assertTrue((afterforge / record["packagePath"] / "Episode-One-D0001.fcpxml").is_file())
             self.assertTrue((root / record["snapshotPath"] / record["manifestPath"]).is_file())
 
     def test_verify_rejects_extra_or_symlinked_member(self) -> None:
@@ -129,7 +137,7 @@ class WorkModelDeliveryTests(unittest.TestCase):
             second.update(id="cue_two", layer=4, deliveryAsset={**second["deliveryAsset"], "fileName": "AF__cue-two.mov", "relativePath": "renders/cue-two.mov", "sha256": sha256(movie)})
             manifest["cues"].append(second)
             prepared = prepare_release(root, manifest, afterforge_root=afterforge, release_id="d0001", input_key="layers", dependency_paths=[])
-            document = ET.parse(Path(prepared["stagingPackage"]) / "Info.fcpxml").getroot()
+            document = ET.parse(Path(prepared["stagingPackage"]) / "Episode-One-D0001.fcpxml").getroot()
             lanes = {item.get("name"): item.get("lane") for item in document.iter("asset-clip") if item.get("name", "").startswith("AF__")}
             self.assertEqual(lanes, {"AF__cue_one": "7", "AF__cue_two": "8"})
             source_rep = next(item for item in document.find("resources").findall("asset") if item.get("id") == "r2").find("media-rep")

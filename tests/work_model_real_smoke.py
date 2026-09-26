@@ -330,7 +330,7 @@ def main() -> int:
     delivered = model.deliver(version, request(version, "deliver", decision={"kind": "approve-and-deliver", "reviewSetId": review, "feedbackIds": [], "source": {"channel": "chat", "text": "approve synthetic fixture", "reference": "fixture"}}))
     release = delivered["delivery"]
     package_path = afterforge / release["packagePath"]
-    if not (package_path / "Info.fcpxml").is_file() or sha(package_path / "Info.fcpxml") != release["infoFcpxmlSha256"]:
+    if not (package_path / release["xmlFileName"]).is_file() or sha(package_path / release["xmlFileName"]) != release["infoFcpxmlSha256"]:
         raise RuntimeError("immutable package verification failed")
     if tree_hashes(inbox) != source_hashes:
         raise RuntimeError("work model modified synthetic user-inbox inputs")

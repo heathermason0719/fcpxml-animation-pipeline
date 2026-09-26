@@ -29,11 +29,12 @@
 - .afterforge-manifest.lock 是稳定协调文件，不随 manifest 原子替换删除。仅给最终 save 加锁不能保护前面的旧读取。
 - 保持源帧率与有理数时间。runtime 固定精确 pin，普通恢复不查询 latest；安装及实际迁移需明确授权。
 - 静态 layout 仅限受控声明式内容，静态 host 不加载用户脚本或 vendor JS。所有可执行/时间驱动来源及依赖绑定变更按完整 closure 核验受影响 Cue；动态计算引用显式声明。runtime bootstrap 属于基础设施，普通 edit 不改 runtime 配置文件。
-- schema 3.0 工作稿可继续修改，但已发布包与 releases 快照不可覆盖。schema 2.0 原位保留，新工作模型只读；继续制作显式 copyFrom 创建新版本，不继承历史批准。
+- schema 3.0 工作稿可继续修改，但已发布正式目录与 releases 证据不可覆盖。schema 2.0 原位保留，新工作模型只读；继续制作显式 copyFrom 创建新版本，不继承历史批准。
 - `copyFrom` 必须有 commission 并明确 restart 或逐动画 Cue 的 new/continue continuity；continue 仅保留 qualification provenance。展示目标缺失默认拒绝，allowDraft 只是 unfinished 讨论；明确 exclusion 可完成受限委托但不能形成正式 full Review。历史过早完成以附加 correction evidence 处理，不改写历史。
-- 正式交付必须完整覆盖全部 animated cues，绑定当前完整审阅的批准与授权，允许明确合并指令。冻结或渲染成功不产生授权。
+- 正式交付遵循 JSON 合同的协议 3：浅层普通目录中同级 XML 与全部 AfterForge 动画 MOV（包含历史复用、嵌套资源），媒体哈希/inode 唯一；只允许硬链接复用，不退回复制。releases 仅保留轻量元数据/XML，不复制媒体或工程大资产。旧发布入口只读。
+- 正式交付必须完整覆盖全部 animated cues 及源资源图内沿用动画，绑定当前完整审阅的批准与授权，允许明确合并指令。冻结或渲染成功不产生授权。
 - 首次设计、反馈轮次、静帧、完整审阅和交付分别记录。新独立想法使用有来源的 `objectRelations`；普通继续编辑不产生新授权边界。完整 Demo 使用 taskId 并区分工作、时间和展示范围；完成后只可同 job 重试。
-- 首次协议 2 的实际 FCP round-trip 建立基线；自动测试不能冒充实际导入/验收。
+- 首次协议 3 的实际 FCP round-trip 建立基线；自动测试不能冒充实际导入/验收。
 - 媒体、渲染、日志、临时文件、凭据与环境配置不进入版本控制。
 - 临时 QA 环境异常只有在目标环境复现或有实际可用性受损证据时才修复，不单独当交付故障。
 

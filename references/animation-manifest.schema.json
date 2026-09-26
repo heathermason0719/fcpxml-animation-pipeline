@@ -715,41 +715,191 @@
     "deliveries": {
       "type": "array",
       "items": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "inputKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "protocolVersion": {
+                "const": "2"
+              },
+              "packagePath": {
+                "type": "string",
+                "minLength": 1
+              },
+              "snapshotPath": {
+                "type": "string",
+                "minLength": 1
+              },
+              "infoFcpxmlSha256": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "inputKey",
+              "protocolVersion",
+              "packagePath",
+              "snapshotPath",
+              "infoFcpxmlSha256"
+            ],
+            "additionalProperties": true
           },
-          "inputKey": {
-            "type": "string",
-            "minLength": 1
-          },
-          "protocolVersion": {
-            "const": "2"
-          },
-          "packagePath": {
-            "type": "string",
-            "minLength": 1
-          },
-          "snapshotPath": {
-            "type": "string",
-            "minLength": 1
-          },
-          "infoFcpxmlSha256": {
-            "type": "string",
-            "minLength": 1
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "inputKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "protocolVersion": {
+                "const": "3"
+              },
+              "packagePath": {
+                "type": "string",
+                "minLength": 1
+              },
+              "snapshotPath": {
+                "type": "string",
+                "minLength": 1
+              },
+              "infoFcpxmlSha256": {
+                "type": "string",
+                "minLength": 1
+              },
+              "xmlFileName": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidencePath": {
+                "type": "string",
+                "minLength": 1
+              },
+              "manifestPath": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sourcePath": {
+                "type": "string",
+                "minLength": 1
+              },
+              "identity": {
+                "type": "string",
+                "minLength": 1
+              },
+              "media": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "fileName",
+                    "sha256",
+                    "size",
+                    "path",
+                    "root",
+                    "roles",
+                    "cueIds",
+                    "sourceResourceIds"
+                  ],
+                  "properties": {
+                    "fileName": {
+                      "type": "string",
+                      "pattern": "^[^/\\\\]+\\.mov$"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "root": {
+                      "const": "afterforge"
+                    },
+                    "roles": {
+                      "type": "array",
+                      "minItems": 1,
+                      "uniqueItems": true,
+                      "items": {
+                        "enum": [
+                          "rendered",
+                          "inherited"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              "sourceMedia": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "resourceId",
+                    "sourceSrc",
+                    "sha256",
+                    "afterforge"
+                  ],
+                  "properties": {
+                    "resourceId": {
+                      "type": "string"
+                    },
+                    "sourceSrc": {
+                      "type": "string"
+                    },
+                    "afterforge": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              },
+              "inventory": {
+                "type": "object",
+                "required": [
+                  "package",
+                  "snapshot",
+                  "dependencies"
+                ]
+              },
+              "reviewSetId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "inputKey",
+              "protocolVersion",
+              "packagePath",
+              "snapshotPath",
+              "infoFcpxmlSha256",
+              "xmlFileName",
+              "evidencePath",
+              "manifestPath",
+              "sourcePath",
+              "identity",
+              "media",
+              "sourceMedia",
+              "inventory",
+              "reviewSetId"
+            ],
+            "additionalProperties": true
           }
-        },
-        "required": [
-          "id",
-          "inputKey",
-          "protocolVersion",
-          "packagePath",
-          "snapshotPath",
-          "infoFcpxmlSha256"
-        ],
-        "additionalProperties": true
+        ]
       }
     },
     "requests": {

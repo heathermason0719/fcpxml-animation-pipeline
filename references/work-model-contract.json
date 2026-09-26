@@ -1,7 +1,7 @@
 {
   "contractVersion": "2.1.0",
   "manifestSchemaVersion": "3.0",
-  "deliveryProtocolVersion": "2",
+  "deliveryProtocolVersion": "3",
   "identityHierarchy": [
     "projectId",
     "episodeId",
@@ -92,5 +92,14 @@
     ],
     "authority": "non-authoritative-context-only",
     "inheritsAcrossVersions": false
+  },
+  "delivery": {
+    "directoryPattern": "交付/{episode}-D{number}",
+    "xmlPattern": "{episode}-D{number}.fcpxml",
+    "mediaScope": "all-reachable-afterforge-animation",
+    "mediaPlacement": "regular-sibling-files",
+    "duplicatePolicy": "one-inode-per-sha256",
+    "evidence": "metadata-and-xml-only",
+    "legacyPublication": "read-only"
   }
 }

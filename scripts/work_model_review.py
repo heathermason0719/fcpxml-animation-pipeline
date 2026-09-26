@@ -97,14 +97,15 @@ def _project_versions(afterforge_root: Path, model_api: Any) -> tuple[dict[str, 
     return versions, project
 
 
-def _resolve_version(afterforge_root: Path, model_api: Any, version_id: str | None) -> tuple[Path, dict[str, Any]]:
+def _resolve_version(afterforge_root: Path, model_api: Any, version_id: str | None, *, media: bool = False) -> tuple[Path, dict[str, Any]]:
     if not isinstance(version_id, str) or not version_id:
         raise LookupError("version is required")
     versions, _ = _project_versions(afterforge_root, model_api)
     root = versions.get(version_id)
     if root is None:
         raise LookupError("unknown version")
-    return root, model_api.status(root)
+    reader = getattr(model_api, "media_status", model_api.status) if media else model_api.status
+    return root, reader(root)
 
 
 def _allowed_media_paths(state: dict[str, Any]) -> set[str]:
@@ -124,7 +125,12 @@ def _allowed_media_paths(state: dict[str, Any]) -> set[str]:
 def _safe_media_target(version_root: Path, state: dict[str, Any], requested: str | None) -> Path:
     if not isinstance(requested, str) or not requested or requested not in _allowed_media_paths(state):
         raise LookupError("unknown media artifact")
-    target = _strict_child(version_root, requested)
+    base = version_root
+    for delivery in state.get('deliveries', []):
+        if delivery.get('protocolVersion') == '3' and any(m.get('path') == requested and m.get('root') == 'afterforge' for m in delivery.get('media', [])):
+            from scripts.work_model_store import layout
+            base = layout(version_root)[0]
+    target = _strict_child(base, requested)
     if not target.is_file():
         raise LookupError("media artifact is unavailable")
     return target
@@ -137,7 +143,7 @@ def _delivery_package(afterforge_root: Path, state: dict[str, Any], delivery_id:
     if len(matches) != 1 or not isinstance(matches[0].get("packagePath"), str):
         raise LookupError("unknown delivery")
     package = _strict_child(afterforge_root, matches[0]["packagePath"])
-    if package.suffix != ".fcpxmld" or not package.is_dir():
+    if not package.is_dir() or (matches[0].get("protocolVersion") != "3" and package.suffix != ".fcpxmld"):
         raise LookupError("delivery package is unavailable")
     return package
 
@@ -356,7 +362,7 @@ def make_handler(afterforge_root: Path, *, model_api: Any | None = None):
                     version_root, _ = _resolve_version(root, self._api(), self._query_version())
                     self._script(self._state(version_root))
                 elif parsed.path == "/media":
-                    version_root, state = _resolve_version(root, self._api(), self._query_version())
+                    version_root, state = _resolve_version(root, self._api(), self._query_version(), media=True)
                     path = parse_qs(parsed.query).get("path", [None])[0]
                     self._file(_safe_media_target(version_root, state, unquote(path) if isinstance(path, str) else None))
                 elif parsed.path == "/download":

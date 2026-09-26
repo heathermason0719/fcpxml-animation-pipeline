@@ -148,6 +148,16 @@ class WorkModelReviewServerTests(unittest.TestCase):
         status, _, _ = self.request("GET", "/media?version=v1&path=animation-manifest.json")
         self.assertEqual(status, 404)
 
+    def test_media_ranges_do_not_compute_full_review_status(self):
+        from unittest.mock import patch
+        manifest = {"schemaVersion": "3.0", "artifacts": [{"path": "previews/demo.mp4"}], "deliveries": []}
+        self.model.media_status = lambda root: work_model.media_status(root)
+        with patch.object(work_model, "load", return_value=manifest), patch.object(self.model, "status", side_effect=AssertionError("full status on video path")):
+            status, _, body = self.request("GET", "/media?version=v1&path=previews/demo.mp4", headers={"Range": "bytes=2-5"})
+            self.assertEqual((status, body), (206, b"2345"))
+            manifest["artifacts"] = []
+            self.assertEqual(self.request("GET", "/media?version=v1&path=previews/demo.mp4")[0], 404)
+
     def test_long_action_starts_in_background_and_returns_request_id(self) -> None:
         status, _, body = self.request("POST", "/api/action", {"version": "v1", "action": "preview", "request": {"requestId": "slow-1", "expectedRevision": 7}})
         self.assertEqual(status, 202)
@@ -230,7 +240,7 @@ class WorkModelReviewServerTests(unittest.TestCase):
         (self.root / "工程").mkdir()
         (self.root / "工程/project.json").write_text("{}", encoding="utf-8")
         process = subprocess.Popen(
-            [str(Path(__file__).parents[1] / ".venv/bin/python"), "scripts/serve_workflow_review.py", str(self.root), "--port", "0"],
+            [__import__("sys").executable, "scripts/serve_workflow_review.py", str(self.root), "--port", "0"],
             cwd=Path(__file__).parents[1], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         )
         try:
@@ -244,7 +254,7 @@ class WorkModelReviewServerTests(unittest.TestCase):
 
     def test_review_v3_client_action_and_stale_draft_contracts(self) -> None:
         harness = Path(__file__).with_name("review_v3_client_harness.cjs")
-        for scenario in ("empty-version", "round-confirmation", "notes-and-intent", "actions", "combined", "incomplete-preview", "time-normalization", "invalid-time-draft", "stale-draft", "storyboard-round", "frame-save-status", "frame-save-sequential", "storyboard-buttons", "selection-identity", "version-draft", "late-response"):
+        for scenario in ("demo-reencoded-feedback", "demo-auto-time", "demo-withdraw", "demo-save-refresh", "demo-space", "demo-capture", "demo-artifacts", "demo-round", "empty-version", "round-confirmation", "notes-and-intent", "actions", "combined", "incomplete-preview", "time-normalization", "invalid-time-draft", "stale-draft", "storyboard-round", "frame-save-status", "frame-save-sequential", "storyboard-buttons", "selection-identity", "version-draft", "late-response"):
             with self.subTest(scenario=scenario):
                 subprocess.run(["node", str(harness), scenario], check=True, cwd=Path(__file__).parents[1])
 

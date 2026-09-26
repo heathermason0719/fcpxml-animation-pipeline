@@ -134,6 +134,11 @@ class WorkModelMediaTests(unittest.TestCase):
                 start=Fraction(3, 2), duration=Fraction(1, 1), target=root / "result.mp4", has_audio=False,
             )
             filters = command[command.index("-filter_complex") + 1]
+            self.assertEqual(command[command.index("-crf") + 1], "23")
+            self.assertEqual(command[command.index("-maxrate") + 1], "3M")
+            self.assertEqual(command[command.index("-bufsize") + 1], "6M")
+            self.assertEqual(command[command.index("-g") + 1], "48")
+            self.assertIn("+faststart", command)
             self.assertIn("trim=start=0.5:duration=1", filters)
             self.assertIn("setpts=PTS-STARTPTS+0/TB", filters)
 
@@ -154,6 +159,8 @@ class WorkModelMediaTests(unittest.TestCase):
                 start=Fraction(1001, 10000), duration=Fraction(1001, 10000), target=target, log_path=root / "composite.log",
             )
             self.assertTrue(target.is_file())
+            data = target.read_bytes()
+            self.assertLess(data.index(b"moov"), data.index(b"mdat"), "MP4 index must precede video data for streaming")
             self.assertEqual(result["width"], 854)
             self.assertEqual(result["height"], 480)
             probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type,r_frame_rate", "-of", "json", str(target)], check=True, capture_output=True, text=True)
@@ -213,7 +220,14 @@ class WorkModelMediaTests(unittest.TestCase):
             for full_time, local_time in (("1", "0"), ("3/2", "1/2"), ("47/24", "23/24")):
                 expected, actual = decoded_frame(full, second=full_time), decoded_frame(local, second=local_time)
                 self.assertEqual(len(expected), len(actual))
-                self.assertLessEqual(max(abs(left - right) for left, right in zip(expected, actual)), 3)
+                # Lossy encodes may differ at sharp edges across GOP boundaries.
+                # Compare the whole image plus interior patches in each layer;
+                # a restarted fade or wrong layer remains a large error.
+                errors = [abs(left - right) for left, right in zip(expected, actual)]
+                self.assertLessEqual(sum(errors) / len(errors), 1)
+                for x, y in ((120, 200), (300, 200), (450, 200), (700, 200)):
+                    offset = (y * 854 + x) * 3
+                    self.assertLessEqual(max(errors[offset:offset + 3]), 3)
             self.assertGreater(tone_energy(local, 1000), tone_energy(local, 300) * 3)
 
 

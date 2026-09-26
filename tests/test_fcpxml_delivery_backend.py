@@ -48,7 +48,7 @@ except ModuleNotFoundError:
     build_delivery_fcpxml = None
 
 try:
-    from scripts.build_delivery_package import (
+    from tests.legacy_delivery_builder import (
         DELIVERY_PROTOCOL_VERSION,
         build_delivery_package,
         delivery_fingerprint,
@@ -903,7 +903,7 @@ class DeliveryPackageTests(unittest.TestCase):
                 )
 
     def test_concurrent_review_update_blocks_obsolete_publication_and_reuse(self) -> None:
-        from scripts import build_delivery_package as builder
+        from tests import legacy_delivery_builder as builder
         from scripts.workflow_review import add_review_comment
 
         for operation in ("publish", "reuse"):
@@ -942,7 +942,7 @@ class DeliveryPackageTests(unittest.TestCase):
                 self.assertFalse(any(path.name.startswith(".AfterForge__") for path in root.parent.iterdir()))
 
     def test_late_input_or_package_changes_block_publication_restoration_and_reuse(self) -> None:
-        from scripts import build_delivery_package as builder
+        from tests import legacy_delivery_builder as builder
 
         for operation in ("publish", "restore-d4", "reuse"):
             for changed_input in ("motion", "source", "ledger", "package-info", "package-movie"):

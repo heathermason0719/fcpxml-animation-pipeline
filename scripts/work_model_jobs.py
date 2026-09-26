@@ -19,6 +19,18 @@ from scripts.work_model_inputs import animation_cues, cue_inputs, cue_key, depen
 from scripts.work_model_media import render_cue, composite_preview, validate_alpha
 from scripts.work_model_policy import production_basis, first_confirmed, upgrade, blocking_feedback
 from scripts.work_model_storyboard import storyboard_spec, render_storyboard
+from scripts.delivery_contract import PROTOCOL_VERSION
+from scripts.delivery_media import collect_inherited, inherited_identity
+from scripts.work_model_native_delivery import native_media, finish_native_cache
+
+
+def _workspace(root):
+    # A task snapshot is under its registered workspace, but is not a version.
+    for p in [Path(root), *Path(root).parents]:
+        if (p / '工程/project.json').is_file():
+            layout(p)
+            return p
+    raise ValueError('missing registered workspace')
 
 
 def _validate_media(path, manifest, cue, quality, log):
@@ -99,7 +111,8 @@ def _spec(root, manifest, action, request, *, job_id=None):
         return {'timeline': data, 'scope': scope, 'workCueIds': work, 'productionBasis': basis}
     data = timeline_inputs(root, manifest)
     return {'timeline': data, 'native': {c['id']: cue_key(root, manifest, c, 'delivery') for c in animation_cues(manifest)},
-            'identity': manifest['identity'], 'protocol': '2'}
+            'identity': manifest['identity'], 'protocol': PROTOCOL_VERSION,
+            'inherited': inherited_identity(collect_inherited(_workspace(root), source_paths(root, manifest)[0], manifest))}
 
 
 def _approved(root, manifest):
@@ -163,6 +176,8 @@ def _snapshot(root, manifest, spec, destination, review=None):
 
 
 def _cache(root, snapshot, manifest, cue, quality, job):
+    if quality == 'delivery':
+        return native_media(root, snapshot, manifest, cue, job)
     key=cue_key(snapshot,manifest,cue,quality)
     relative=f'cache/cues/{quality}/{key}/media.mov'
     movie=safe(root,relative,exists=False)
@@ -340,7 +355,7 @@ def _recover_publication(root, job):
         return None
     from scripts.work_model_delivery import verify_release, _inventory
     afterforge, _ = layout(root)
-    with manifest_transaction(root):
+    with project_lock(afterforge), manifest_transaction(root):
         fresh_hashes()
         current = load(root, writable=True)
         if digest(_spec(root,current,'deliver',job['request'])) != job['inputKey']:
@@ -385,14 +400,15 @@ def _finish_delivery(root,snap,manifest,spec,job,names):
         cue['deliveryAsset']={'fileName':'AF__'+digest(cue['id'])[:12]+'.mov',
              'relativePath':media['path'],'sha256':media['sha256'],'width':dims['width'],'height':dims['height'],
              'frameRate':str(1/parse_time(manifest['project']['source']['frameDuration'])),
-             'duration':cue['resolvedTimeline']['duration'],'probe':media['probe'],'alphaEvidence':media['alpha']}
+             'duration':cue['resolvedTimeline']['duration'],'inputKey':media['inputKey'],
+             'probe':media['probe'],'alphaEvidence':media['alpha']}
     prepared=prepare_release(root,manifest,afterforge_root=afterforge,release_id=job['releaseId'],
             input_key=job['inputKey'],dependency_paths=names,input_root=snap)
     job['preparedRelease'] = prepared['record']
     atomic_json(_job_path(root,job['id']),job)
     published=False
     try:
-        with manifest_transaction(root):
+        with project_lock(afterforge), manifest_transaction(root):
             fresh_hashes()
             current=load(root,writable=True)
             if digest(_spec(root,current,'deliver',job['request']))!=job['inputKey']:
@@ -400,7 +416,7 @@ def _finish_delivery(root,snap,manifest,spec,job,names):
             if _approved(root,current)['id']!=job['reviewSetId']:
                 raise ValueError('delivery review changed during rendering')
             for existing in current['deliveries']:
-                if existing['inputKey']==job['inputKey']:
+                if existing.get('protocolVersion') == PROTOCOL_VERSION and existing['inputKey']==job['inputKey']:
                     verify_release(root,afterforge,existing)
                     return {'status':'complete','delivery':existing,'reused':True,'jobId':job['id']}
             record=publish_release(root,prepared);published=True
@@ -462,7 +478,10 @@ def _run(root,action,request,*,resume_id=None):
             if cached_result is not None:
                 if action == 'deliver' and cached_result.get('delivery'):
                     from scripts.work_model_delivery import verify_release
+                    if cached_result['delivery'].get('protocolVersion') != PROTOCOL_VERSION:
+                        raise ValueError('historical delivery cannot be returned as current publication')
                     verify_release(root, afterforge, cached_result['delivery'])
+                    finish_native_cache(root, cached_result['delivery'])
                 else:
                     from scripts.work_model import _artifact_current
                     records = {a['id']: a for a in manifest['artifacts']}
@@ -472,7 +491,7 @@ def _run(root,action,request,*,resume_id=None):
                 return cached_result
             if action=='deliver':
                 for release in manifest['deliveries']:
-                    if release['inputKey']==key:
+                    if release.get('protocolVersion') == PROTOCOL_VERSION and release['inputKey']==key:
                         from scripts.work_model_delivery import verify_release
                         verify_release(root,afterforge,release)
                         manifest['editRevision'] += 1
@@ -504,6 +523,8 @@ def _run(root,action,request,*,resume_id=None):
         try:
             result=(_finish_preview(root,snap,manifest,spec,job) if action=='preview' else
                     _finish_delivery(root,snap,manifest,spec,job,names))
+            if action == 'deliver':
+                finish_native_cache(root, result['delivery'])
             job.update(status='complete',result=result,updatedAt=now());atomic_json(job_path,job)
             if resume_id:
                 with manifest_transaction(root):

@@ -23,6 +23,11 @@ from urllib.parse import unquote, urlparse
 from xml.etree import ElementTree as ET
 
 try:
+    from scripts.fcpxml_text_style import PROFILE, TextStyleNormalization
+except ModuleNotFoundError:
+    from fcpxml_text_style import PROFILE, TextStyleNormalization
+
+try:
     from scripts.hyperframes_adapter import load_manifest, parse_time, save_manifest
     from scripts.validate_fcpxml_package import (
         _global_afterforge_intervals,
@@ -131,8 +136,19 @@ def _source_story_equal(
     reexported: ET.Element,
     delivered_resources: dict[str, tuple[Any, ...]],
     reexported_resources: dict[str, tuple[Any, ...]],
+    *,
+    normalization=None,
+    basic_title=False,
+    path="sequence",
 ) -> bool:
-    if delivered.tag != reexported.tag or len(delivered) != len(reexported):
+    if delivered.tag != reexported.tag:
+        return False
+    if delivered.tag == "title":
+        basic_title = bool(normalization and normalization.is_basic_title(
+            delivered, reexported, delivered_resources, reexported_resources))
+    children = (normalization.children(delivered, reexported, path)
+                if basic_title and delivered.tag == "title" else list(delivered))
+    if len(children) != len(reexported):
         return False
     delivered_text = delivered.text if delivered.text and delivered.text.strip() else None
     reexported_text = reexported.text if reexported.text and reexported.text.strip() else None
@@ -156,12 +172,15 @@ def _source_story_equal(
                 if difference > tolerance:
                     return False
                 continue
-        if left != right:
+        if left != right and not (basic_title and delivered.tag == "text-style" and not len(delivered)
+                                  and normalization.color_equal(key, left, right, path)):
             return False
 
     return all(
-        _source_story_equal(left, right, delivered_resources, reexported_resources)
-        for left, right in zip(delivered, reexported)
+        _source_story_equal(left, right, delivered_resources, reexported_resources,
+                           normalization=normalization, basic_title=basic_title,
+                           path=f"{path}/{index}/{left.tag}")
+        for index, (left, right) in enumerate(zip(children, reexported))
     )
 
 
@@ -196,7 +215,8 @@ def compare_roundtrip(
         for item in spine.iter("asset-clip")
         if item.get("name", "").startswith("AF__")
     }
-    if all_afterforge_names != expected_names:
+    delivered_names = {item.get('name') for item in delivered_spine.iter('asset-clip') if item.get('name', '').startswith('AF__')}
+    if all_afterforge_names != delivered_names:
         raise ValueError(
             f"round-trip animation cue set changed: expected {sorted(expected_names)}, "
             f"found {sorted(all_afterforge_names)}"
@@ -242,13 +262,71 @@ def compare_roundtrip(
         if not semantic_start <= interval.start < semantic_start + semantic_duration:
             raise ValueError(f"round-trip animation moved outside its semantic range: {cue_id}")
 
+    delivered_map, reexported_map = _resource_map(delivered_root), _resource_map(reexported_root)
+    normalization = TextStyleNormalization(delivered_root, reexported_root)
+    formal_hashes = []
+    if manifest.get('delivery', {}).get('protocolVersion') == '3':
+        from scripts.delivery_media import reachable_assets, media_path
+        from scripts.work_model_store import sha
+        delivered_assets, exported_assets = reachable_assets(delivered_root), reachable_assets(reexported_root)
+        by_name = {m['fileName']: m for m in manifest['delivery']['media']}
+        observed = set()
+        delivered_by_hash = {}
+        for original in delivered_assets.values():
+            rep = next((r for r in original.findall('media-rep') if r.get('kind') == 'original-media'), None)
+            name = _media_basename(rep.get('src')) if rep is not None else None
+            if name in by_name: delivered_by_hash.setdefault(by_name[name]['sha256'], []).append(original)
+        def same_media_timing(original, exported):
+            before_fmt = delivered_root.find(f"resources/format[@id='{original.get('format')}']")
+            after_fmt = reexported_root.find(f"resources/format[@id='{exported.get('format')}']")
+            if before_fmt is None or after_fmt is None: return False
+            if any(before_fmt.get(k) != after_fmt.get(k) for k in ('width','height')): return False
+            frame = parse_time(before_fmt.get('frameDuration'))
+            if parse_time(after_fmt.get('frameDuration')) != frame: return False
+            if parse_time(original.get('start','0s')) != parse_time(exported.get('start','0s')): return False
+            before_duration = parse_time(original.get('duration'))
+            after_duration = parse_time(exported.get('duration'))
+            return before_duration <= after_duration <= before_duration + frame
+        for key, asset in exported_assets.items():
+            rep = next((r for r in asset.findall('media-rep') if r.get('kind') == 'original-media'), None)
+            if rep is None: raise ValueError('round-trip asset lacks original media')
+            path = media_path(rep.get('src',''), Path(reexported_xml).parent)
+            checksum = sha(path) if path and path.is_file() and path.suffix.lower() == '.mov' else None
+            matched = next((m for m in by_name.values() if m['sha256'] == checksum), None)
+            if _media_basename(rep.get('src')) in by_name and matched is None:
+                raise ValueError('round-trip formal media missing or changed: '+rep.get('src'))
+            if matched:
+                _assert_pure_video(asset, matched['fileName'])
+                if not any(same_media_timing(original, asset) for original in delivered_by_hash[checksum]):
+                    raise ValueError('round-trip formal media timing/format changed: '+matched['fileName'])
+                observed.add(checksum)
+                reexported_map[key] = ('asset', 'AfterForge-sha256', checksum)
+        if observed != {m['sha256'] for m in by_name.values()}:
+            raise ValueError('round-trip does not cover every formal animation MOV')
+        for key, asset in delivered_assets.items():
+            rep = next((r for r in asset.findall('media-rep') if r.get('kind') == 'original-media'), None)
+            name = _media_basename(rep.get('src')) if rep is not None else None
+            if name in by_name: delivered_map[key] = ('asset', 'AfterForge-sha256', by_name[name]['sha256'])
+        # Compound/multicam references cannot hide a changed nested animation.
+        exported_resources = reexported_root.find('resources')
+        for resource in delivered_root.find('resources'):
+            if resource.tag != 'media': continue
+            matches = [r for r in exported_resources if reexported_map.get(r.get('id')) == delivered_map.get(resource.get('id'))]
+            if len(matches) != 1: raise ValueError('round-trip nested resource missing')
+            left, right = ET.fromstring(ET.tostring(resource)), ET.fromstring(ET.tostring(matches[0]))
+            left.attrib.pop('id', None); right.attrib.pop('id', None)
+            if not _source_story_equal(left,right,delivered_map,reexported_map,
+                                      normalization=normalization, path=f"resource/{resource.get('id')}"):
+                raise ValueError('round-trip nested storyline changed')
+        formal_hashes = sorted(observed)
     delivered_clean = _remove_afterforge_anchors(delivered_sequence, cue_ids)
     reexported_clean = _remove_afterforge_anchors(reexported_sequence, cue_ids)
     if not _source_story_equal(
         delivered_clean,
         reexported_clean,
-        _resource_map(delivered_root),
-        _resource_map(reexported_root),
+        delivered_map,
+        reexported_map,
+        normalization=normalization,
     ):
         raise ValueError("round-trip source storyline changed")
 
@@ -257,6 +335,9 @@ def compare_roundtrip(
         "deliveredXml": str(Path(delivered_xml).expanduser().resolve()),
         "reexportedXml": str(Path(reexported_xml).expanduser().resolve()),
         "animatedCueIds": [cue["id"] for cue in animated],
+        "formalMediaSha256": formal_hashes,
+        "normalizationProfile": PROFILE if normalization.records else None,
+        "normalizations": normalization.records,
         "sourceOnlyCueIds": sorted(
             cue["id"] for cue in manifest.get("cues", []) if cue.get("productionMode") == "source-only"
         ),

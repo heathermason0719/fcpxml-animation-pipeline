@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from tests import test_fcpxml_delivery_backend as backend_fixture
 from tests.test_hyperframes_single_source import write_json
-from scripts.build_delivery_package import build_delivery_package
+from tests.legacy_delivery_builder import build_delivery_package
 from scripts.workflow_review import record_fcp_acceptance
 from scripts.workflow_status import resolve_stage_status
 

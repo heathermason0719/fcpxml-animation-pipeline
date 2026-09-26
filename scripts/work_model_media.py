@@ -245,8 +245,9 @@ def build_composite_command(root: Path, manifest: dict[str, Any], overlays: list
         filters.append(f"[0:a]atrim=start={_fftime(start)}:duration={_fftime(duration)},asetpts=PTS-STARTPTS[audio]")
     command += ["-filter_complex", ";".join(filters), "-map", f"[{current}]"]
     if has_audio:
-        command += ["-map", "[audio]", "-c:a", "aac"]
-    command += ["-r", _text(fps), "-frames:v", str(frame_count.numerator), "-c:v", "libx264", "-crf", "0", "-pix_fmt", "yuv420p", str(_inside(root, target))]
+        command += ["-map", "[audio]", "-c:a", "aac", "-b:a", "128k"]
+    command += ["-r", _text(fps), "-frames:v", str(frame_count.numerator), "-c:v", "libx264", "-preset", "medium", "-crf", "23", "-maxrate", "3M", "-bufsize", "6M",
+                "-g", str(max(1, round(fps * 2))), "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(_inside(root, target))]
     return command
 
 

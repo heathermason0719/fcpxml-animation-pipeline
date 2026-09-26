@@ -16,6 +16,6 @@
 - 展示目标缺失默认拒绝；`allowDraft` 只保留 unfinished 讨论。明确 exclusion 可完成受限委托，但不能形成正式 full Review；过早完成的旧 run 只追加 correction evidence，不重写历史。
 - 交付需当前完整审阅集合的批准与授权；明确“批准并制作交付”可同时记录。单纯认可图像不构成授权。
 - 480p 小样保留粗剪声音；正式 1080p ProRes 4444 全 Cue 验证。声音制作、原片重剪、Handles/sourceIn 不在范围。
-- `交付/` 是面向用户的包入口；`工程/episodes/` 保存独立版本，`releases/` 保存不可变交付事实。当前稿修改不覆盖历史包，不要求先验收旧包。
+- 协议 3 的 `交付/<集名>-DNNNN/` 是普通浅层目录，XML 与其全部 AfterForge 动画 MOV 同级，含历史复用。先导入全部 MOV 到 FCP Library，再导入 XML。相同内容仅硬链接，不复制；releases 只存轻量证据。后端核验完整引用、哈希/inode 和授权，不提供降级或跳过参数。当前稿不覆盖正式版，旧协议只读；历史清理另行明确授权。
 - schema 2.0 工程原位只读，明确继续制作时创建 v3 副本；不继承旧批准或改写旧 runtime。
 - 不自动 commit、push、安装、真实工程迁移或 FCP 导入。

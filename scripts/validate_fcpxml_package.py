@@ -153,16 +153,22 @@ def validate_delivery_package(
     *,
     dtd_path: Path | None = None,
 ) -> dict[str, Any]:
+    if Path(package_root).is_symlink(): raise ValueError('delivery symlink is forbidden')
     package = Path(package_root).expanduser().resolve()
     source = Path(source_xml).expanduser().resolve()
-    if not package.is_dir() or package.is_symlink() or package.suffix != ".fcpxmld":
-        raise ValueError(f"delivery package must be a regular .fcpxmld directory: {package}")
+    v3 = manifest.get("delivery", {}).get("protocolVersion") == "3"
+    if not package.is_dir() or package.is_symlink() or (not v3 and package.suffix != ".fcpxmld") or (v3 and package.suffix == ".fcpxmld"):
+        raise ValueError(f"delivery must be a regular shallow directory (legacy requires .fcpxmld): {package}")
     if not source.is_file() or source.is_symlink():
         raise ValueError(f"source FCPXML is missing or unsafe: {source}")
 
     animated = _animated_cues(manifest)
-    expected_files = {"Info.fcpxml", *(cue["deliveryAsset"]["fileName"] for cue in animated)}
-    actual_items = list(package.iterdir())
+    xml_name = manifest["delivery"]["xmlFileName"] if v3 else "Info.fcpxml"
+    media = manifest["delivery"]["media"] if v3 else [cue["deliveryAsset"] for cue in animated]
+    expected_files = {xml_name, *(a["fileName"] for a in media)}
+    if v3 and len({a["sha256"] for a in media}) != len(media):
+        raise ValueError("formal media must be unique by content hash")
+    actual_items = [p for p in package.iterdir() if not (v3 and p.name == ".DS_Store" and p.is_file() and not p.is_symlink())]
     if {item.name for item in actual_items} != expected_files:
         raise ValueError(
             f"delivery package contents differ: expected {sorted(expected_files)}, "
@@ -174,13 +180,12 @@ def validate_delivery_package(
     source_hash = manifest.get("sourceHashes", {}).get("fcpxml")
     if not isinstance(source_hash, str) or sha256_file(source) != source_hash:
         raise ValueError("source FCPXML hash does not match manifest")
-    for cue in animated:
-        asset = cue["deliveryAsset"]
+    for asset in media:
         movie = package / asset["fileName"]
         if sha256_file(movie) != asset["sha256"]:
             raise ValueError(f"delivery movie hash mismatch: {asset['fileName']}")
 
-    info = package / "Info.fcpxml"
+    info = package / xml_name
     try:
         source_root = ET.parse(source).getroot()
         delivered_root = ET.parse(info).getroot()
@@ -217,9 +222,11 @@ def validate_delivery_package(
     for cue in animated:
         cue_id = cue["id"]
         asset = cue["deliveryAsset"]
-        resource_matches = [item for item in resources.findall("asset") if item.get("name") == asset["fileName"]]
-        if len(resource_matches) != 1:
-            raise ValueError(f"expected exactly one AfterForge asset resource: {cue_id}")
+        anchors = [item for item in spine.iter('asset-clip') if item.get('name') == 'AF__'+cue_id]
+        if len(anchors) != 1: raise ValueError('expected exactly one AfterForge connected clip: '+cue_id)
+        resource_matches = [item for item in resources.findall('asset') if item.get('id') == anchors[0].get('ref')]
+        if len(resource_matches) != 1 or resource_matches[0].get('name') != asset['fileName']:
+            raise ValueError('expected exactly one AfterForge asset resource: '+cue_id)
         resource = resource_matches[0]
         resource_ids.add(resource.get("id"))
         media_reps = resource.findall("media-rep")
@@ -231,6 +238,7 @@ def validate_delivery_package(
             or len(media_reps) != 1
             or media_reps[0].get("kind") != "original-media"
             or media_reps[0].get("src") != f"./{asset['fileName']}"
+            or (v3 and list(media_reps[0]))
         ):
             raise ValueError(f"AfterForge asset resource is not pure relative video: {cue_id}")
         if any(item.tag.startswith("audio") for item in resource.iter()):
@@ -249,11 +257,33 @@ def validate_delivery_package(
         if interval.duration != parse_time(asset["duration"]):
             raise ValueError(f"AfterForge connected clip duration changed: {cue_id}")
 
-    if len(resource_ids) != len(animated):
+    if len(resource_ids) != len({c["deliveryAsset"]["fileName"] for c in animated}):
         raise ValueError("AfterForge asset resources are not independent")
+    if v3:
+        from scripts.delivery_media import validate_inherited
+        inherited = validate_inherited(source_root, delivered_root, manifest["delivery"]["sourceMedia"], media)
+        expected_hashes = inherited | {c["deliveryAsset"]["sha256"] for c in animated}
+        if {a["sha256"] for a in media} != expected_hashes:
+            raise ValueError("formal media closure differs from XML and current cues")
+        for a in media:
+            new_cues = [c for c in animated if c['deliveryAsset']['sha256'] == a['sha256']]
+            inherited_ids = [b['resourceId'] for b in manifest['delivery']['sourceMedia'] if b['afterforge'] and b['sha256'] == a['sha256']]
+            roles = ({'rendered'} if new_cues else set()) | ({'inherited'} if inherited_ids else set())
+            if (set(a.get('cueIds', [])) != {c['id'] for c in new_cues}
+                    or set(a.get('sourceResourceIds', [])) != set(inherited_ids)
+                    or set(a.get('roles', [])) != roles
+                    or set(a.get('inputKeys', [])) != {c['deliveryAsset']['inputKey'] for c in new_cues if c['deliveryAsset'].get('inputKey')}):
+                raise ValueError('formal media source or render binding differs')
+            if a.get("path") != manifest["delivery"]["packagePath"] + "/" + a["fileName"] or a.get("root") != "afterforge":
+                raise ValueError("formal media locator is not a delivery sibling")
     _assert_no_lane_overlap(spine)
     _assert_source_sequence_unchanged(source_root, delivered_root, {cue["id"] for cue in animated})
 
+    if v3:
+        from scripts.delivery_validation import validate_media_set
+        from scripts.work_model_delivery import _require_dtd
+        dtd_path = _require_dtd(source)
+        validate_media_set(package, manifest, source_root)
     if dtd_path is not None:
         dtd = Path(dtd_path).expanduser().resolve()
         if not dtd.is_file() or dtd.is_symlink():

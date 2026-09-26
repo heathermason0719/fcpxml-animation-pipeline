@@ -276,6 +276,7 @@ def build_delivery_fcpxml(source_xml: Path, manifest: dict[str, Any]) -> Deliver
 
     resource_ids: dict[str, str] = {}
     placements: list[dict[str, Any]] = []
+    media_resources = {}
     for request in sorted(requests, key=lambda item: (item.start, item.key)):
         cue = cue_by_id[request.key]
         asset = cue["deliveryAsset"]
@@ -287,22 +288,26 @@ def build_delivery_fcpxml(source_xml: Path, manifest: dict[str, Any]) -> Deliver
         if Fraction(str(asset.get("frameRate"))) != Fraction(1, 1) / frame_duration:
             raise ValueError(f"deliveryAsset frame rate does not match source: {request.key}")
 
-        resource_id = allocator.next()
+        if file_name in media_resources:
+            resource_id = media_resources[file_name]
+        else:
+            resource_id = allocator.next()
+            resource = ET.SubElement(
+                resources,
+                "asset",
+                {
+                    "id": resource_id,
+                    "name": file_name,
+                    "start": "0s",
+                    "duration": format_time(request.duration),
+                    "hasVideo": "1",
+                    "format": delivery_format_id,
+                    "videoSources": "1",
+                },
+            )
+            ET.SubElement(resource, "media-rep", {"kind": "original-media", "src": f"./{file_name}"})
+            media_resources[file_name] = resource_id
         resource_ids[request.key] = resource_id
-        resource = ET.SubElement(
-            resources,
-            "asset",
-            {
-                "id": resource_id,
-                "name": file_name,
-                "start": "0s",
-                "duration": format_time(request.duration),
-                "hasVideo": "1",
-                "format": delivery_format_id,
-                "videoSources": "1",
-            },
-        )
-        ET.SubElement(resource, "media-rep", {"kind": "original-media", "src": f"./{file_name}"})
 
         host = find_primary_host(spine, request.start)
         local_offset = anchor_offset(host, request.start)

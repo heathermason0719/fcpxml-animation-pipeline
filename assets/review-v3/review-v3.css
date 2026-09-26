@@ -76,7 +76,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-off
 
 .storyboard-action-status{flex-basis:100%;margin:0;padding:10px 12px;border-radius:8px;background:var(--panel-2);font-size:14px;overflow-wrap:anywhere}.storyboard-action-status:empty{display:none}.storyboard-action-status.success{color:var(--accent)}.storyboard-action-status.error{color:var(--danger)}.storyboard-action-help{flex-basis:100%;margin:0;color:var(--muted);font-size:12px}
 
-/* Storyboard-only navigation; Demo retains the existing two-column workspace. */
+/* Dedicated reading navigation for Storyboard. */
 .working-intent-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .working-intent-head .working-intent-label{margin:0}
 .working-intent-head button{flex:none;font-size:12px;padding:3px 8px;color:var(--muted)}
@@ -118,3 +118,41 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-off
   .storyboard-nav-head{display:flex;align-items:center;gap:12px;padding-bottom:6px}
   .storyboard-nav-head p{margin:0}.storyboard-nav-top{margin-top:6px}
 }
+
+/* Demo: retain Review styling, with the comment editor directly below the video. */
+#demoNavigator[hidden],#demoFeedbackToolbar[hidden],#feedbackTimeRange[hidden],#demoDeliveryActions[hidden]{display:none}
+.shell[data-active-tab="preview"]{grid-template-columns:184px minmax(0,1fr)}
+.shell[data-active-tab="preview"]>.workspace{grid-column:2;grid-row:2}
+.shell[data-active-tab="preview"]>#demoNavigator{grid-column:1;grid-row:2;position:sticky;top:12px;max-height:calc(100vh - 24px);overflow-y:auto}
+#demoCueNavigation{display:grid;gap:4px}
+#demoCueNavigation button{width:100%;text-align:left}
+.demo-cue-time{min-width:38px;font-variant-numeric:tabular-nums}
+.demo-heading{margin:12px 0 8px;align-items:center}
+.demo-heading h2{font-size:18px;margin:0}
+.demo-heading .muted{font-size:12px}
+.demo-approval-help{display:block;color:var(--muted);font-size:11px;margin-top:5px}
+.shell[data-active-tab="preview"] #media{min-height:0;scroll-margin-top:12px}
+.shell[data-active-tab="preview"] #media video{display:block;width:100%;height:min(50dvh,calc(100dvh - 240px));max-height:none;object-fit:contain}
+.shell[data-active-tab="preview"] #previewActions{display:none}
+.shell[data-active-tab="preview"] #feedbackPanel{display:block;position:static;max-height:none;overflow:visible;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel);padding:10px 12px;margin-top:8px}
+.shell[data-active-tab="preview"] .feedback-head,.shell[data-active-tab="preview"] #feedbackList,.shell[data-active-tab="preview"] #actions{display:none}
+.demo-compose-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.demo-compose-toolbar button{font-size:12px}
+.demo-compose-toolbar #mediaTime{font-size:12px;margin:0 6px 0 0;font-variant-numeric:tabular-nums}
+#demoTimeAnchor{font-size:12px;margin:0;flex:1;min-width:90px}
+.demo-compose-toolbar #submitFeedback{margin-left:0}
+.shell[data-active-tab="preview"] .feedback form{display:block;margin:8px 0 0}
+.shell[data-active-tab="preview"] .feedback textarea{height:62px;min-height:62px;max-height:24vh;padding:8px 10px;font-size:14px}
+.shell[data-active-tab="preview"] .feedback .time-range{max-width:440px;margin:8px 0 0}
+.shell[data-active-tab="preview"] #message{min-height:0;margin:6px 0 0}
+.shell[data-active-tab="preview"] #message:empty{display:none}
+.demo-round{margin-top:16px}.demo-round h2{font-size:16px;margin:0 0 8px}.demo-round .empty{padding:14px}
+.demo-round-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--line);margin-top:12px;padding-top:14px}
+#demoFeedbackCount,#demoRoundStatus{font-size:12px;font-weight:400;color:var(--muted)}
+.demo-secondary{margin-top:24px}.demo-secondary>details{padding:12px 0;border-top:1px solid var(--line)}
+.demo-secondary .artifact{margin-top:9px}
+button:disabled{cursor:default;opacity:.5}
+@media(max-width:900px){.shell[data-active-tab="preview"]{grid-template-columns:160px minmax(0,1fr)}}
+@media(max-width:680px){.shell[data-active-tab="preview"]{display:block}.shell[data-active-tab="preview"]>#demoNavigator{position:static;max-height:none;padding:10px;border-right:0;border-bottom:1px solid var(--line)}#demoCueNavigation{display:flex;overflow-x:auto;gap:6px}#demoCueNavigation .storyboard-nav-link{flex:0 0 160px}#demoTimeAnchor{order:4;flex-basis:100%}.shell[data-active-tab="preview"] #media video{height:auto;max-height:46dvh;aspect-ratio:16/9}.shell[data-active-tab="preview"] #feedbackPanel{padding:10px}.demo-compose-toolbar button{padding:6px 8px}}
+#demoWholeFeedbackLabel{display:inline-flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap}
+#demoWholeFeedback{width:auto;margin:0}

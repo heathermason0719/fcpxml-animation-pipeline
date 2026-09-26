@@ -63,10 +63,19 @@ Storyboard 页可直接点击「确认本轮设计」，在范围摘要中一次
 
 ## 文件与交付
 
+<!-- delivery-contract:start -->
+当前正式交付协议：3。
+目录：`AfterForge/交付/{episode}-D{number}/`。
+XML：`{episode}-D{number}.fcpxml`，与当前 XML 使用的全部 AfterForge 动画 MOV 同级。
+同一 SHA-256 只保存一个物理媒体实体；正式版本间可硬链接。内部仅保留元数据和 XML 证据。
+<!-- delivery-contract:end -->
+
 ```text
 AfterForge/
 ├── AGENTS.md, CLAUDE.md
-├── 交付/<集名--ID>/交付0001/<集名>.fcpxmld
+├── 交付/<集名>-D0001/
+│   ├── <集名>-D0001.fcpxml
+│   └── *.mov                       # XML 使用的全部 AfterForge 动画
 └── 工程/
     ├── project.json, 创作记忆.md, frame.md
     └── episodes/<episodeId>/<versionId>/
@@ -75,9 +84,15 @@ AfterForge/
         └── releases/
 ```
 
-页面保留通用 shell 的脚本思路、Storyboard、可选视觉探索、Demo 与交付入口；Storyboard 同页呈现旁白、Cue 总体说明、三列等尺寸静帧（窄屏两列）与局部动画说明。局部说明只显示一次，位于关联的最后一帧下；点击对应帧编号高亮关联图片，不改变留言目标。点击图片可放大，Esc 关闭。留言框默认展开，按版本、创意对象与稳定帧 ID 记住开合；桌面反馈栏随滚动保持可见。顶部保留单集、制作版、历史版及 Cue 导航。提交本轮反馈只交棒，设计确认独立操作；反馈目标由同一解析器用于确认、批准与交付。未采用的探索候选评论不会阻塞 canonical 成果，采用时才按冻结的候选 revision、内容身份与对象范围参与核验。支持从当前版本内容导出 Markdown 脚本、局部时间定位、多 Cue 评论、版本对照与独立 MOV 下载。480p 预览保留原粗剪声音；正式交付为源帧率 1920×1080 ProRes 4444。包内仅 Info.fcpxml 与 MOV，源时间线不改。
+页面保留通用 shell 的脚本思路、Storyboard、可选视觉探索、Demo 与交付入口；Storyboard 同页呈现旁白、Cue 总体说明、三列等尺寸静帧（窄屏两列）与局部动画说明。局部说明只显示一次，位于关联的最后一帧下；点击对应帧编号高亮关联图片，不改变留言目标。点击图片可放大，Esc 关闭。留言框默认展开，按版本、创意对象与稳定帧 ID 记住开合；桌面反馈栏随滚动保持可见。顶部保留单集、制作版、历史版及 Cue 导航。提交本轮反馈只交棒，设计确认独立操作；反馈目标由同一解析器用于确认、批准与交付。未采用的探索候选评论不会阻塞 canonical 成果，采用时才按冻结的候选 revision、内容身份与对象范围参与核验。支持从当前版本内容导出 Markdown 脚本、局部时间定位、多 Cue 评论、版本对照与独立 MOV 下载。Demo 默认展示最新完整视频，动画 Cue 导览只跳转播放位置；静帧不混入视频列表，其他视频与以往意见折叠。视频下方保存单条意见，「取当前播放时间」暂停并定位反馈；文本输入区以外的空格控制播放／暂停。「提交本轮反馈」将当前完整 Demo 的已保存意见交棒，不批准效果；「本版效果通过」只批准当前完整 Review，之后才显示交付操作，仍需单独授权。480p 预览保留原粗剪声音，采用 H.264 CRF 23、3 Mbps 峰值约束、6 Mb 缓冲、约两秒关键帧与 MP4 faststart；不使用无损 H.264，整版、局部与补充 Cue 视频共用此设置。仅编码变化且内容输入指纹相同的当前预览，继续展示既有反馈而不改写反馈绑定；正式交付为源帧率 1920×1080 ProRes 4444。正式目录中仅同级普通 XML 与 MOV，源时间线不改。
 
-快照记录实际依赖、已批准审阅和完整素材。相同输入复用经核验包；草稿继续修改不会覆盖历史包，也不必等待旧包 FCP 验收。实际导入用 `update operation: "decision", kind: "accept-import"` 记录；首次协议 2 的 FCP re-export 用 `operation: "roundtrip"` 验证并建立基线。自动测试不代替实际 FCP 验收。
+请先把该目录内**全部 MOV** 导入并管理到 FCP Library，再导入同目录 XML；历史沿用动画也已包含在这一批媒体中。内部 `releases/dNNNN/` 仅留冻结 manifest、必要源 XML、依赖哈希、验证清单与批准关联，不复制 MOV、字体、插画、Demo 或粗剪。正式目录是媒体权威；相同内容只用普通硬链接，失败即拒绝，不退回复制。AfterForge 内的受保护历史路径也参与唯一性核验；用户管理到 FCP Library 的副本不计入此范围。
+
+后端从实际资源图解析全部动画，包含嵌套和历史复用；以登记来源与实际哈希确认归属，未知 AfterForge 资产阻止发布。XML、冻结媒体清单和目录必须一致；原始输入只读，输出移除动画旧 bookmark、替代媒体定位，使用同级相对引用。生成、发布、重试、已完成任务返回及恢复均核验；当前协议无跳过检查或降级参数。协议 1/2 仅历史读取/验证与明确迁移；旧 `build_delivery_package` 不再生产新包。
+
+相同输入复用已验证正式交付，草稿继续修改不覆盖旧版。实际导入用 `update operation: "decision", kind: "accept-import"` 记录；协议 3 首次真实 FCP re-export 用 `operation: "roundtrip"` 验证全部正式动画媒体并建立基线。自动测试不代替实际 FCP 验收。一次性旧工程清理需独立固定清单与明确授权，不提供长期 storage/retention 管理功能。
+
+回导允许经核实的 FCP 1.14 Basic Title 颜色空间转换和默认选择器省略，并逐项保存依据；实际文字、字体、对齐、媒体及时间变化仍会拒绝。颜色转换由 macOS 自带 ColorSync 核验，无须安装额外依赖；缺少校验环境时明确失败，不静默忽略差异。
 
 ## 开发验证
 
@@ -95,6 +110,6 @@ AfterForge/
 .venv/bin/python -B tests/work_model_real_smoke.py --run --root /private/tmp/afterforge-real-check --runtime 0.8.33 --gsap-source /absolute/local/gsap.min.js --font-source /absolute/local/chinese.woff2
 ```
 
-不修改已交付《楚门》工程，不默认 commit、push、安装、迁移或 FCP 导入。事故恢复与正式 Storyboard 基线的隔离命令见 [CURRENT](docs/CURRENT.md)；协议 2 实际 FCP 往返仍需另行验证。
+不修改已交付《楚门》工程，不默认 commit、push、安装、迁移或 FCP 导入。事故恢复与正式 Storyboard 基线的隔离命令见 [CURRENT](docs/CURRENT.md)；协议 3 实际 FCP 往返结果见 [CURRENT](docs/CURRENT.md)，与自动测试证据分别记录。
 
 开发约束见 [AGENTS.md](AGENTS.md)，项目边界见 [PROJECT](docs/PROJECT.md)，可靠状态见 [CURRENT](docs/CURRENT.md)，接口与实现见 [ARCHITECTURE](docs/ARCHITECTURE.md)，决策适用范围见 [DECISIONS](docs/DECISIONS.md)。

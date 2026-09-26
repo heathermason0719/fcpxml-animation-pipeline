@@ -61,6 +61,9 @@ class JobTests(unittest.TestCase):
             p.start();self.addCleanup(p.stop)
         p=patch('scripts.work_model_jobs._validate_media',return_value={'probe':{'width':1920,'height':1080,'r_frame_rate':'24','duration':'2'},'alpha':{'status':'valid'}})
         p.start();self.addCleanup(p.stop)
+        from tests.delivery_test_media import fake_probe
+        p=patch('scripts.delivery_validation.probe_formal_movie', side_effect=fake_probe)
+        p.start(); self.addCleanup(p.stop)
         if not getattr(self, 'cold_start', False):
             activate(self.root)
     def req(self,name,**kw):

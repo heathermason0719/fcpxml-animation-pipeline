@@ -377,6 +377,45 @@ def current_review_set(root, manifest):
     return None
 
 
+def _populate_delivery_media(root, releases):
+    for release in releases:
+        release.pop("inventory", None)
+        if release.get("protocolVersion") == "3":
+            continue
+        snapshot = safe(root, release["snapshotPath"], exists=False)
+        frozen_path = snapshot / "animation-manifest.json"
+        # Snapshot layout is owned by the delivery backend; expose only recorded MOVs.
+        if not frozen_path.is_file():
+            frozen_path = snapshot / "files/animation-manifest.json"
+        if "media" not in release:
+            release["media"] = []
+        if frozen_path.is_file() and not release["media"]:
+            frozen = json.loads(frozen_path.read_text())
+            for cue in frozen["cues"]:
+                asset = cue.get("deliveryAsset")
+                if asset:
+                    for base in (snapshot, snapshot / "files"):
+                        candidate = base / asset["relativePath"]
+                        if candidate.is_file():
+                            release["media"].append({"path": candidate.relative_to(root).as_posix(), "label": asset["fileName"]})
+                            break
+
+
+def media_status(version_root):
+    """Resolve recorded media only; playback must not wait for review qualification.
+
+    History is already readable through Review. Currentness and authorization
+    are still computed by status/actions, never inferred by this media index.
+    """
+    root = Path(version_root).expanduser().resolve()
+    manifest = load(root)
+    if manifest["schemaVersion"] != "3.0":
+        return status(root)
+    result = {key: copy.deepcopy(manifest[key]) for key in ("artifacts", "deliveries")}
+    _populate_delivery_media(root, result["deliveries"])
+    return result
+
+
 @verified_operation
 def status(version_root):
     from scripts.work_model_content import content_context
@@ -476,27 +515,10 @@ def status(version_root):
         result["availableActions"] += ["approve", "approve-and-deliver", "deliver"]
         if any(d.get("reviewSetId") == result["reviewSet"]["id"] and d["kind"] == "approve" for d in manifest["decisions"]):
             result["availableActions"].append("authorize")
+    _populate_delivery_media(root, result["deliveries"])
     for release in result["deliveries"]:
-        release.pop("inventory", None)
-        snapshot = safe(root, release["snapshotPath"], exists=False)
-        frozen_path = snapshot / "animation-manifest.json"
-        # Snapshot layout is owned by the delivery backend; expose only recorded MOVs.
-        if not frozen_path.is_file():
-            frozen_path = snapshot / "files/animation-manifest.json"
-        if "media" not in release:
-            release["media"] = []
-        if frozen_path.is_file() and not release["media"]:
-            frozen = json.loads(frozen_path.read_text())
-            for cue in frozen["cues"]:
-                asset = cue.get("deliveryAsset")
-                if asset:
-                    for base in (snapshot, snapshot / "files"):
-                        candidate = base / asset["relativePath"]
-                        if candidate.is_file():
-                            release["media"].append({"path": candidate.relative_to(root).as_posix(), "label": asset["fileName"]})
-                            break
         release["accepted"] = any(d.get("kind") == "accept-import" and d.get("deliveryId") == release["id"] for d in manifest["decisions"])
-        release["roundTripRequired"] = "2" not in index.get("protocolBaselines", {})
+        release["roundTripRequired"] = release["protocolVersion"] not in index.get("protocolBaselines", {})
     if len(_DISPLAY_CACHE) >= 32:
         _DISPLAY_CACHE.pop(next(iter(_DISPLAY_CACHE)))
     _DISPLAY_CACHE[str(root)] = (signature, copy.deepcopy(result))
@@ -807,6 +829,7 @@ def resume(version_root, request):
 def _register_roundtrip(root, manifest, request):
     from scripts.work_model_delivery import verify_release
     from scripts.compare_fcpxml_roundtrip import compare_roundtrip
+    from scripts.work_model_store import fresh_hashes
     afterforge, index = layout(root)
     release = next((d for d in manifest["deliveries"] if d["id"] == request.get("deliveryId")), None)
     if release is None:
@@ -816,12 +839,20 @@ def _register_roundtrip(root, manifest, request):
         raise ValueError("record actual FCP import acceptance first")
     snapshot = safe(root, release["snapshotPath"])
     frozen = json.loads((snapshot / release["manifestPath"]).read_text())
-    delivered = safe(afterforge, release["packagePath"]) / "Info.fcpxml"
+    delivered = safe(afterforge, release["packagePath"]) / release.get("xmlFileName", "Info.fcpxml")
     reexported = Path(request["reexportedPath"]).expanduser().resolve()
+    delivered_sha, reexported_sha = sha(delivered), sha(reexported)
     result = compare_roundtrip(delivered, reexported, frozen)
+    fresh_hashes()
+    if sha(delivered) != delivered_sha or sha(reexported) != reexported_sha:
+        raise ValueError("round-trip XML changed during comparison; no baseline registered")
+    verify_release(root, afterforge, release)
+    fresh_hashes()
+    if sha(delivered) != delivered_sha or sha(reexported) != reexported_sha:
+        raise ValueError("round-trip XML changed during final verification; no baseline registered")
     record = {"id": _identifier("decision"), "kind": "roundtrip", "source": user_source(request.get("source")),
               "deliveryId": release["id"], "createdAt": now(), "result": result,
-              "reexportedSha256": sha(reexported), "infoFcpxmlSha256": sha(delivered)}
+              "reexportedSha256": reexported_sha, "infoFcpxmlSha256": delivered_sha}
     manifest["decisions"].append(record)
     manifest["editRevision"] += 1
     response = {"status": "verified", "editRevision": manifest["editRevision"], "record": record}
@@ -832,7 +863,7 @@ def _register_roundtrip(root, manifest, request):
         previous_index = marker.read_bytes()
         previous_manifest = (root / "animation-manifest.json").read_bytes()
         index = json.loads(previous_index)
-        index.setdefault("protocolBaselines", {})["2"] = {"versionRoot": root.relative_to(afterforge).as_posix(),
+        index.setdefault("protocolBaselines", {})[release["protocolVersion"]] = {"versionRoot": root.relative_to(afterforge).as_posix(),
               "deliveryId": release["id"], "decisionId": record["id"], "verifiedAt": now()}
         try:
             save(root, manifest)

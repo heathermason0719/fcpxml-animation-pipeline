@@ -2,7 +2,7 @@
 
 ## 工作对象与权威
 
-新版是 manifest 3.0 / work model 2.1.0 / delivery protocol 2。`references/work-model-contract.json` 定义操作和词汇；`animation-manifest.json` 是单个制作版本生产事实的唯一入口。系列 `工程/project.json` 只记录稳定系列/集/版本身份、路径注册和经验证的协议基线。
+新版是 manifest 3.0 / work model 2.1.0 / delivery protocol 3。`references/work-model-contract.json` 定义操作和词汇；`animation-manifest.json` 是单个制作版本生产事实的唯一入口。系列 `工程/project.json` 只记录稳定系列/集/版本身份、路径注册和经验证的协议基线。
 
 `brief` 保存本集理解与论证段落，`cues` 保存具体表达源、依赖及有理数摆放。Cue 的 `contentContext` 分别记录 narration/screenText 的 present、none 或 unknown；实际文本仍只在既有 Cue 或关联 brief 段落中，none 保存 text/reference 依据。`artifacts` 保存实际产物 SHA、生成输入、全局覆盖范围和完整性；`reviewSets` 绑定完整小样与必要的重叠 Cue 补审；`feedback` 保存原话、位置、来源、澄清及处理；`decisions` 单独保存有来源的用户决定；`deliveries` 绑定不可变包及快照。反馈冲突、非空最终说明、技术上的当前 board 与历史 `firstConfirmed` 是分别核验的事实，互不替代。执行任务不保存批准权威。
 
@@ -13,7 +13,7 @@
 ```text
 AfterForge/
   AGENTS.md, CLAUDE.md                缺失时创建，已有文件不覆盖
-  交付/<集名--稳定ID>/交付NNNN/<集名>.fcpxmld
+  交付/<集名>-DNNNN/                 同级普通 XML 与全部动画 MOV
   工程/
     project.json, 创作记忆.md, frame.md
     episodes/<episodeId>/<versionId>/
@@ -48,7 +48,9 @@ AfterForge/
 | `work_model_storyboard.py` | PNG 合同 5 输入、旧合同核验复用、完整 Storyboard 文字快照及局部说明引用 |
 | `work_model_intent.py` | 本版非权威 focus/preserve 条目的定向更新，不调用生产策略 |
 | `work_model_feedback.py` / `work_model_feedback_targets.py` / `work_model_exploration.py` | 固定反馈批次、处理与接受分离；统一目标解析用于确认、批准、交付；候选工作区及原子采用 |
-| `work_model_delivery.py` | 协议 2 XML、包与复现快照、清单核验和不可覆盖发布 |
+| `work_model_delivery.py` | 协议 3 授权、XML/媒体闭包、唯一性与轻量证据的不可覆盖发布 |
+| `delivery_contract.py` / `delivery_media.py` / `delivery_validation.py` | 读取 JSON 合同、解析资源图与登记来源、哈希/inode 及实际媒体规格核验 |
+| `work_model_native_delivery.py` | 待发布媒体硬链接；发布后仅保留正式目录定位与输入键索引 |
 | `work_model_review.py` / `assets/review-v3` | 系列 Review、统一 API、媒体流、下载与冲突草稿 |
 
 CLI 与 HTTP 调用同一应用层。短写入在已有 `manifest_transaction` 版本锁内重新读取、校验并发布，多文件失败回滚；跨系列操作先项目锁后版本锁。所有写入要求 requestId 和 expectedRevision，重复请求不能丢评论或重复交付。
@@ -71,13 +73,19 @@ CLI 与 HTTP 调用同一应用层。短写入在已有 `manifest_transaction` �
 
 ## 发布与验收
 
-全部 animated cues 原生 1920×1080 ProRes 4444 渲染或复用，核验精确帧率/时长、实际解码 Alpha 和媒体 SHA。序列、源故事线及有理数位置保持，FCPXMLD 内只含 Info.fcpxml 和 MOV。DTD、引用、清单、时间/lane 与源不变性验证通过后才发布。
+全部 animated cues 原生 1920×1080 ProRes 4444 渲染或复用，并从所选 Project 的实际资源图追踪全部历史 AfterForge 动画。文件名仅用于发现待核实对象，来源由登记和实际 SHA 确认；未核实对象拒绝。沿用媒体身份进入交付输入指纹，不能因 XML 文本未变就复用变化的外部媒体。按内容去重，同名不同内容采用确定性不同文件名。继承资产仍是继承来源，不伪造当前 Cue。
 
-包在 `交付/`，快照在本版 `releases/dNNNN/`。快照保存 manifest、原 XML、实际 MOV，以及 `files/` 下保持相对结构的复现源和已批准审阅文件；inventory 记录映射与 SHA。日志、探索和无关缓存排除；当前实现使用独立复制，尚不依赖可变硬链接。两个目录先完成后再原子 rename，正常异常清理已发布部分，manifest 保存失败撤回新包/快照；不覆盖既有发布。
+当前合同及布局来自 `references/work-model-contract.json`。正式目录为 `AfterForge/交付/<集名>-DNNNN/`，仅一个 `<集名>-DNNNN.fcpxml` 与当前 XML 的全部动画 MOV；均是同级普通文件。动画 `media-rep` 统一为 `./文件名.mov`，清除旧 bookmark 和替代表示；源 XML 不写入。DTD、全部媒体的实际编码/Alpha 通道/帧率/时长、引用闭包、清单、时间/lane、源故事线和继承资源语义共同核验。生成器与验证器分别遍历源资源图。当前渲染还保留实际解码 Alpha 的资格验证。
 
-发布前将准备好的发布记录写入任务日志。响应丢失后，恢复会核验包、快照、当前输入及授权，再接回完整发布；仅在目标精确匹配该任务清单时清理单边发布残留。
+同一正式 SHA 在整个 AfterForge 内只允许一个 `(device, inode)`，受保护历史路径不排除。所有复用使用硬链接，失败不复制；禁止符号链接或隐藏媒体目录。长任务先在任务区准备原生媒体，以硬链接记录待发布缓存；发布后删除缓存 MOV，仅保留输入键/SHA/正式目录定位索引。后续制作从正式交付复用。正式文件不可原地修改，新内容产生新 D 编号；不同正式版完整保留。
 
-相同交付输入返回已验证旧包。当前草稿可继续修改；历史批准/验收只属于原包，修改无需旧阶段重开。FCP 导入接受绑定 deliveryId 与实际 Info SHA；首次协议 2 的真实 re-export 经比较器通过后建立系列 protocolBaselines。没有自动测试可以代替实际 FCP 操作。
+`releases/dNNNN/` 只包含冻结 manifest、必要源 XML、inventory（文件哈希、依赖哈希和批准关联），不保存媒体或大资产。发布先复核当前授权和正在执行的 job，再按项目锁→版本锁核对全量不变量及全工作区唯一性；完成原子 rename 后复验，失败回滚。发布记录先写 job journal，响应丢失后只收养经核验、匹配当前输入和授权的正式结果。协议 1/2 仅历史验证；`work_model_delivery_v2.py` 无 writer，旧 CLI 拒绝新建。旧任务协议指纹不同，不能从完成或恢复捷径返回旧路径作为当前正式交付。
+
+已发布协议 3 的完整性验证只依赖该正式目录、轻量证据和必要校验环境；旧包和工程素材不再是验证依赖。FCP 导入接受绑定 deliveryId 与 XML SHA；真实 re-export 必须覆盖全部正式媒体哈希（含历史沿用）及源/嵌套时间线，再按协议记录 baseline。实际操作仍由用户先导入整批 MOV、再导入 XML；自动测试不能代替该验收。
+
+往返比较对 XML 1.14 的 Apple Basic Title 使用 `fcpxml_text_style.py` 中的有限规范化：macOS ColorSync Generic RGB/sRGB 往返后精确匹配六位有效数字，或在实际 rich-text 字体/字形/字号、文字和 LTR 左对齐均不变时省略已知默认选择器。结果记录逐项规则和前后值；无系统颜色校验环境、未知参数或实质变化仍拒绝。此规则仅供回导比较，正式交付与源 XML 的验证不使用它。登记在同一事务中重查两份 XML 的 SHA 与正式交付完整性，失败不记决定或协议基线。
+
+本次历史迁移是固定清单的维护作业，旧记录/XML/manifest/清单保存在既有 release 证据位置。历史只读 job 不改写，旧交付移出日常可发布集合。没有通用 storage、retention、自动淘汰或预览清理状态机。
 
 ## 创作记忆
 
@@ -90,3 +98,15 @@ CLI 与 HTTP 调用同一应用层。短写入在已有 `manifest_transaction` �
 `workingIntent.items` 与生产数据并列存于版本 manifest，包含稳定 ID、focus/preserve、文字、定位、用户来源与 writer 时间。独立 writer 分支在版本锁内去重/校验/保存，不运行 upgrade 或生产历史纠正；仅更新意图及必要 revision/request 记录。定位失效非阻塞；Agent 更新定位与被替代条目。它不进入任何媒体、Review、资格或交付输入，不继承到新制作版，不写入系列记忆。
 
 正式 Review 在现有 API 上读取这两份数据。顶部显示单集/制作版/历史版与 Cue 跳转；桌面三列等尺寸帧，窄屏两列。说明按当前快照帧序挂在最后关联帧下，关系按钮只负责阅读高亮。图片弹窗、桌面 sticky 反馈栏、逐版本/对象/帧的留言开合偏好属于浏览器状态，不改变批准。逐帧反馈写请求按制作版串行，保存回执立即推进客户端 revision；状态刷新独立进行，迟到的低 revision 响应不覆盖较新状态。版本冲突仍保留草稿，不自动重发或改绑。保存反馈、交棒、完整 Cue 确认仍使用原接口；新 Storyboard 清除旧依据勾选，草稿不自动转绑。顶部提交、确认、生成按钮在原位显示回执并防重复点击；静帧生成按 tasks 的 requestId（持久 job 的原请求身份）关联本次异步任务，成功／失败不从无关历史任务推断。后台 hero 约束与抽帧用途不变。
+
+## Demo 审阅交互
+
+Demo 沿用 Review shell，播放器下方为紧凑反馈表单，左侧动画 Cue 导览不改反馈目标。初次选择优先当前完整视频；静帧与探索帧不进入 Demo 素材列表。取时间暂停同一个播放器并显式绑定所看 artifact 与全局有理数时间；导航和意见回看只移动播放位置，历史意见优先回到原视频。文本输入与输入法组合以外的空格在 Demo 控制播放／暂停，并拦截按钮默认激活。
+
+单条反馈与 Storyboard 写入共用版本写队列及 revision 回执，保存中防重复，失败保留草稿；成功后刷新失败不声称保存失败。本轮列表从最新完整 Demo 的 artifactId 与已持久化 reviewRounds 投影，排除 Storyboard／探索反馈。handoff 复用 `review-submit`，`storyboardIds: []` 加明确 feedbackIds；刷新恢复已提交状态，不把新意见补入已提交轮次。效果通过复用 `decision: approve` 与当前 reviewSetId，不生成交付授权。制作与历史任务收在次级区域，旧失败不覆盖当前操作回执。
+
+Demo 视频反馈的撤回复用 `feedback-applicability`：`not-applicable` 配合 `review-feedback-withdraw:` 来源标识显示已撤回，恢复写回 `current`。原文、身份与已提交轮次不删除；非 current 意见不进入 Demo 待提交列表。撤回／恢复与提交共用就地忙状态，并沿用按版本串行写入和 revision 冲突保护。
+
+审核视频由 `build_composite_command` 统一编码为 H.264 CRF 23 / medium、VBV maxrate 3M / bufsize 6M、约两秒 GOP、yuv420p、MP4 faststart 与 AAC 128k。全片、局部及补充 Cue 共用默认；源有理数帧率与精确帧数保持不变。此策略只用于已合成的审核视频，不改变透明预览缓存及 ProRes 4444 交付路径。Demo 反馈列表合并仍 current 且相同 full-preview inputKey 的意见，保留原 artifactId；重新编码不会使未处理意见从本轮消失。
+
+Review `/media` 使用 `media_status` 读取当前 manifest 的已登记素材及交付媒体索引，保留版本白名单、路径及符号链接检查，逐请求读取登记变化；不调用完整 `status` 的资格、指纹与文件哈希计算。历史素材本来就可读，因此此路径不产生 current 或批准判断。`/api/state` 和所有 writer 仍执行原核验。
