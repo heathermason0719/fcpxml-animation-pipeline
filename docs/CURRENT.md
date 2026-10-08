@@ -101,5 +101,6 @@ Agent 场景先准备独立状态，再由实际 Agent 根据原话选择请求�
 
 - D0002 实际导入验收与协议 3 往返基线均已完成并登记。后续普通交付沿用该协议基线；交付/FCPXML 语义变化时重验。仅支持上述有机制依据的有限规范化，未知样式差异仍须查证，不能自动泛化为任意字段忽略。
 - 当前交付仍要求单 Project sequence；多 Project 输入明确报出歧义，不扩展多 Project 交付。
-- 本轮实现位于 `1ac7` 工作树的 `codex/rework-lifecycle-smoke` 分支，HEAD 为保护性提交 `86b93c5`，保留此前未提交的 Demo UX 与编码改动。真实迁移和清理仅按本轮固定清单及追加确认执行；未改 user-inbox 或 FCP Library，未执行 Git 历史操作、安装或部署。
+- 当前正常工作区为 `/Users/xiaobaimac/Developer/fcpxml-animation-pipeline`，下一轮 invocation 使用 `main`。上一轮实现与正式交付边界保护已包含在 `main`（本次封箱前基线 `d58887a`）；已核验 `codex/rework-lifecycle`、`codex/rework-lifecycle-smoke`、`codex/workflow-stage-contract` 全部提交均在 `main` 中，并删除仍存在的本地分支及对应 GitHub 远端引用。失效的 `/private/tmp/fcpxml-animation-pipeline-stage-contract` worktree 登记已清理，仅保留正常工作区。
+- 历史开发与迁移记录：此前在 `1ac7` 工作树开展 smoke 开发，以保护性提交 `86b93c5` 保存 Demo UX 与编码改动；后续实现经 `2151f7e` 收口，交付边界保护经 `d58887a` 登记。真实迁移和清理仅按当轮固定清单及追加确认执行；当轮未改 user-inbox 或 FCP Library，未执行 Git 历史操作、安装或部署。上述实际验收与迁移证据继续保留。
 - 动态拼接资源仍须声明依赖。没有引入后台 Agent、自动跨版本继承、数据库、云分析或转写。正式媒体的硬链接唯一性由交付后端维护。
