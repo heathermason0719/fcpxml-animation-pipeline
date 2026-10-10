@@ -1,6 +1,6 @@
 ---
 name: fcpxml-animation-pipeline
-description: Plan animation for film-video series from scripts or Final Cut Pro rough cuts, review real stills and motion, apply feedback, and deliver transparent ProRes animations in verified FCPXMLD packages using the AfterForge work model.
+description: Plan animation for film-video series from scripts or Final Cut Pro rough cuts, review real stills and motion, apply feedback, and deliver verified FCPXML and transparent ProRes MOVs together in ordinary shallow directories using the AfterForge work model.
 ---
 
 # AfterForge

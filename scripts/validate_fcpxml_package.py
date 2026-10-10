@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a flat AfterForge FCPXMLD delivery package."""
+"""Validate protocol-3 shallow FCPXML/MOV directories and legacy FCPXMLD packages."""
 
 from __future__ import annotations
 
@@ -308,7 +308,7 @@ def validate_delivery_package(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="验证 AfterForge 扁平 FCPXMLD 交付包。")
+    parser = argparse.ArgumentParser(description="验证 AfterForge 协议 3 浅层 FCPXML/MOV 目录，兼容旧 FCPXMLD 包校验。")
     parser.add_argument("package_root", type=Path)
     parser.add_argument("source_xml", type=Path)
     parser.add_argument("manifest", type=Path)
