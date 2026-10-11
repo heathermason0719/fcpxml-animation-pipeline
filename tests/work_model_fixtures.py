@@ -2,7 +2,14 @@
 from pathlib import Path
 from unittest.mock import patch
 from scripts import work_model as model
-from scripts.work_model_store import load, sha
+from scripts.work_model_store import load, sha, save
+
+
+def historical_policy(root):
+    """Keep tests of 2.1 behavior explicit; never used by production writers."""
+    manifest = load(root)
+    manifest['workModelVersion'] = '2.1.0'
+    save(root, manifest)
 
 
 def user(text='测试用户明确委托', reference='fixture:user-turn'):
@@ -43,6 +50,23 @@ def activate(root, name='initial'):
             }
     model.update(root, request(root, name+'-content-context', operation='edit',
                                patch={'cues': manifest['cues']}))
+    if manifest.get('workModelVersion') == '2.2.0':
+        from tests.test_work_model_concepts import png_bytes
+        selected = []
+        for cue in manifest['cues']:
+            if cue['productionMode'] != 'animation':
+                continue
+            image = Path(root) / '.staging' / (name + '-' + cue['id'] + '.png')
+            image.parent.mkdir(parents=True, exist_ok=True)
+            image.write_bytes(png_bytes())
+            selected.append(model.update(root, request(root, name+'-image-'+cue['id'], operation='concept',
+                action='register', cueId=cue['id'], imageSource=str(image),
+                origin={'kind':'user-imported','reference':'fixture:synthetic-raster'},
+                idea='测试概念图', motion='按既有 Cue 实现测试运动'))['record']['id'])
+        model.update(root, request(root, name+'-confirm', operation='decision', kind='confirm-concept',
+                                  conceptIds=selected, source=user('确认测试概念图')))
+        with patch('scripts.work_model_jobs.render_storyboard', side_effect=raster):
+            return model.preview(root, request(root, name+'-storyboard', scope='storyboard'))
     with patch('scripts.work_model_jobs.render_storyboard', side_effect=raster):
         result = model.preview(root, request(root, name+'-storyboard', scope='storyboard'))
     model.update(root, request(root, name+'-confirm', operation='decision', kind='confirm-design',

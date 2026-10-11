@@ -65,16 +65,18 @@ class SourcePublicationTests(unittest.TestCase):
         self.publish('active-src',{motion:'const timeline=gsap.timeline({paused:true});timeline.to("#title",{x:4});'},work={'cueIds':[second['id']]})
         self.assertTrue(all(c['firstConfirmed'] for c in model.status(self.root)['storyboard']['cues']))
 
-    def test_true_open_without_motion_rejects_inline_publication_and_keeps_static_edit(self):
+    def test_true_open_requires_concept_confirmation_before_static_or_inline_publication(self):
         result=model.open_project(Path(self.tmp.name)/'true-cold',{'requestId':'fresh','expectedRevision':0,'episodeTitle':'从零'})
         self.root=Path(result['root'])
         cue={'id':'A','productionMode':'animation','screenText':['标题'],'finalAnimationDescription':'标题保持',
              'renderAdapters':{'hyperframes':{'compositionId':'A','compositionSrc':'compositions/A.html','layoutDependencies':[]}}}
-        self.publish('layout',{'compositions/A.html':'<div>标题</div>'},patch={'cues':[cue]})
-        with self.assertRaisesRegex(ValueError,'first|首次'):
+        model.update(self.root,self.req('plan',operation='edit',patch={'cues':[cue]}))
+        with self.assertRaisesRegex(ValueError,'concept|概念'):
+            self.publish('layout',{'compositions/A.html':'<div>标题</div>'})
+        with self.assertRaisesRegex(ValueError,'concept|概念'):
             self.publish('inline',{'compositions/A.html':'<div>标题</div><script>document.body.animate([],2000)</script>'})
         self.assertEqual(load(self.root)['decisions'],[])
-        self.assertEqual((self.root/'compositions/A.html').read_text(),'<div>标题</div>')
+        self.assertFalse((self.root/'compositions/A.html').exists())
 
     def test_orphan_motion_and_candidate_workspace_cannot_publish_unowned_motion(self):
         with self.assertRaisesRegex(ValueError,'canonical Cue owner'):

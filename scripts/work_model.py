@@ -60,13 +60,13 @@ def _identifier(prefix):
 
 
 def _blank(identity):
-    return {"schemaVersion": "3.0", "workModelVersion": "2.1.0", "sourceVersion": None,
+    return {"schemaVersion": "3.0", "workModelVersion": "2.2.0", "sourceVersion": None,
             "identity": identity, "editRevision": 0,
             "project": {"source": None, "preview": {"width": 854, "height": 480},
                         "delivery": {"width": 1920, "height": 1080}},
             "brief": {"summary": "", "segments": []}, "cues": [], "artifacts": [], "reviewSets": [],
             "feedback": [], "decisions": [], "deliveries": [], "requests": {},
-            "creativeObjects": [], "storyboards": [], "reviewRounds": [], "explorations": [], "productionRuns": []}
+            "creativeObjects": [], "concepts": [], "storyboards": [], "reviewRounds": [], "explorations": [], "productionRuns": []}
 
 
 def _legacy_visual_defaults(text):
@@ -80,8 +80,8 @@ def _legacy_visual_defaults(text):
     notice = (
         "\n<!-- afterforge:work-model-visual-defaults -->\n"
         "本副本从历史版本仅继承视觉与运动默认。文中的历史阶段、静态冻结、storyboard 审批及重开要求"
-        "不作为本副本的工作指令；schema 3.0 的操作、反馈和交付以当前 Skill 与 work model 2.1 合同为准。"
-        "首次设计先通过 Storyboard 确认；明确局部探索可试做，active loop 可自由修改。正式交付仍需当前完整审阅集合的用户批准与制作授权。\n\n"
+        "不作为本副本的工作指令；schema 3.0 的操作、反馈和交付以当前 Skill 与 work model 2.2 合同为准。"
+        "新 2.2 制作先确认真实概念图再发布代码；Storyboard 检查实际制作，普通实现反馈沿用概念确认。正式交付仍需当前完整审阅集合的用户批准与制作授权。\n\n"
     )
     # Keep YAML byte-for-byte at the start for consumers of visual tokens.
     lines = text.splitlines(keepends=True)
@@ -412,6 +412,7 @@ def media_status(version_root):
     if manifest["schemaVersion"] != "3.0":
         return status(root)
     result = {key: copy.deepcopy(manifest[key]) for key in ("artifacts", "deliveries")}
+    result['concepts'] = copy.deepcopy(manifest.get('concepts', []))
     _populate_delivery_media(root, result["deliveries"])
     return result
 
@@ -455,6 +456,11 @@ def status(version_root):
         return copy.deepcopy(cached[1])
     result = {key: copy.deepcopy(manifest[key]) for key in ("identity", "editRevision", "brief", "cues", "artifacts", "feedback", "decisions", "deliveries")}
     result["legacy"] = False
+    result['workModelVersion'] = manifest.get('workModelVersion', '2.0.0')
+    from scripts import work_model_concepts as concepts
+    result['concepts'] = copy.deepcopy(manifest.get('concepts', []))
+    if concepts.enabled(manifest):
+        result['conceptDesign'] = concepts.status(root, manifest)
     result['workingIntent'] = copy.deepcopy(manifest.get('workingIntent', {'items': []}))
     from scripts.work_model_policy import artifact_eligible, first_confirmed, storyboard_current
     for artifact in result["artifacts"]:
@@ -479,7 +485,8 @@ def status(version_root):
             'storyboardId': board['id'] if board else None,
             'frames': [{**artifacts[i], 'artifactId': i, 'frameNarration': frame_narrations.get(artifacts[i]['frameId'])}
                        for i in board['artifactIds']] if board else [],
-            'canConfirm': not problems, 'confirmationProblems': problems, 'firstConfirmed': confirmed})
+            'canConfirm': not problems and not concepts.enabled(manifest),
+            'confirmationProblems': [] if concepts.enabled(manifest) else problems, 'firstConfirmed': confirmed})
     result['storyboard'] = {'cues': cards, 'rounds': copy.deepcopy(manifest.get('reviewRounds', []))}
     result['explorations'] = copy.deepcopy(manifest.get('explorations', []))
     result['workScopeCueIds'] = []
@@ -552,6 +559,9 @@ def _validate_edit(manifest):
 
 def _record_decision(root, manifest, request):
     kind = request.get("kind")
+    if kind == 'confirm-concept':
+        from scripts.work_model_concepts import confirm
+        return confirm(root, manifest, request)
     if kind in {"confirm-design", "explore-motion", "authorize-demo"}:
         from scripts.work_model_policy import creative_decision
         return creative_decision(root, manifest, request)
@@ -600,6 +610,8 @@ def _prepare_files(root, request):
             raise ValueError('controlled runtime files require operation=runtime')
         if name.startswith("assets/source/"):
             raise ValueError("bound roughcut inputs are immutable")
+        if name.startswith('assets/concepts/'):
+            raise ValueError('concept image evidence is immutable; register a new concept instead')
         destination = safe(root, name, exists=False)
         staged = Path(item["source"]).expanduser().absolute()
         if not staged.is_relative_to(root / ".staging"):
@@ -710,6 +722,8 @@ def update(version_root, request):
             _validate_edit(manifest)
             installs.extend(_prepare_files(root, request))
             if operation == "exploration-adopt":
+                from scripts.work_model_concepts import require_concepts
+                require_concepts(root, manifest, request.get('cueIds', []))
                 from scripts.work_model_exploration import adoption
                 record = adoption(manifest, request, root=root)
                 allowed = set(request['cueIds'])
@@ -726,12 +740,23 @@ def update(version_root, request):
                         raise ValueError('shared visual dependency would change an unselected cue')
         elif operation == "exploration":
             from scripts.work_model_exploration import set_exploration
+            from scripts.work_model_concepts import enabled, require_concepts
+            if enabled(manifest):
+                if not request.get('cueIds'):
+                    raise ValueError('code exploration requires explicit canonical cueIds with confirmed concepts')
+                require_concepts(root, manifest, request['cueIds'])
             installs.extend(_prepare_files(root, request))
             overrides = {p.relative_to(root).as_posix(): data for p, data, _ in installs}
             record = set_exploration(manifest, request, root=root, overrides=overrides)
+            if enabled(manifest):
+                record['cueIds'] = list(request['cueIds'])
             prefixes = ('compositions/explorations/' + record['id'] + '/', 'assets/explorations/' + record['id'] + '/')
             if any(not p.relative_to(root).as_posix().startswith(prefixes) for p, _, _ in installs):
                 raise ValueError('visual exploration may write only its own candidate files')
+        elif operation == 'concept':
+            from scripts.work_model_concepts import update_concept
+            record, images = update_concept(root, manifest, request)
+            installs.extend(images)
         elif operation == "feedback":
             from scripts.work_model_feedback import add_feedback
             record = add_feedback(manifest, request, root=root)

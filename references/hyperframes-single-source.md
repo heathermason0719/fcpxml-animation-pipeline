@@ -1,6 +1,24 @@
 # 新版制作源与媒体合同
 
-适用于 manifest 3.0 / work model 2.1.0。schema 2.0 按 [旧单一布局协议](legacy/hyperframes-single-source-v2.md) 解释。
+适用于 manifest 3.0 / work model 2.2.0；已有 2.1 版本按原首次确认语义读取。schema 2.0 按 [旧单一布局协议](legacy/hyperframes-single-source-v2.md) 解释。
+
+## 概念图与确认接口
+
+每条动画（含简单文字和标注）先登记真实概念图，再进入代码制作。图片与 artifact/Storyboard 分开；生成图和外部图都从本版 `.staging/` 发布不可变副本到 `assets/concepts/`，保留 SHA、尺寸、Cue/object、轮次、原始来源、文字快照、创意和运动说明。原图只读，不依赖聊天链接。`origin.model` 仅在实际已知时填写。
+
+```json
+{"requestId":"concept-1","expectedRevision":2,"operation":"concept","action":"register","cueId":"A","imageSource":"<version-root>/.staging/concept.png","origin":{"kind":"user-imported","reference":"实际原图路径或生成调用引用"},"idea":"主要构图及表达意图","motion":"出现顺序、运动与停留"}
+```
+
+默认 `recommend: true` 设为当前推荐，`false` 仅保存候选；`action: "propose", conceptId` 切换本轮推荐。未确认可连续改稿，每次图片更新都登记新稿；历史反馈仍绑定原 conceptId。明确提供并采用可在 register 同时传 `adopt: true` 和真实 `source`，一笔事务登记及确认；仅导入没有资格。
+
+```json
+{"requestId":"confirm-1","expectedRevision":3,"operation":"decision","kind":"confirm-concept","conceptIds":["concept-A","concept-B"],"source":{"channel":"chat","text":"用户明确采用这些图的原话","reference":"实际消息引用"}}
+```
+
+确认针对各对象当前推荐稿，整批原子校验真实图片、两渠道内容及相关未解决反馈；支持有用户来源的 `feedbackResolutions`。普通实现修改保留确认。只有用户明确要求修改已确认概念时，提交 `operation: "concept", action: "reopen", cueIds, source` 开始新轮；原确认作为历史保留，新轮确认前不继续制作。未确认对象无需 reopen。
+
+`update` 的源码发布和代码探索／采用复用已有 source closure 判断受影响对象；`_spec` 在既有预览、缓存、恢复及发布路径读取同一份 concept basis，并随任务复制图片快照。图片候选、文字策划、素材登记和 runtime bootstrap 不因此获得或要求代码制作资格。当前概念与决定 ID 进入 productionBasis，图片仍以各自真实制作源决定媒体缓存。
 
 ## Canonical source
 
@@ -8,7 +26,7 @@
 
 - `compositionId`：本版唯一 HyperFrames composition ID；
 - `compositionSrc`：`compositions/cues/<cue>.html`，承载真实文字、布局与样式；
-- `motionSrc`（首次静态设计可缺省）：`compositions/motion/<cue>.js`，由 composition 自己引用并注册暂停时间线；
+- `motionSrc`（仅制作静帧时可缺省）：`compositions/motion/<cue>.js`，由 composition 自己引用并注册暂停时间线；
 - `layoutDependencies`：其他静态/动态依赖的版本内相对路径，包括使用的字体、CSS 与影像；动态计算的引用必须显式声明。
 
 遵循 HyperFrames `data-composition-id`、`data-duration`、`data-width`、`data-height` 及 `window.__timelines` 约定。HTML 默认原生 1920×1080；透明画面保持 HTML/body/根容器透明，不依赖播放器底色。Motion 选择器限定在本 composition 内，避免同名对象串用。

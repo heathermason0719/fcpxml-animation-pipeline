@@ -70,7 +70,7 @@ def confirmation_problems(root, manifest, records):
     return problems
 
 
-def apply_feedback_resolutions(manifest, request, records):
+def apply_feedback_resolutions(manifest, request, records, *, target=None):
     """Apply only explicit user choices, after validating the whole batch.
 
     The function mutates ``manifest`` only after every item is known to belong
@@ -82,7 +82,7 @@ def apply_feedback_resolutions(manifest, request, records):
         return []
     if not isinstance(values, list):
         raise ValueError('feedbackResolutions must be a list')
-    selected = _selected(manifest, records)
+    selected = _selected(manifest, records) if target is None else records
     source = user_source(request.get('source'))
     feedback = {item.get('id'): item for item in manifest.get('feedback', []) if isinstance(item, dict)}
     normalized = []
@@ -96,7 +96,9 @@ def apply_feedback_resolutions(manifest, request, records):
         if action not in {'accept', 'defer', 'withdraw'}:
             raise ValueError('feedback resolution action must be accept, defer, or withdraw')
         record = feedback.get(feedback_id)
-        if not record or not _feedback_applies(manifest, record, selected):
+        from scripts.work_model_feedback_targets import feedback_applies
+        applies = feedback_applies(manifest, record, target) if target is not None and record else _feedback_applies(manifest, record, selected) if record else False
+        if not record or not applies:
             raise ValueError('feedback resolution does not belong to this confirmation object')
         if item['action'] != 'accept' and record.get('status') not in OPEN_FEEDBACK:
             raise ValueError('only pending feedback or clarification can be deferred or withdrawn here')

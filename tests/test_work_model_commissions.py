@@ -82,14 +82,17 @@ class CommissionTests(unittest.TestCase):
         self.assertEqual(current['artifacts'][len(m['artifacts'])-1],m['artifacts'][-1])
         self.assertTrue(current.get('productionCorrections'))
 
-    def test_explicit_cross_version_continuity_preserves_qualification_only(self):
+    def test_copy_to_concept_model_preserves_provenance_without_inventing_image_confirmation(self):
         ids=self.enroll();self.confirm(ids,'both')
         source=load(self.root);before=sha(self.root/'animation-manifest.json')
         relations={c['id']:{'kind':'continue','sourceObjectId':c['objectId']} for c in source['cues'] if c['productionMode']=='animation'}
         result=model.open_project(Path(self.tmp.name)/'continued',{'requestId':'continue','expectedRevision':0,
             'episodeTitle':'继续设计','copyFrom':str(self.root),'commission':user('沿用首次资格继续制作'), 'objectContinuity':relations})
         target=Path(result['root']);current=load(target)
-        self.assertTrue(all(c['firstConfirmed'] for c in model.status(target)['storyboard']['cues']))
+        self.assertFalse(any(c['firstConfirmed'] for c in model.status(target)['storyboard']['cues']))
+        self.assertTrue(all(o['continuity']['qualificationEvidenceIds'] for o in current['creativeObjects']))
+        with self.assertRaisesRegex(ValueError, 'concept|概念'):
+            model.preview(target, request(target, 'need-new-concepts', scope='storyboard'))
         self.assertEqual(current['decisions'],[])
         self.assertEqual(current['reviewSets'],[])
         self.assertEqual(current['productionRuns'],[])
@@ -97,7 +100,7 @@ class CommissionTests(unittest.TestCase):
         renamed=copy.deepcopy(current['cues']);renamed[0]['id']='technical-rename';oid=renamed[0].pop('objectId')
         model.update(target,request(target,'rename',operation='edit',patch={'cues':renamed},objectRelations={
             'technical-rename':{'kind':'continue','objectId':oid,'basis':{'text':'同对象改名','reference':'test'}}}))
-        self.assertTrue(model.status(target)['storyboard']['cues'][0]['firstConfirmed'])
+        self.assertFalse(model.status(target)['storyboard']['cues'][0]['firstConfirmed'])
 
     def test_cross_version_restart_mixed_and_ambiguous_are_distinct(self):
         ids=self.enroll();self.confirm(ids,'both');m=load(self.root)
@@ -108,7 +111,10 @@ class CommissionTests(unittest.TestCase):
         self.assertFalse(any(c['firstConfirmed'] for c in model.status(restarted['root'])['storyboard']['cues']))
         relations={ids[0]:{'kind':'continue','sourceObjectId':m['cues'][0]['objectId']},ids[1]:{'kind':'new'}}
         mixed=model.open_project(Path(self.tmp.name)/'mixed',{**common,'objectContinuity':relations})
-        self.assertEqual([c['firstConfirmed'] for c in model.status(mixed['root'])['storyboard']['cues']],[True,False])
+        self.assertEqual([c['firstConfirmed'] for c in model.status(mixed['root'])['storyboard']['cues']],[False,False])
+        objects=load(mixed['root'])['creativeObjects']
+        self.assertIn('continuity', objects[0])
+        self.assertNotIn('continuity', objects[1])
         relations[ids[0]]['sourceObjectId']='nonexistent'
         with self.assertRaisesRegex(ValueError,'source object|源对象'):
             model.open_project(Path(self.tmp.name)/'bad-source',{**common,'objectContinuity':relations})
@@ -165,7 +171,7 @@ class CommissionTests(unittest.TestCase):
             result=model.open_project(Path(self.tmp.name)/('generation'+str(index)),{'requestId':'continue','expectedRevision':0,
                 'episodeTitle':'继续','copyFrom':str(origin),'commission':user('同一创作对象继续'), 'objectContinuity':relations})
             origin=Path(result['root'])
-            self.assertEqual([c['firstConfirmed'] for c in model.status(origin)['storyboard']['cues']],[True,False])
+            self.assertEqual([c['firstConfirmed'] for c in model.status(origin)['storyboard']['cues']],[False,False])
             self.assertEqual(load(origin)['decisions'],[])
 
     def test_old_writer_transaction_failure_does_not_persist_half_enrollment(self):

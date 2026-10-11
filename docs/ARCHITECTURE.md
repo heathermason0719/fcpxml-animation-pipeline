@@ -1,8 +1,10 @@
 # 架构
 
+2.2 的概念图片是生产前的独立设计记录：`creativeObjects[].concept` 保存当前轮次、推荐/确认稿及决定引用，`concepts[]` 保存不可变图片、来源与内容快照。新稿追加，旧反馈按 conceptId 和产品对象解析。确认只建立该轮方向；显式用户改概念才 reopen，普通技术修改不改变资格。概念模块准备 bytes，现有 update 事务负责发布/回滚；jobs snapshot 携带图片依据并在原 `_spec` 调用点复核。媒体缓存仍依赖实际制作源，不因浏览概念候选而重渲染。
+
 ## 工作对象与权威
 
-新版是 manifest 3.0 / work model 2.1.0 / delivery protocol 3。`references/work-model-contract.json` 定义操作和词汇；`animation-manifest.json` 是单个制作版本生产事实的唯一入口。系列 `工程/project.json` 只记录稳定系列/集/版本身份、路径注册和经验证的协议基线。
+新版是 manifest 3.0 / work model 2.2.0 / delivery protocol 3。`references/work-model-contract.json` 定义操作和词汇；`animation-manifest.json` 是单个制作版本生产事实的唯一入口。系列 `工程/project.json` 只记录稳定系列/集/版本身份、路径注册和经验证的协议基线。
 
 `brief` 保存本集理解与论证段落，`cues` 保存具体表达源、依赖及有理数摆放。Cue 的 `contentContext` 分别记录 narration/screenText 的 present、none 或 unknown；实际文本仍只在既有 Cue 或关联 brief 段落中，none 保存 text/reference 依据。`artifacts` 保存实际产物 SHA、生成输入、全局覆盖范围和完整性；`reviewSets` 绑定完整小样与必要的重叠 Cue 补审；`feedback` 保存原话、位置、来源、澄清及处理；`decisions` 单独保存有来源的用户决定；`deliveries` 绑定不可变包及快照。反馈冲突、非空最终说明、技术上的当前 board 与历史 `firstConfirmed` 是分别核验的事实，互不替代。执行任务不保存批准权威。
 
@@ -44,6 +46,7 @@ AfterForge/
 | `work_model_runtime.py` | 初始化明确且本地可用的精确 runtime；以 runtimeIdentity 区分 bootstrap/enrollment/same-byte repair 与实际变更，不安装或查询 latest |
 | `work_model_jobs.py` | 固定快照、可恢复执行、缓存验证、产物/交付发布 |
 | `work_model_media.py` | 受应用层制作依据核验后的原生渲染、FFmpeg 合成与实际 Alpha |
+| `work_model_concepts.py` | 概念图片校验、受控登记、推荐/改稿轮次、批量确认及生产依据 |
 | `work_model_policy.py` | 产品创作对象、首次确认、限定探索、整版任务依据及资格核验 |
 | `work_model_storyboard.py` | PNG 合同 5 输入、旧合同核验复用、完整 Storyboard 文字快照及局部说明引用 |
 | `work_model_intent.py` | 本版非权威 focus/preserve 条目的定向更新，不调用生产策略 |
@@ -63,9 +66,9 @@ CLI 与 HTTP 调用同一应用层。短写入在已有 `manifest_transaction` �
 
 同一 canonical composition/motion 用于静帧、讨论和原生交付。Cue 指纹涵盖字节依赖、精确 runtime、尺寸、帧率、时长、屏幕文字与透明性声明；摆放起点、layer、描述和用户决定不混入媒体身份。时间线指纹再包含源 XML/参考视频、范围及全部重叠 Cue 的摆放顺序。详细制作接口见 [单一制作源](../references/hyperframes-single-source.md)。
 
-独立静态路径从 canonical 布局、状态、字体及可选原片帧生成临时 host，调用本地精确 pin 的 PNG snapshot（关闭云端描述），不调用 Cue MOV、用户脚本或 vendor JS。静态 layout 是有限受限声明式源：单帧 raster、local SVG 与字体可用，animated GIF/APNG/WebP 及未知 capability 进入 Motion 或失败；`srcset`、`image-set`、SVG 资源与声明依赖共同形成 closure。host 只装载该 isolated closure 并施加 CSP，不能据此宣称任意 JS 可被静态证明。所有可执行/随时间推进的来源和改变的依赖绑定都经同一 production check，以完整 source closure 判定所有受影响 Cue。Storyboard 帧集合由生成任务登记，首次确认分别核验当前完整主辅帧、非空最终说明、两渠道 contentContext（unknown 不完整）、相关未解决反馈及对象身份；历史 first-confirmed 不伪装成当前技术状态。反馈交棒固定帧与反馈集合，不自动批准；带用户来源的 feedback resolution 可与确认原子提交。
+独立静态路径从 canonical 布局、状态、字体及可选原片帧生成临时 host，调用本地精确 pin 的 PNG snapshot（关闭云端描述），不调用 Cue MOV、用户脚本或 vendor JS。静态 layout 是有限受限声明式源：单帧 raster、local SVG 与字体可用，animated GIF/APNG/WebP 及未知 capability 进入 Motion 或失败；`srcset`、`image-set`、SVG 资源与声明依赖共同形成 closure。host 只装载该 isolated closure 并施加 CSP，不能据此宣称任意 JS 可被静态证明。所有可执行/随时间推进的来源和改变的依赖绑定都经同一 production check，以完整 source closure 判定所有受影响 Cue。Storyboard 帧集合由生成任务登记；历史 2.1 首次确认分别核验当前完整主辅帧、非空最终说明、两渠道 contentContext（unknown 不完整）、相关未解决反馈及对象身份；历史 first-confirmed 不伪装成当前技术状态。反馈交棒固定帧与反馈集合，不自动批准；带用户来源的 feedback resolution 可与确认原子提交。
 
-创作范围、时间范围与呈现范围独立。上下文内已有有效实现默认呈现，缓存缺失可技术重建；未有实现的其他 Cue 不自动补做。缺失和明确排除单独记录。首次资格持续有效，当前媒体、审阅资格与批准随实际变化核验。未采用探索候选的评论不阻塞 canonical 成果；采用记录冻结的 variant revision、content identity 和对象范围，之后才按同一反馈目标解析器参与相关核验。历史事故产物保留但无合法制作依据；合法新任务可核验并复用其媒体，以新事件登记当前审阅，不改历史标签。
+创作范围、时间范围与呈现范围独立。上下文内已有有效实现默认呈现，缓存缺失可技术重建；未有实现的其他 Cue 不自动补做。缺失和明确排除单独记录。2.2 概念首次资格在普通制作修改中持续有效；明确用户概念改稿开启新轮。当前媒体、审阅资格与批准随实际变化核验。未采用探索候选的评论不阻塞 canonical 成果；采用记录冻结的 variant revision、content identity 和对象范围，之后才按同一反馈目标解析器参与相关核验。历史事故产物保留但无合法制作依据；合法新任务可核验并复用其媒体，以新事件登记当前审阅，不改历史标签。
 
 480p Cue 为透明 ProRes 缓存，FFmpeg 按源帧率合成原粗剪和所有重叠层，音频来自同一粗剪范围。局部默认段落加前后两秒；用帧索引/有理数计算，转 FFmpeg 参数时才确定性转换十进制。完整小样必须覆盖整个粗剪，不得悄悄省略未完成动画；请求的展示目标缺失时默认拒绝，明确 `allowDraft` 只生成 unfinished 讨论稿且不能结束 commission 或生成可交付审阅集合。明确 exclusion 可以完成受限 commission，但绝不形成正式 full Review。`productionRuns` 只登记 `commission_fulfilled` 的结果；对旧 writer 过早完成的记录，追加 `productionCorrections` 证据而不改写历史 run/artifact。所有重叠 Cue 保守生成完整单 Cue 补充小样。
 
@@ -97,7 +100,7 @@ CLI 与 HTTP 调用同一应用层。短写入在已有 `manifest_transaction` �
 
 `workingIntent.items` 与生产数据并列存于版本 manifest，包含稳定 ID、focus/preserve、文字、定位、用户来源与 writer 时间。独立 writer 分支在版本锁内去重/校验/保存，不运行 upgrade 或生产历史纠正；仅更新意图及必要 revision/request 记录。定位失效非阻塞；Agent 更新定位与被替代条目。它不进入任何媒体、Review、资格或交付输入，不继承到新制作版，不写入系列记忆。
 
-正式 Review 在现有 API 上读取这两份数据。顶部显示单集/制作版/历史版与 Cue 跳转；桌面三列等尺寸帧，窄屏两列。说明按当前快照帧序挂在最后关联帧下，关系按钮只负责阅读高亮。图片弹窗、桌面 sticky 反馈栏、逐版本/对象/帧的留言开合偏好属于浏览器状态，不改变批准。逐帧反馈写请求按制作版串行，保存回执立即推进客户端 revision；状态刷新独立进行，迟到的低 revision 响应不覆盖较新状态。版本冲突仍保留草稿，不自动重发或改绑。保存反馈、交棒、完整 Cue 确认仍使用原接口；新 Storyboard 清除旧依据勾选，草稿不自动转绑。顶部提交、确认、生成按钮在原位显示回执并防重复点击；静帧生成按 tasks 的 requestId（持久 job 的原请求身份）关联本次异步任务，成功／失败不从无关历史任务推断。后台 hero 约束与抽帧用途不变。
+正式 Review 在现有 API 上读取这两份数据。顶部显示单集/制作版/历史版与 Cue 跳转；桌面三列等尺寸帧，窄屏两列。说明按当前快照帧序挂在最后关联帧下，关系按钮只负责阅读高亮。图片弹窗、桌面 sticky 反馈栏、逐版本/对象/帧的留言开合偏好属于浏览器状态，不改变批准。逐帧反馈写请求按制作版串行，保存回执立即推进客户端 revision；状态刷新独立进行，迟到的低 revision 响应不覆盖较新状态。版本冲突仍保留草稿，不自动重发或改绑。保存反馈、交棒仍使用原接口；新 2.2 概念确认复用 update 决定接口，历史完整 Cue 确认保留；新 Storyboard 清除旧依据勾选，草稿不自动转绑。顶部提交、确认、生成按钮在原位显示回执并防重复点击；静帧生成按 tasks 的 requestId（持久 job 的原请求身份）关联本次异步任务，成功／失败不从无关历史任务推断。后台 hero 约束与抽帧用途不变。
 
 ## Demo 审阅交互
 

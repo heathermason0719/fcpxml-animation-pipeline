@@ -1,5 +1,5 @@
 {
-  "contractVersion": "2.1.0",
+  "contractVersion": "2.2.0",
   "manifestSchemaVersion": "3.0",
   "deliveryProtocolVersion": "3",
   "identityHierarchy": [
@@ -50,7 +50,8 @@
     "confirm-design",
     "explore-motion",
     "authorize-demo",
-    "adopt-direction"
+    "adopt-direction",
+    "confirm-concept"
   ],
   "reviewAuthority": "immutable-review-set-and-current-verified-inputs",
   "legacy": {
@@ -66,7 +67,7 @@
   "creativeAuthority": "product-creative-object-not-technical-cue-id",
   "copyFrom": {
     "requires": "commission plus copyMode=restart or complete objectContinuity",
-    "continuation": "qualification-provenance-only"
+    "continuation": "historical-qualification-provenance-only; fresh-2.2-requires-concept-confirmation"
   },
   "productionRunAuthority": "commission_fulfilled-only",
   "previewScopes": [
@@ -81,7 +82,7 @@
     "reviewIdentity": "reviewInputKey",
     "localNotes": "cue.storyboard.animationNotes",
     "frameNarration": "cue.storyboard.frames[].narration",
-    "confirmationScope": "complete-storyboard-creative-object"
+    "confirmationScope": "production-inspection-after-concept-confirmation"
   },
   "workingIntent": {
     "operation": "working-intent",
@@ -101,5 +102,27 @@
     "duplicatePolicy": "one-inode-per-sha256",
     "evidence": "metadata-and-xml-only",
     "legacyPublication": "read-only"
+  },
+  "conceptDesign": {
+    "operation": "concept",
+    "actions": [
+      "register",
+      "propose",
+      "reopen"
+    ],
+    "origins": [
+      "codex-generated",
+      "user-imported"
+    ],
+    "formats": [
+      "PNG",
+      "JPEG",
+      "single-frame WebP"
+    ],
+    "storage": "assets/concepts",
+    "confirmation": "confirm-concept with explicit conceptIds and user source",
+    "beforeConfirmation": "free-image-exploration; no-code-production",
+    "afterConfirmation": "ordinary-production-retains-confirmation; explicit-user-concept-revision-only",
+    "legacyWorkModel": "2.1.0 retains Storyboard first-confirmation"
   }
 }

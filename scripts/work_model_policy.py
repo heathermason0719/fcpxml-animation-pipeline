@@ -24,7 +24,10 @@ def upgrade(manifest):
     another object. Readers deliberately leave old/partially enrolled data alone.
     """
     before = copy.deepcopy(manifest)
-    manifest['workModelVersion'] = '2.1.0'
+    if manifest.get('workModelVersion') != '2.2.0':
+        manifest['workModelVersion'] = '2.1.0'
+    else:
+        manifest.setdefault('concepts', [])
     for field in ('creativeObjects', 'storyboards', 'reviewRounds', 'explorations', 'productionRuns'):
         manifest.setdefault(field, [])
     objects = {o['id']: o for o in manifest['creativeObjects']}
@@ -114,6 +117,11 @@ def first_confirmed(manifest, object_id):
 def qualification_evidence(manifest, object_id):
     if not object_id:
         return []
+    from scripts.work_model_concepts import enabled, confirmed
+    if enabled(manifest):
+        record = confirmed(manifest, object_id)
+        obj = next((o for o in manifest.get('creativeObjects', []) if o['id'] == object_id), {})
+        return [obj['concept']['confirmationId']] if record else []
     explicit = [d['id'] for d in manifest['decisions']
                 if d['kind'] == 'confirm-design' and object_id in d.get('objectIds', [])]
     obj = next((o for o in manifest.get('creativeObjects', []) if o['id'] == object_id), {})
@@ -203,6 +211,9 @@ def creative_decision(root, manifest, request):
     record = {'id': identifier('decision'), 'kind': kind, 'source': user_source(request.get('source')),
               'createdAt': now()}
     if kind == 'confirm-design':
+        from scripts.work_model_concepts import enabled
+        if enabled(manifest):
+            raise ValueError('first design confirmation uses confirm-concept; Storyboard reviews the actual implementation')
         ids = request.get('storyboardIds')
         if not isinstance(ids, list) or not ids or len(ids) != len(set(ids)):
             raise ValueError('first design confirmation requires explicit storyboardIds')
@@ -293,12 +304,20 @@ def production_basis(manifest, request, rendered_ids, *, full=False, job_id=None
     for oid in set(work_objects + rendered_objects):
         if first_confirmed(manifest, oid):
             continue
-        if not full and basis and basis['kind'] == 'explore-motion' and oid in basis['objectIds']:
+        if manifest.get('workModelVersion') != '2.2.0' and not full and basis and basis['kind'] == 'explore-motion' and oid in basis['objectIds']:
             continue
+        if manifest.get('workModelVersion') == '2.2.0':
+            raise ValueError('concept / 概念图 confirmation required before production')
         raise ValueError('首次设计 / first design confirmation or explicit bounded Motion exploration required')
-    return {'policyVersion': '2.1.0', 'taskId': task, 'scope': 'full' if full else 'local',
-            'decisionIds': [basis['id']] if basis else [], 'objectIds': rendered_objects,
-            'workObjectIds': work_objects}
+    result = {'policyVersion': manifest.get('workModelVersion', '2.1.0'), 'taskId': task,
+              'scope': 'full' if full else 'local', 'decisionIds': [basis['id']] if basis else [],
+              'objectIds': rendered_objects, 'workObjectIds': work_objects}
+    if manifest.get('workModelVersion') == '2.2.0':
+        from scripts.work_model_concepts import confirmed
+        result['conceptIds'] = [confirmed(manifest, oid)['id'] for oid in rendered_objects]
+        result['decisionIds'] = list(dict.fromkeys(result['decisionIds'] + [did
+            for oid in set(work_objects + rendered_objects) for did in qualification_evidence(manifest, oid)]))
+    return result
 
 
 def completed_runs(manifest, task):
@@ -358,7 +377,7 @@ def correct_incomplete_runs(root, manifest):
 
 def artifact_eligible(manifest, artifact):
     basis = artifact.get('productionBasis')
-    if not basis or basis.get('policyVersion') != '2.1.0':
+    if not basis or basis.get('policyVersion') not in {'2.1.0', '2.2.0'}:
         return False
     try:
         if not set(object_ids(manifest, artifact.get('cueIds', []))).issubset(basis.get('objectIds', [])):
@@ -372,6 +391,11 @@ def artifact_eligible(manifest, artifact):
     if basis['scope'] == 'full' and not any(d['kind'] == 'authorize-demo' for d in selected):
         return False
     for oid in basis.get('objectIds', []):
+        if manifest.get('workModelVersion') == '2.2.0':
+            from scripts.work_model_concepts import confirmed
+            concept = confirmed(manifest, oid)
+            if not concept or concept['id'] not in basis.get('conceptIds', []):
+                return False
         if first_confirmed(manifest, oid):
             continue
         if basis['scope'] == 'local' and any(d['kind'] == 'explore-motion' and oid in d['objectIds'] for d in selected):
@@ -402,7 +426,7 @@ def check_motion_edit(root, before, manifest, request, files, *, runtime_transit
     from pathlib import Path
     old_objects = {c.get('objectId'): c for c in before['cues'] if c.get('objectId')}
     old_ids = {c['id']: c for c in before['cues']}
-    affected, owned = [], set()
+    affected, concept_affected, owned = [], [], set()
     for cue in manifest['cues']:
         if cue['productionMode'] != 'animation':
             continue
@@ -416,6 +440,15 @@ def check_motion_edit(root, before, manifest, request, files, *, runtime_transit
         current = inspect_sources(root, cue, proposed, allow_missing=True)
         previous = inspect_sources(root, old_cue, allow_missing=True) if old.get('compositionSrc') else {'files': [], 'motionFiles': [], 'motionBindings': []}
         owned.update(current['files'])
+        if manifest.get('workModelVersion') == '2.2.0':
+            # Planning may name a future source. Publishing source bytes or
+            # attaching an existing implementation starts actual production.
+            source_available = adapter['compositionSrc'] in proposed or (Path(root) / adapter['compositionSrc']).is_file()
+            closure_changed = changed.intersection(set(current['files']) | set(previous['files']))
+            attached_source = adapter != old and any(p in proposed or (Path(root) / p).is_file()
+                                                   for p in set(current['files']) - set(previous['files']))
+            if source_available and (closure_changed or attached_source):
+                concept_affected.append(cue['id'])
         motion = set(current['motionFiles']) | set(previous['motionFiles'])
         attached = set(current['motionFiles']) - set(previous['motionFiles'])
         attached = {p for p in attached if p in proposed or (Path(root) / p).is_file()}
@@ -459,6 +492,8 @@ def check_motion_edit(root, before, manifest, request, files, *, runtime_transit
                 raise ValueError('shared dependency would change an unselected creative cue')
     if work.get('mode') == 'motion':
         affected = list(dict.fromkeys(affected + work.get('cueIds', [])))
+    from scripts.work_model_concepts import require_concepts
+    require_concepts(root, manifest, concept_affected + affected)
     if affected:
         supplied = {**work, 'cueIds': affected, 'taskId': work.get('taskId', request.get('taskId'))}
         presented = affected

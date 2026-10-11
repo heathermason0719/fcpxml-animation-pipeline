@@ -24,6 +24,9 @@ class JobTests(unittest.TestCase):
         opened = model.open_project(base / 'AfterForge', {'requestId':'open','expectedRevision':0,'episodeTitle':'开场','copyFrom':str(legacy),'copyMode':'restart','commission':user('明确沿用旧设计创建测试副本')})
         self.root = Path(opened['root'])
         m = load(self.root)
+        # These regressions retain the historical 2.1 first-Storyboard policy.
+        # New concept-model job cases explicitly choose 2.2 below this fixture.
+        m['workModelVersion'] = getattr(self, 'work_model_version', '2.1.0')
         source = self.root / 'assets/source/Info.fcpxml'
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_bytes(SOURCE.replace(b'4s', b'10s'))

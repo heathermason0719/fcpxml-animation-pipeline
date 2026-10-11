@@ -58,7 +58,15 @@ def add_feedback(manifest, request, *, root=None):
     # detach its comments nor transfer them to a newly created object.
     if 'objectIds' in target:
         raise ValueError('feedback object identity is captured by the writer')
-    if target.get('cueIds'):
+    if target.get('conceptId'):
+        concept = next((c for c in manifest.get('concepts', []) if c['id'] == target['conceptId']), None)
+        if not concept or any(target.get(k) for k in ('artifactId', 'storyboardId', 'explorationId', 'variantId')):
+            raise ValueError('unknown or mixed concept feedback target')
+        cue = next((c for c in manifest['cues'] if c.get('objectId') == concept['objectId']), None)
+        if target.get('cueIds') and (not cue or target['cueIds'] != [cue['id']]):
+            raise ValueError('concept feedback cue does not match its creative object')
+        target['objectIds'] = [concept['objectId']]
+    if target.get('cueIds') and not target.get('conceptId'):
         target['objectIds'] = [c['objectId'] for c in manifest['cues']
                                if c['id'] in target['cueIds'] and c.get('objectId')]
     start = parse_time(target['timeStart']) if target.get('timeStart') else None

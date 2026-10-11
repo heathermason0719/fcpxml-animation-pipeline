@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts import work_model as model
 from scripts import work_model_jobs as jobs
 from scripts.work_model_inputs import cue_key
-from tests.work_model_fixtures import demo_request
+from tests.work_model_fixtures import demo_request, historical_policy
 from scripts.work_model_store import load
 
 
@@ -158,6 +158,7 @@ def main() -> int:
     source_hashes = tree_hashes(inbox)
     opened = model.open_project(afterforge, {"requestId": "open", "expectedRevision": 0, "title": "Synthetic", "episodeTitle": "Minute", "inputDirectory": str(inbox)})
     version = Path(opened["root"])
+    historical_policy(version)  # This harness verifies the retained 2.1 creative loop.
     runtime_request = request(version, "runtime", operation="runtime", version=args.runtime)
     if args.gsap_source is not None:
         source = args.gsap_source.expanduser()

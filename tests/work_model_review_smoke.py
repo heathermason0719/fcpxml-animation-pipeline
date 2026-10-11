@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts import work_model as model
 from scripts.work_model_store import load, sha
+from tests.work_model_fixtures import historical_policy
 
 
 BASELINE = Path('/Users/xiaobaimac/Movies/trumen/AfterForge/2026-09-09_v1')
@@ -45,6 +46,7 @@ def review_content_fixture(root):
         'title': '审核页 · 隔离验收', 'episodeTitle': '片头 · 页面测试', 'versionTitle': '局部说明与工作意图 · 测试版',
         'copyFrom': str(baseline), 'copyMode': 'restart', 'commission': source})
     version = Path(opened['root'])
+    historical_policy(version)  # Historical Storyboard-first fixture, never production migration.
     m = load(version)
     cues = [c for c in m['cues'] if c['id'] in {'intro', 'tv-evidence'}]
     for cue in cues:
@@ -119,6 +121,7 @@ def main() -> int:
         'commission': {'channel': 'chat', 'text': '明确授权：从 2026-09-09 基线创建隔离 Review UI fixture', 'reference': 'review-smoke-harness'},
     })
     version = Path(opened['root'])
+    historical_policy(version)  # Historical Storyboard-first fixture, never production migration.
     manifest = load(version)
     animated = [cue for cue in manifest['cues'] if cue['productionMode'] == 'animation']
     if len(animated) != 4:

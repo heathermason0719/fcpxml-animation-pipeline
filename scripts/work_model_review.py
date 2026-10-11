@@ -110,6 +110,9 @@ def _resolve_version(afterforge_root: Path, model_api: Any, version_id: str | No
 
 def _allowed_media_paths(state: dict[str, Any]) -> set[str]:
     allowed: set[str] = set()
+    for concept in state.get('concepts', []):
+        if isinstance(concept, dict) and isinstance(concept.get('path'), str):
+            allowed.add(concept['path'])
     for artifact in state.get("artifacts", []):
         if isinstance(artifact, dict) and isinstance(artifact.get("path"), str):
             allowed.add(artifact["path"])

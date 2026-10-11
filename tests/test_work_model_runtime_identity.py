@@ -10,7 +10,7 @@ from scripts.work_model_runtime import (RuntimeFiles, TRUSTED_VENDOR_SHA256,
                                         runtime_files, runtime_transition)
 from scripts import work_model as model
 from scripts.work_model_store import load
-from tests.work_model_fixtures import raster, user
+from tests.work_model_fixtures import raster, user, historical_policy
 
 
 class RuntimeIdentityTests(unittest.TestCase):
@@ -125,6 +125,7 @@ class RuntimeIdentityPublicApiTests(unittest.TestCase):
             'requestId': 'open', 'expectedRevision': 0, 'episodeTitle': '静态启动',
         })
         self.root = Path(opened['root'])
+        historical_policy(self.root)
         self.manifest = load(self.root)
         composition = self.root / '.staging' / 'layout.html'
         composition.parent.mkdir(parents=True, exist_ok=True)

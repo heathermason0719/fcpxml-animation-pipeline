@@ -71,6 +71,12 @@ def _spec(root, manifest, action, request, *, job_id=None):
             candidate = candidate_manifest(manifest, request)
         if scope == 'still' and len(request.get('cueIds', [])) != 1:
             raise ValueError('still preview requires exactly one cueId')
+        from scripts.work_model_concepts import require_concepts
+        selected_ids = request.get('cueIds', [c['id'] for c in animation_cues(candidate)])
+        if scope == 'exploration':
+            exploration = next(e for e in manifest['explorations'] if e['id'] == request['explorationId'])
+            selected_ids = exploration.get('cueIds', [])
+        concept_basis = require_concepts(root, manifest, selected_ids)
         lineage = {}
         if scope == 'exploration':
             exploration = next(e for e in manifest['explorations'] if e['id'] == request['explorationId'])
@@ -79,7 +85,8 @@ def _spec(root, manifest, action, request, *, job_id=None):
             current_lineage = variant_lineage(variant, root, manifest=manifest)
             lineage = {key: current_lineage.get(name) for key, name in
                        [('variantRevision', 'revision'), ('variantContentIdentity', 'contentIdentity')]}
-        return {**lineage, 'lineageFiles': current_lineage.get('files', []) if scope == 'exploration' else [], 'scope': scope, 'static': storyboard_spec(root, candidate, request),
+        return {**lineage, **({'conceptBasis': concept_basis} if concept_basis else {}),
+                'lineageFiles': current_lineage.get('files', []) if scope == 'exploration' else [], 'scope': scope, 'static': storyboard_spec(root, candidate, request),
                 'explorationId': request.get('explorationId'), 'variantId': request.get('variantId')}
     source_paths(root, manifest)
     if action == 'preview':
@@ -106,9 +113,12 @@ def _spec(root, manifest, action, request, *, job_id=None):
         data['overlays'] = available
         basis = production_basis(manifest, request, [o['cueId'] for o in available], full=scope == 'full',
                                  job_id=job_id, time_range=data['range'])
+        from scripts.work_model_concepts import require_concepts
+        concept_basis = require_concepts(root, manifest, work + [o['cueId'] for o in available])
         if scope == 'full' and not available and data['missingCueIds']:
             raise ValueError('first design confirmation required before full Motion production')
-        return {'timeline': data, 'scope': scope, 'workCueIds': work, 'productionBasis': basis}
+        return {'timeline': data, 'scope': scope, 'workCueIds': work, 'productionBasis': basis,
+                **({'conceptBasis': concept_basis} if concept_basis else {})}
     data = timeline_inputs(root, manifest)
     return {'timeline': data, 'native': {c['id']: cue_key(root, manifest, c, 'delivery') for c in animation_cues(manifest)},
             'identity': manifest['identity'], 'protocol': PROTOCOL_VERSION,
@@ -151,6 +161,7 @@ def _number(root, manifest, afterforge, index):
 
 def _snapshot(root, manifest, spec, destination, review=None):
     names=set(spec.get('static', {}).get('files', []))
+    names.update(c['path'] for c in spec.get('conceptBasis', []))
     names.update(spec.get('lineageFiles', []))
     for overlay in spec.get('timeline', {}).get('overlays', []):
         cue=next(c for c in manifest['cues'] if c['id']==overlay['cueId'])
@@ -328,12 +339,13 @@ def _finish_preview(root, snap, manifest, spec, job):
                     'productionBasis': spec['productionBasis'], 'createdAt': now()}
                 current['reviewSets'].append(review)
             if not static and spec['productionBasis'].get('taskId') and spec['productionBasis']['decisionIds']:
-                commission = next(d for d in current['decisions'] if d.get('taskId') == spec['productionBasis']['taskId'])
+                commission = next((d for d in current['decisions'] if d.get('taskId') == spec['productionBasis']['taskId']
+                                   and d['kind'] in {'authorize-demo', 'explore-motion'}), None)
                 # A local check is part of an outstanding full-Demo task, not
                 # completion of it. Recovery shares its basis until that task's
                 # commissioned output has actually been published.
                 from scripts.work_model_policy import commission_fulfilled
-                if commission_fulfilled(current, spec):
+                if commission and commission_fulfilled(current, spec):
                     current['productionRuns'].append({'taskId': spec['productionBasis']['taskId'], 'jobId': job['id'],
                         'inputKey': job['inputKey'], 'createdAt': now()})
             current['editRevision'] += 1

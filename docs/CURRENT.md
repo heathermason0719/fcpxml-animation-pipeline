@@ -2,6 +2,12 @@
 
 ## 已验证能力
 
+- 概念图收口：Review 在已确认图片丢失或内容变化时显示“已确认 · 概念图不可用”及恢复原图提示，保留原始确认；图片恢复后恢复制作提示，无需再次确认。复用现有状态，后端与制作门禁未改。Skill 按概念图片、已登记的非空 idea/motion 说明及现有内容／反馈条件描述确认，明确 finalAnimationDescription 不是概念确认条件。新增回归覆盖图片缺失／变化／恢复与缺省／空白最终说明；26 项定向和 504 项完整测试通过，Skill、合同投影、JavaScript 语法及 diff 检查通过。日志 `/private/tmp/afterforge-concept-closeout/unittest.log`。
+- 主施工验证：502 项 unittest 全部通过（70.630 秒），新增概念稿公开接口与共享 job 路径测试覆盖候选/采用、批量原子性、原图反馈、改稿轮次、缓存及恢复；客户端延迟响应回归覆盖跨版本确认回执。独立审核发现的回执串版问题已修复并复审通过。Skill、合同投影、JavaScript 语法与 diff 检查通过；7 个受保护交付模块/测试文件与本轮前哈希相同，交付合同字段及协议 3 未改。日志 `/private/tmp/afterforge-concept-implementation/unittest-final.log`。
+- 2026-10-11 概念图优先：fresh work model 2.2.0 / manifest 3.0 新增独立概念稿、持久受控图片、推荐/确认/显式改稿轮次和 `confirm-concept` 批量决定。两种图片来源共用事务、Schema、媒体访问与反馈归属；上传候选不取得资格，明确采用可一次导入确认。源码发布、代码探索/采用和既有 `_spec` 预览/缓存/恢复路径读取同一概念依据。Storyboard 检查实际制作，不重复首次设计确认。历史 2.1 与更早证据保持原语义；本节下方旧“Storyboard 首次确认”记录仅描述该历史版本。
+- 官方独立 Skills 更新完成：既有 11 组，实际来源提交 `8bca7c4417b59b47fca851183a8d47a4565bad0c`，各目录哈希与该提交一致；有效加载路径为全局 `.agents/skills` 与 `.claude/skills`，旧 Codex 镜像链接由官方安装器移除。精确 runtime 0.8.146 已通过 AfterForge 本地图片/中文字体 PNG、GSAP 0/1 秒 seek、2 秒透明 ProRes 4444、24 fps/48 帧和实际 Alpha 核验。本地 HyperFrames 源码仍为 `0945de83`，历史制作 pin 未改，没有安装插件。前后记录及预检位于 `/private/tmp/afterforge-concept-implementation/` 和 `/private/tmp/afterforge-concept-runtime-0146-browser/evidence.json`。
+- 两种来源实际路径：2 张真实 Codex 工具生成图及 1 张真实外部导入图，在隔离 Review 显示/放大/混合批量确认，刷新、服务重启与项目重新打开后图片和关联仍在。读取已保存概念后制作整体海报、关系解释图和原片标注，实际生成 6 张 PNG、3 个局部视频及每条 4 秒/24 fps/96 帧的 MOV；保留主要构图、层级、素材关系，原图哈希全部不变。证据 `/private/tmp/afterforge-concept-acceptance-20261011/` 中 `prepare-evidence.json`、`browser-evidence.json`、`production-evidence.json`、`visual-check-evidence.json` 及页面截图。模拟确认只在隔离工程，不修改旧 invocation 或真实制作，也不冒充正式交付/FCP 验收。
+
 - 2026-09-27 D0002 实际 FCP 往返完成：用户提供的“原样回导”经正常 `update operation: roundtrip` 后端通过，登记 `decision-bce34a7d55a8`，制作版 revision 255，系列 `protocolBaselines["3"]` 指向 D0002。17 个正式媒体哈希/格式/帧率、13 个本轮动画位置/时长、继承动画及原故事线通过；XML 与 MOV 字节未改，没有重渲染。结果记录 `fcpxml-1.14-basic-title-v1` 的 21 个系统颜色转换及 3 个默认选择器省略。492 项完整测试通过，Skill 与合同投影检查通过，实际证据追加至原迁移证据目录。
 - 本次兼容依据来自两份实际回导及 macOS ColorSync 复现：Generic RGB → sRGB → Generic RGB 与 FCP 的六位有效数字结果精确匹配；Basic Title 已知默认字体/左对齐选择器只在显式 rich-text 内容、字体/字形/字号及 LTR 左对齐不变时允许省略。Alpha、实际文字/样式、未知参数/模板/版本与时间变化仍拒绝，无校验环境不能跳过。发布前源 XML 不变性验证不使用该兼容规则。新增回归同时证明中途改 XML 不产生往返决定/基线，以及协议 3 的状态不会误读旧协议 2 基线。
 
@@ -74,6 +80,15 @@
 .venv/bin/python -B -m unittest discover -s tests -v
 .venv/bin/python "$HOME/.codex/skills/.system/skill-creator/scripts/quick_validate.py" .
 .venv/bin/python scripts/sync_workflow_stage_contract.py --check
+```
+
+2.2 概念优先真实验收分 prepare / render；prepare 输出目录必须不存在，生成图须实际来自图像工具，外部图须有真实来源。浏览器确认仅在隔离工程模拟，render 读取持久化确认图并产出 PNG/MOV。旧 real/review harness 明确使用 2.1 历史 fixture；事故恢复保持历史源合同，不代替新版验收。
+
+```bash
+.venv/bin/python -B tests/work_model_concept_smoke.py prepare --run --root /private/tmp/afterforge-concept-check --generated-concept /absolute/generated.png --external-concept /absolute/external.png --annotation-concept /absolute/annotation.png --source-frame /absolute/source.png --poster-frame /absolute/poster.png --font-source /absolute/chinese.woff2 --gsap-source /absolute/gsap.min.js --runtime 0.8.146
+.venv/bin/python scripts/serve_workflow_review.py /private/tmp/afterforge-concept-check/AfterForge --port 8788
+# 在隔离 Review 查看并确认三图，刷新、重启服务、重新 open 后执行：
+.venv/bin/python -B tests/work_model_concept_smoke.py render --run --root /private/tmp/afterforge-concept-check
 ```
 
 真实渲染仅使用预先可用的本地精确 runtime、vendor 和中文字体，不安装或升级依赖。所有输出目录必须不存在；本地 Chromium 需具有正常启动权限：

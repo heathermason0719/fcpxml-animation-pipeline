@@ -8,6 +8,8 @@
 
 新版操作词汇以 `references/work-model-contract.json` 为准。只有解释 schema 2.0 历史、维护 legacy 工具或处理旧阶段合同时，才读 `references/workflow-stage-contract.md`；Stage ID 和正式名称以对应 JSON 为 canonical。新版生产不调用旧 resolver，不维护 currentStage/blockingStage/nextEligibleStage。
 
+新 2.2 制作每条动画先有真实概念图；未确认可自由改图，明确采用后才发布代码及渲染。仅用户明确要求改概念时开启新确认轮次；普通制作反馈保留确认。
+
 初始设计与反馈修改均遵循 `SKILL.md` 的创意澄清、素材选择和运动默认；澄清不新增批准门。不让用户选择 static/motion 或办理阶段回退。
 
 ## 文件职责
@@ -39,7 +41,7 @@
 - 媒体、渲染、日志、临时文件、凭据与环境配置不进入版本控制。
 - 临时 QA 环境异常只有在目标环境复现或有实际可用性受损证据时才修复，不单独当交付故障。
 
-恢复工作时读取 `status.workingIntent.items`；按用户原话定向维护 focus/preserve，泛泛继续不清空，失效定位由 Agent 修订且不形成阻塞。意图不进入资格或渲染/审阅/交付指纹，不存入系列创作记忆。局部 animationNotes 随帧重组维护引用，首次确认仍针对完整 Storyboard；纯说明通过预览发布新快照并复用已验证 PNG。
+恢复工作时读取 `status.workingIntent.items`；按用户原话定向维护 focus/preserve，泛泛继续不清空，失效定位由 Agent 修订且不形成阻塞。意图不进入资格或渲染/审阅/交付指纹，不存入系列创作记忆。局部 animationNotes 随帧重组维护引用，2.2 首次确认针对概念图，Storyboard 只检查实际制作；纯说明通过预览发布新快照并复用已验证 PNG。
 
 固定 runtime 配置与 vendor 由 runtime writer 维护身份；bootstrap 和同指纹修复不产生 Motion 授权。反馈随产品对象与实际采用的候选输入关联，技术改名或摆放变化不自动解决旧反馈。
 
@@ -67,6 +69,15 @@ commit、push、merge、rebase、tag、release、deploy 均需当前请求明确
 .venv/bin/python scripts/afterforge.py deliver "<version-root>" --request-file /tmp/deliver.json
 .venv/bin/python scripts/afterforge.py resume "<version-root>" --request-file /tmp/resume.json
 .venv/bin/python scripts/serve_workflow_review.py "/workspace/AfterForge" --port 8765
+```
+
+2.2 概念优先真实验收分 prepare / render；prepare 输出目录必须不存在，生成图须实际来自图像工具，外部图须有真实来源。浏览器确认仅在隔离工程模拟，render 读取持久化确认图并产出 PNG/MOV。旧 real/review harness 明确使用 2.1 历史 fixture；事故恢复保持历史源合同，不代替新版验收。
+
+```bash
+.venv/bin/python -B tests/work_model_concept_smoke.py prepare --run --root /private/tmp/afterforge-concept-check --generated-concept /absolute/generated.png --external-concept /absolute/external.png --annotation-concept /absolute/annotation.png --source-frame /absolute/source.png --poster-frame /absolute/poster.png --font-source /absolute/chinese.woff2 --gsap-source /absolute/gsap.min.js --runtime 0.8.146
+.venv/bin/python scripts/serve_workflow_review.py /private/tmp/afterforge-concept-check/AfterForge --port 8788
+# 在隔离 Review 查看并确认三图，刷新、重启服务、重新 open 后执行：
+.venv/bin/python -B tests/work_model_concept_smoke.py render --run --root /private/tmp/afterforge-concept-check
 ```
 
 显式隔离真实渲染回归（输出目录必须不存在，本地 runtime 与 vendor 预先可用）：

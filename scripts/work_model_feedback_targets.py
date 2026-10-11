@@ -211,6 +211,12 @@ def feedback_applies(manifest, feedback, target):
         return False
     if feedback.get("applicability", {}).get("kind", "current") in NONBLOCKING_APPLICABILITY:
         return False
+    if source.get('conceptId'):
+        if target.get('kind') == 'concept':
+            return source['conceptId'] in target.get('conceptIds', [])
+        from scripts.work_model_concepts import confirmed
+        adopted = [confirmed(manifest, oid) for oid in target.get('objectIds', [])]
+        return any(c and c['id'] == source['conceptId'] for c in adopted)
     exploration = _feedback_exploration(manifest, feedback)
     if exploration:
         adopted = [adoption for adoption in _adoptions(manifest, exploration)

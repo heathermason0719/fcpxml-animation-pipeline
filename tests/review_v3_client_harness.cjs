@@ -54,7 +54,43 @@ async function main() {
   vm.runInContext(fs.readFileSync('assets/review-v3/review-v3.js','utf8'),context);
   await new Promise(setImmediate);
   const scenario=process.argv[2];
-  if(scenario==='demo-reencoded-feedback') {
+  if(scenario==='concept-image-unavailable') {
+    assert.equal(realStatus.conceptDesign.cues[0].firstConfirmed,true);
+    assert.match(byId('brief').innerHTML,/已确认 · 概念图不可用/);
+    assert.match(byId('brief').innerHTML,/图片缺失或内容已变动，请恢复原图片/);
+    assert.doesNotMatch(byId('brief').innerHTML,/已确认 · 可进入制作|概念改稿 · 待重新确认/);
+    assert.doesNotMatch(byId('brief').innerHTML,/data-select-concept=/,'image loss does not request another confirmation');
+  } else if(scenario==='concept-image-restored') {
+    assert.equal(realStatus.conceptDesign.cues[0].firstConfirmed,true);
+    assert.match(byId('brief').innerHTML,/已确认 · 可进入制作/);
+    assert.doesNotMatch(byId('brief').innerHTML,/概念图不可用|图片缺失或内容已变动/);
+  } else if(scenario==='concept-version-race') {
+    function conceptData(id, count) {
+      const data=version();data.identity.versionId=id;data.concepts=[];data.conceptDesign={cues:[]};
+      for(let i=0;i<count;i++) {
+        const cid=id+'-concept-'+i;data.concepts.push({id:cid,objectId:id+'-object-'+i,path:cid+'.png',sha256:'b'.repeat(64),origin:{kind:i?'codex-generated':'user-imported'},idea:'关系图',motion:'依次出现'});
+        data.conceptDesign.cues.push({cueId:'cue-'+i,objectId:id+'-object-'+i,title:'动画'+i,segmentIds:[],contentContext:{},recommendedId:cid,confirmedId:null,firstConfirmed:false,canConfirm:true,confirmationProblems:[],conceptIds:[cid]});
+      }
+      data.storyboard={cues:[],rounds:[]};return data;
+    }
+    const data={v1:conceptData('v1',2),v2:conceptData('v2',1)},posts=[],release={};
+    context.fetch=async(url,options)=>{
+      if(url.startsWith('/api/state'))return {ok:true,json:async()=>structuredClone(data[new URL(url,'http://localhost').searchParams.get('version')])};
+      const payload=JSON.parse(options.body);posts.push(payload);
+      return new Promise(resolve=>{release[payload.version]=()=>{data[payload.version].editRevision++;resolve({ok:true,json:async()=>({editRevision:data[payload.version].editRevision})})}});
+    };
+    await context.selectVersion('v1');
+    const first=context.confirmConcepts(data.v1.concepts.map(c=>c.id));await new Promise(setImmediate);
+    assert.equal(posts[0].request.kind,'confirm-concept');assert.deepEqual(posts[0].request.conceptIds,['v1-concept-0','v1-concept-1']);
+    await context.selectVersion('v2');assert.equal(byId('confirmAllConcepts').disabled,false);
+    const second=context.confirmConcepts(['v2-concept-0']);await new Promise(setImmediate);
+    assert.equal(posts.length,2,'enabled v2 confirmation must submit despite the v1 write');
+    release.v1();await first;
+    assert.equal(byId('conceptActionStatus').textContent,'正在保存确认…','v1 receipt must not replace pending v2 receipt');
+    release.v2();await second;
+    assert.match(byId('conceptActionStatus').textContent,/已确认 1 张/);
+    await context.selectVersion('v1');assert.match(byId('conceptActionStatus').textContent,/已确认 2 张/);
+  } else if(scenario==='demo-reencoded-feedback') {
     const data=version();data.artifacts[0].inputKey='same-content';data.artifacts.push({...data.artifacts[0],id:'new-encode',createdAt:'2026-09-26'});
     data.artifacts.push({...data.artifacts[0],id:'changed',inputKey:'different',createdAt:'2020-01-01'});
     data.feedback=[{id:'old-note',body:'keep my note',target:{artifactId:'demo',timeStart:'15s'}},{id:'different-note',body:'other',target:{artifactId:'changed'}}];
