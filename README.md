@@ -53,6 +53,8 @@ Cue 总体说明继续使用 `finalAnimationDescription`，局部说明写在 `s
 
 新 work model 2.2 的“脚本与思路”页先展示每条动画的真实概念图、对应文字、创意和运动说明，支持放大、历史候选与批量确认。默认用 Codex 可用的图像生成能力；用户从其他模型带来的图片同等接入。未确认可自由改稿和推荐，上传本身不算采用；明确的聊天采用可直接登记，无需网页重复确认。确认后才发布静态／运动代码或代码型探索、生成实际 Storyboard 与动画。Storyboard 检查制作结果，不再承担第二次首次设计确认。只有用户明确要求修改概念图才开启新确认轮次，普通制作反馈沿用确认。
 
+概念图制作先向图像模型说明视频情境、准确内容、参考图用途和时间中的呈现关系，保留可发挥的设计空间。Agent 看图后主动筛选并多轮修改，方向错误时回到原始素材重起，再提交值得比较的候选；用户无需逐张指导修复。多方案分别解决同一视频需求，以表达和编排的实质差异供选择，不固定生成数量或默认审美。方法见 [概念图设计参考](references/visual-grammar.md)，实际运动在采用后的制作中验证。
+
 `update operation: "concept", action: "register"` 从本版 `.staging/` 接收实际 PNG/JPEG/单帧 WebP，保存到受控资产目录；`decision kind: "confirm-concept", conceptIds` 可批量确认。明确提供并采用可用 `register` 的 `adopt: true` 加真实用户 `source` 原子完成。概念图和原稿反馈永久对应，不能用新图替换旧记录。内容事实仍分别声明 narration/screenText 的 `present`、`none` 或 `unknown`，明确无内容需有依据，未知不能靠另一渠道掩盖。确认可携带有用户来源的 `feedbackResolutions`。完整 Demo 的 taskId、工作／时间／展示范围及独立批准规则不变。概念接口示例见 [制作源合同](references/hyperframes-single-source.md)。历史 2.1 版本保留原 Storyboard 确认语义，新版不从历史资格推断概念确认。
 
 合并批准与授权的交付请求：
