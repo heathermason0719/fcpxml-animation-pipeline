@@ -1,6 +1,6 @@
 # 架构
 
-2.2 的概念图片是生产前的独立设计记录：`creativeObjects[].concept` 保存当前轮次、推荐/确认稿及决定引用，`concepts[]` 保存不可变图片、来源与内容快照。新稿追加，旧反馈按 conceptId 和产品对象解析。确认只建立该轮方向；显式用户改概念才 reopen，普通技术修改不改变资格。概念模块准备 bytes，现有 update 事务负责发布/回滚；jobs snapshot 携带图片依据并在原 `_spec` 调用点复核。媒体缓存仍依赖实际制作源，不因浏览概念候选而重渲染。
+2.2 的概念图片是生产前的独立设计记录：`creativeObjects[].concept` 保存当前轮次、推荐/确认稿及决定引用，`concepts[]` 保存不可变图片、来源与内容快照。新稿追加，旧反馈按 conceptId 和产品对象解析。确认只建立该轮方向；显式用户改概念才 reopen，普通技术修改不改变资格。概念模块准备 bytes，现有 update 事务负责发布/回滚；jobs snapshot 携带图片依据并在原 `_spec` 调用点复核。媒体缓存仍依赖实际制作源，不因浏览概念候选而重渲染。Review 概念区跨 Cue 使用桌面固定三列、窄窗口两列或单列的卡片网格，旁白与运动说明按需展开，原段落说明保留在折叠区；历史候选按登记倒序展示缩略图并沿用原 conceptId 的放大与反馈定位。过程稿通过现有 register 的 recommend:false 追加，不改推荐与确认。概念大图导航以打开时的 Cue 候选集合为边界，推荐稿在前、历史登记倒序在后；切换版本或打开 Storyboard 图片时清除导航。待确认清单从原 conceptDesign 状态派生，不放宽反馈或确认条件。
 
 ## 工作对象与权威
 
@@ -48,6 +48,7 @@ AfterForge/
 | `work_model_media.py` | 受应用层制作依据核验后的原生渲染、FFmpeg 合成与实际 Alpha |
 | `work_model_concepts.py` | 概念图片校验、受控登记、推荐/改稿轮次、批量确认及生产依据 |
 | `work_model_policy.py` | 产品创作对象、首次确认、限定探索、整版任务依据及资格核验 |
+| `work_model_storyboard_production.py` | Storyboard 制作交棒的范围／快照校验、暂缓提示与委托状态投影 |
 | `work_model_storyboard.py` | PNG 合同 5 输入、旧合同核验复用、完整 Storyboard 文字快照及局部说明引用 |
 | `work_model_intent.py` | 本版非权威 focus/preserve 条目的定向更新，不调用生产策略 |
 | `work_model_feedback.py` / `work_model_feedback_targets.py` / `work_model_exploration.py` | 固定反馈批次、处理与接受分离；统一目标解析用于确认、批准、交付；候选工作区及原子采用 |
@@ -113,3 +114,5 @@ Demo 视频反馈的撤回复用 `feedback-applicability`：`not-applicable` 配
 审核视频由 `build_composite_command` 统一编码为 H.264 CRF 23 / medium、VBV maxrate 3M / bufsize 6M、约两秒 GOP、yuv420p、MP4 faststart 与 AAC 128k。全片、局部及补充 Cue 共用默认；源有理数帧率与精确帧数保持不变。此策略只用于已合成的审核视频，不改变透明预览缓存及 ProRes 4444 交付路径。Demo 反馈列表合并仍 current 且相同 full-preview inputKey 的意见，保留原 artifactId；重新编码不会使未处理意见从本轮消失。
 
 Review `/media` 使用 `media_status` 读取当前 manifest 的已登记素材及交付媒体索引，保留版本白名单、路径及符号链接检查，逐请求读取登记变化；不调用完整 `status` 的资格、指纹与文件哈希计算。历史素材本来就可读，因此此路径不产生 current 或批准判断。`/api/state` 和所有 writer 仍执行原核验。
+
+Storyboard 的「通过并开始制作动画」复用 `update decision: authorize-demo`，附带所选 `storyboardIds`，在原版本事务内核验当前快照、内容、概念依据及适用反馈，所选／排除范围必须覆盖全部动画 Cue。该可选入口不改变普通制作委托语义，不建立第二次概念批准；页面只保存委托，Agent 以同 taskId 继续制作。`status.storyboard.productionRequest` 从决定和完成记录派生 pending/completed，刷新保留。暂缓勾选建议复用产品对象的反馈目标解析，用户提交时明确记录最终范围。

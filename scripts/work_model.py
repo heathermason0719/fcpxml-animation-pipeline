@@ -487,7 +487,12 @@ def status(version_root):
                        for i in board['artifactIds']] if board else [],
             'canConfirm': not problems and not concepts.enabled(manifest),
             'confirmationProblems': [] if concepts.enabled(manifest) else problems, 'firstConfirmed': confirmed})
-    result['storyboard'] = {'cues': cards, 'rounds': copy.deepcopy(manifest.get('reviewRounds', []))}
+        if concepts.enabled(manifest):
+            from scripts.work_model_storyboard_production import cue_status
+            cards[-1].update(cue_status(root, manifest, cue, board, problems))
+    from scripts.work_model_storyboard_production import latest_request
+    result['storyboard'] = {'cues': cards, 'rounds': copy.deepcopy(manifest.get('reviewRounds', [])),
+                            'productionRequest': copy.deepcopy(latest_request(manifest))}
     result['explorations'] = copy.deepcopy(manifest.get('explorations', []))
     result['workScopeCueIds'] = []
     result['presentationCueIds'] = [c['id'] for c in animation_cues(manifest)]

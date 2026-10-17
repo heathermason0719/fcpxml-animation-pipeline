@@ -250,6 +250,9 @@ def creative_decision(root, manifest, request):
                           excludedCueIds=excluded, excludedObjectIds=object_ids(manifest, excluded))
             if set(presentation) & set(excluded):
                 raise ValueError('presented and excluded cues must be disjoint')
+            if 'storyboardIds' in request:
+                from scripts.work_model_storyboard_production import validate
+                record['storyboardIds'] = validate(root, manifest, request)
         if 'range' in request:
             record['range'] = normalized_range(request['range'])
         if kind == 'explore-motion':

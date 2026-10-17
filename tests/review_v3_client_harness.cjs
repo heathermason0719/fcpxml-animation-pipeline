@@ -54,7 +54,70 @@ async function main() {
   vm.runInContext(fs.readFileSync('assets/review-v3/review-v3.js','utf8'),context);
   await new Promise(setImmediate);
   const scenario=process.argv[2];
-  if(scenario==='concept-image-unavailable') {
+  if(scenario==='storyboard-production') {
+    withStoryboard=true;
+    const data=version();data.conceptDesign={cues:[]};
+    data.storyboard.cues[0].productionProblems=[];
+    data.storyboard.cues.push({...data.storyboard.cues[0],id:'music',title:'五线谱',storyboardId:'music-board',productionDeferred:true});
+    data.cues.push({id:'music',title:'五线谱'});
+    const posts=[];
+    context.fetch=async(url,options)=>{
+      if(url.startsWith('/api/state'))return {ok:true,json:async()=>structuredClone(data)};
+      const payload=JSON.parse(options.body);posts.push(payload);
+      data.editRevision++;
+      data.storyboard.productionRequest={...payload.request,status:'pending'};
+      return {ok:true,json:async()=>({editRevision:data.editRevision})};
+    };
+    await context.selectVersion('v1');
+    assert.match(byId('storyboards').innerHTML,/data-storyboard-produce/);
+    context.openStoryboardProduction();
+    assert.equal(byId('productionDialog').open,true);
+    assert.match(byId('productionContent').innerHTML,/五线谱/);
+    byId('feedbackBody').value='还没提交';
+    assert.equal(await context.submitStoryboardProduction(),false);
+    assert.equal(posts.length,0);byId('feedbackBody').value='';
+    data.storyboard.cues[0].storyboardId='new-board';
+    assert.equal(await context.submitStoryboardProduction(),false);
+    assert.equal(posts.length,0);
+    context.cancelStoryboardProduction();context.openStoryboardProduction();
+    const first=context.submitStoryboardProduction();
+    assert.equal(await context.submitStoryboardProduction(),false,'ignore duplicate click');
+    assert.equal(await first,true);
+    assert.equal(posts.length,1);
+    assert.equal(posts[0].action,'update');
+    assert.equal(posts[0].request.kind,'authorize-demo');
+    assert.deepEqual(posts[0].request.cueIds,['cue-a']);
+    assert.deepEqual(posts[0].request.storyboardIds,['new-board']);
+    assert.deepEqual(posts[0].request.excludedCueIds,['music']);
+    assert.equal(byId('productionDialog').open,false);
+    await context.selectVersion('v1');
+    assert.match(byId('storyboardActionStatus').textContent,/已交棒/);
+    context.openStoryboardProduction();assert.equal(byId('productionDialog').open,false,'pending commission is persistent');
+  } else if(scenario==='concept-gallery') {
+    const data=version();data.concepts=[
+      {id:'old',objectId:'oa',cueId:'a',path:'old.png',idea:'旧稿',origin:{kind:'codex-generated'}},
+      {id:'other',objectId:'ob',cueId:'b',path:'other.png',idea:'另一条',origin:{kind:'codex-generated'}},
+      {id:'current',objectId:'oa',cueId:'a',path:'current.png',idea:'当前稿',origin:{kind:'codex-generated'}}];
+    data.conceptDesign={cues:[
+      {cueId:'a',objectId:'oa',title:'花园',recommendedId:'current',conceptIds:['old','current'],firstConfirmed:false,canConfirm:false,confirmationProblems:[{code:'unresolved-feedback',message:'仍有待处理意见'}],segmentIds:[]},
+      {cueId:'b',objectId:'ob',title:'码头',recommendedId:'other',conceptIds:['other'],firstConfirmed:true,canConfirm:false,confirmationProblems:[],segmentIds:[]}]};
+    context.fetch=async()=>({ok:true,json:async()=>data});await context.selectVersion('v1');
+    assert.equal(typeof context.openConceptPreview,'function','concept gallery must provide cue-local navigation');
+    context.openConceptPreview('current');
+    assert.match(byId('lightboxImage').src,/current.png/);
+    assert.equal(byId('previousConcept').disabled,true);
+    byId('nextConcept').onclick();assert.match(byId('lightboxImage').src,/old.png/);
+    assert.equal(byId('nextConcept').disabled,true);
+    byId('nextConcept').onclick();assert.match(byId('lightboxImage').src,/old.png/,'must stop before another cue');
+    byId('previousConcept').onclick();assert.match(byId('lightboxImage').src,/current.png/);
+    context.openConceptPreview('other');assert.equal(byId('previousConcept').hidden,true);assert.equal(byId('nextConcept').hidden,true);
+    context.openConceptPreview('old');context.openFramePreview('静帧','frame.png');
+    assert.equal(byId('previousConcept').hidden,true);assert.equal(byId('nextConcept').hidden,true);
+    assert.equal(byId('lightboxImage').src,'frame.png');
+    const pending=byId('conceptPendingList').innerHTML;
+    assert.match(pending,/花园/);assert.match(pending,/仍有待处理意见/);assert.doesNotMatch(pending,/码头/);
+    assert.equal(requests.filter(r=>r.options?.method==='POST').length,0,'browsing must not record decisions');
+  } else if(scenario==='concept-image-unavailable') {
     assert.equal(realStatus.conceptDesign.cues[0].firstConfirmed,true);
     assert.match(byId('brief').innerHTML,/已确认 · 概念图不可用/);
     assert.match(byId('brief').innerHTML,/图片缺失或内容已变动，请恢复原图片/);
