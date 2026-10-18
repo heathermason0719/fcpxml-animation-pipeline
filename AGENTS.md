@@ -120,3 +120,13 @@ Agent 场景要求实际 Agent 根据原话选择请求，对每个 case 执行 
 稳定使用方式变更更新 README；Agent 约束/命令更新 AGENTS；目标/边界更新 PROJECT；可靠状态/待验证项更新 CURRENT；架构/接口更新 ARCHITECTURE；重要决定新增或推翻同时更新 DECISIONS。只在当前授权范围内修正文档，以代码、Git 和可复现验证为准。
 
 概念页分镜交棒使用 concept-handoff 原子保存待确认图与包含／排除对象范围；恢复读取 status.conceptDesign.storyboardHandoff，不新增制作门或 Motion／Demo／交付授权，不自动启动 Agent 或渲染。写入成功后刷新失败保留回执并只重试读取。
+
+第一轮审核闭环合成验收（已缓存本地 runtime/vendor；prepare 输出目录须不存在）：
+
+```bash
+.venv/bin/python -B tests/work_model_review_loop_smoke.py prepare --run --root work/review-integration-20261018/round1-loop --vendor /absolute/local/gsap.min.js --runtime 0.8.146
+# 打开 first-stdout.json 的 reviewEntry.url，保存意见并点击明确返修，再执行：
+.venv/bin/python -B tests/work_model_review_loop_smoke.py revise --run --root work/review-integration-20261018/round1-loop
+```
+
+同一浏览器页等待新版提示，继续审旧片保存意见后手动查看新版；产物绑定及异常边界由自动测试补足。此合成验收不修改用户作品、不执行正式交付或 FCP 操作。

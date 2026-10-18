@@ -160,5 +160,12 @@
     "sourceReferences": "original paths are provenance; actual inputs have readable version-owned copies",
     "existingWriters": "previews/cache/jobs/releases unchanged",
     "historicalMaintenance": "explicit scoped authorization; no automatic migration or cleanup"
+  },
+  "demoReview": {
+    "navigation": "versionId, tab=preview, artifactId; explicit missing targets never fall back",
+    "sceneMapping": "new movie reviewCues freezes rendered cue identity and rational placement; old unmapped videos permit time-only feedback",
+    "rework": "review-submit with artifactId, feedbackIds (or exact roundId), inline authorize-demo decision with new taskId, explicit cueIds and user source; inherits presentation, exclusions and time boundary from reviewed movie commission",
+    "execution": "register only; Agent modifies and previews with the same taskId",
+    "entry": "CLI preview/cache/resume adds live reviewEntry; shared production APIs do not manage services"
   }
 }

@@ -39,7 +39,7 @@ def cue_status(root, manifest, cue, board, problems):
 
 
 def latest_request(manifest):
-    record = next((d for d in reversed(manifest['decisions']) if d['kind'] == 'authorize-demo' and d.get('storyboardIds')), None)
+    record = next((d for d in reversed(manifest['decisions']) if d['kind'] == 'authorize-demo'), None)
     if not record:
         return None
     return {**record, 'status':'completed' if completed_runs(manifest, record['taskId']) else 'pending'}

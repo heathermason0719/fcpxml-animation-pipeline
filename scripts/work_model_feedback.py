@@ -19,6 +19,8 @@ def add_feedback(manifest, request, *, root=None):
         raise ValueError('unknown feedback artifact')
     for field, valid in (('cueIds', {c['id'] for c in manifest['cues']}),
                          ('segmentIds', {s['id'] for s in manifest['brief']['segments']})):
+        if field == 'cueIds' and target.get('artifactId'):
+            valid |= {c['id'] for c in artifacts[target['artifactId']].get('reviewCues', [])}
         if not set(target.get(field, [])).issubset(valid):
             raise ValueError('unknown feedback target')
     if target.get('storyboardId'):
@@ -71,6 +73,18 @@ def add_feedback(manifest, request, *, root=None):
                                if c['id'] in target['cueIds'] and c.get('objectId')]
     start = parse_time(target['timeStart']) if target.get('timeStart') else None
     end = parse_time(target['timeEnd']) if target.get('timeEnd') else None
+    if artifact and artifact.get('reviewCues') is not None and not target.get('storyboardId'):
+        frozen = artifact['reviewCues']
+        if not set(target.get('cueIds', [])).issubset({c['id'] for c in frozen}):
+            raise ValueError('feedback scene does not belong to the reviewed artifact')
+        if start is not None:
+            matched = [c for c in frozen if parse_time(c['resolvedTimeline']['start']) <= start <
+                       parse_time(c['resolvedTimeline']['start']) + parse_time(c['resolvedTimeline']['duration'])]
+            if target.get('cueIds') and not set(target['cueIds']).issubset({c['id'] for c in matched}):
+                raise ValueError('feedback scene does not match the reviewed artifact time')
+            if not target.get('cueIds'):
+                target['cueIds'] = [c['id'] for c in matched]
+        target['objectIds'] = [c['objectId'] for c in frozen if c['id'] in target.get('cueIds', []) and c.get('objectId')]
     if (start is not None and start < 0) or (end is not None and (start is None or end < start)):
         raise ValueError('invalid feedback time interval')
     if manifest['project'].get('source'):
@@ -85,6 +99,11 @@ def add_feedback(manifest, request, *, root=None):
 
 def submit_round(root, manifest, request):
     from scripts.work_model_storyboard import frame_current
+    if request.get('roundId'):
+        record = next((r for r in manifest.get('reviewRounds', []) if r['id'] == request['roundId']), None)
+        if not request.get('decision') or not record or set(request.get('feedbackIds', [])) != set(record['feedbackIds']):
+            raise ValueError('rework must reference an exact saved feedback round')
+        return record
     ids = request.get('storyboardIds', [])
     known = {s['id'] for s in manifest.get('storyboards', [])}
     if len(ids) != len(set(ids)) or not set(ids).issubset(known):
@@ -106,6 +125,39 @@ def submit_round(root, manifest, request):
               'source': user_source(request.get('source')), 'status': 'submitted', 'createdAt': now()}
     manifest['reviewRounds'].append(record)
     return record
+
+
+def rework_decision(root, manifest, request, round_record):
+    """Derive the next commission from the movie's own execution authority."""
+    from scripts.work_model_store import safe, sha
+    artifact = next((a for a in manifest['artifacts'] if a['id'] == request.get('artifactId')), None)
+    if not artifact or artifact['kind'] != 'full-preview' or sha(safe(root, artifact['path'])) != artifact['sha256']:
+        raise ValueError('reviewed full Demo artifact is unavailable')
+    feedback = [f for f in manifest['feedback'] if f['id'] in round_record['feedbackIds']]
+    if not feedback or any(f['target'].get('artifactId') != artifact['id'] or
+            f.get('applicability', {}).get('kind', 'current') != 'current' for f in feedback):
+        raise ValueError('rework feedback must belong to the reviewed artifact')
+    task = artifact.get('productionBasis', {}).get('taskId')
+    previous = next((d for d in manifest['decisions'] if task and d.get('taskId') == task and d['kind'] == 'authorize-demo'), None)
+    if not previous:
+        raise ValueError('reviewed Demo commission is unavailable; clarify the intended scope')
+    from scripts.work_model_policy import object_ids
+    for cue_field, object_field in (('presentationCueIds','presentationObjectIds'), ('excludedCueIds','excludedObjectIds')):
+        if object_ids(manifest, previous.get(cue_field, [])) != previous.get(object_field, []):
+            raise ValueError('reviewed product scope changed; resolve object continuity before commissioning rework')
+    supplied = request['decision']
+    if supplied.get('kind') != 'authorize-demo' or set(supplied) - {'kind','taskId','cueIds','source'}:
+        raise ValueError('rework requires a new bounded authorize-demo decision')
+    ids = supplied.get('cueIds')
+    if not isinstance(ids, list) or not ids or not set(ids).issubset(previous['presentationCueIds']):
+        raise ValueError('clarify rework cueIds within the reviewed presentation scope')
+    result = {**copy.deepcopy(supplied), 'presentationCueIds':copy.deepcopy(previous['presentationCueIds']),
+              'excludedCueIds':copy.deepcopy(previous.get('excludedCueIds', []))}
+    if previous.get('range'):
+        result['range'] = copy.deepcopy(previous['range'])
+    result['reviewArtifactId'] = artifact['id']
+    result['reviewRoundId'] = round_record['id']
+    return result
 
 
 def round_progress(manifest, request):

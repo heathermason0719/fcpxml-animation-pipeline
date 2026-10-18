@@ -292,6 +292,33 @@
               4,
               5
             ]
+          },
+          "reviewCues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "objectId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "title": {
+                  "type": "string"
+                },
+                "resolvedTimeline": {
+                  "$ref": "#/$defs/range"
+                }
+              },
+              "required": [
+                "id",
+                "resolvedTimeline"
+              ],
+              "additionalProperties": false
+            }
           }
         },
         "required": [

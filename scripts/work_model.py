@@ -780,6 +780,9 @@ def update(version_root, request):
         elif operation == "review-submit":
             from scripts.work_model_feedback import submit_round
             record = submit_round(root, manifest, request)
+            if request.get('decision'):
+                from scripts.work_model_feedback import rework_decision
+                _record_decision(root, manifest, rework_decision(root, manifest, request, record))
         elif operation == "review-progress":
             from scripts.work_model_feedback import round_progress
             record = round_progress(manifest, request)

@@ -241,6 +241,9 @@ def creative_decision(root, manifest, request):
         if ids is None or (kind == 'explore-motion' and not ids):
             raise ValueError('explicit bounded cueIds are required')
         record.update(taskId=task, cueIds=ids, objectIds=object_ids(manifest, ids))
+        for field in ('reviewArtifactId', 'reviewRoundId'):
+            if field in request:
+                record[field] = request[field]
         if kind == 'authorize-demo':
             presentation = request.get('presentationCueIds')
             excluded = request.get('excludedCueIds', [])

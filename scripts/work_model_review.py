@@ -217,6 +217,8 @@ def make_handler(afterforge_root: Path, *, model_api: Any | None = None):
     if raw_root.is_symlink():
         raise ValueError("AfterForge root may not contain a symlink")
     root = raw_root.resolve()
+    from scripts.work_model_review_entry import service_identity
+    identity = service_identity(root)
     api = model_api
     async_tasks: dict[tuple[Path, str], dict[str, Any]] = {}
     async_lock = threading.Lock()
@@ -354,6 +356,8 @@ def make_handler(afterforge_root: Path, *, model_api: Any | None = None):
                     self._asset("review-v3.css", "text/css; charset=utf-8")
                 elif parsed.path in {"/review-v3.js", "/review-state.js", "/review-common.js", "/review-scenes.js"}:
                     self._asset(parsed.path[1:], "text/javascript; charset=utf-8")
+                elif parsed.path == "/api/identity":
+                    self._json(200, identity)
                 elif parsed.path == "/api/project":
                     _, project = _project_versions(root, self._api())
                     self._json(200, project)

@@ -117,12 +117,16 @@ CLI 与 HTTP 调用同一应用层。短写入在已有 `manifest_transaction` �
 
 Demo 是 Review shell 内独立标签页，定位条紧邻视频，反馈表单锚定开始输入时的原视频／场景／时间；场景导览只改变播放位置。总时长反馈仍是绑定视频与场景的意见，不改音频时间线。初次选择优先当前完整视频；静帧与探索帧不进入 Demo 素材列表。取时间暂停同一个播放器并显式绑定所看 artifact 与全局有理数时间；导航和意见回看只移动播放位置，历史意见优先回到原视频。文本输入与输入法组合以外的空格在 Demo 控制播放／暂停，并拦截按钮默认激活。
 
-单条反馈与 Storyboard 写入共用版本写队列及 revision 回执，保存中防重复，失败保留草稿；成功后刷新失败不声称保存失败。本轮列表从最新完整 Demo 的 artifactId 与已持久化 reviewRounds 投影，排除 Storyboard／探索反馈。handoff 复用 `review-submit`，`storyboardIds: []` 加明确 feedbackIds；刷新恢复已提交状态，不把新意见补入已提交轮次。效果通过复用 `decision: approve` 与当前完整 reviewSetId，不生成交付授权；明确“确认整片，生成交付文件”可沿现有 deliver 入口传 approve-and-deliver，绑定准确当前完整集合。提交反馈不隐含已完成任务的下一轮 full Demo 委托，既有语义缺口仍在 CURRENT 标注。制作与历史任务收在次级区域，旧失败不覆盖当前操作回执。
+单条反馈与 Storyboard 写入共用版本写队列及 revision 回执，保存中防重复，失败保留草稿；成功后刷新失败不声称保存失败。本轮列表从所审 Demo 的 artifactId 与已持久化 reviewRounds 投影，排除 Storyboard／探索反馈。handoff 复用 `review-submit`，`storyboardIds: []` 加明确 feedbackIds；刷新恢复已提交状态，不把新意见补入已提交轮次。效果通过复用 `decision: approve` 与当前完整 reviewSetId，不生成交付授权；明确“确认整片，生成交付文件”可沿现有 deliver 入口传 approve-and-deliver，绑定准确当前完整集合。提交反馈不隐含已完成任务的下一轮 full Demo 委托，明确返修另以 review-submit 的 inline decision 原子登记新制作任务。制作与历史任务收在次级区域，旧失败不覆盖当前操作回执。
 
 Demo 视频反馈的撤回复用 `feedback-applicability`：`not-applicable` 配合 `review-feedback-withdraw:` 来源标识显示已撤回，恢复写回 `current`。原文、身份与已提交轮次不删除；非 current 意见不进入 Demo 待提交列表。撤回／恢复与提交共用就地忙状态，并沿用按版本串行写入和 revision 冲突保护。
 
-审核视频由 `build_composite_command` 统一编码为 H.264 CRF 23 / medium、VBV maxrate 3M / bufsize 6M、约两秒 GOP、yuv420p、MP4 faststart 与 AAC 128k。全片、局部及补充 Cue 共用默认；源有理数帧率与精确帧数保持不变。此策略只用于已合成的审核视频，不改变透明预览缓存及 ProRes 4444 交付路径。Demo 反馈列表合并仍 current 且相同 full-preview inputKey 的意见，保留原 artifactId；重新编码不会使未处理意见从本轮消失。
+审核视频由 `build_composite_command` 统一编码为 H.264 CRF 23 / medium、VBV maxrate 3M / bufsize 6M、约两秒 GOP、yuv420p、MP4 faststart 与 AAC 128k。全片、局部及补充 Cue 共用默认；源有理数帧率与精确帧数保持不变。此策略只用于已合成的审核视频，不改变透明预览缓存及 ProRes 4444 交付路径。Demo 本轮列表严格读取正在看的 artifactId；旧片意见仍在原片及历史中，不挪到新视频。
 
 Review `/media` 使用 `media_status` 读取当前 manifest 的已登记素材及交付媒体索引，保留版本白名单、路径及符号链接检查，逐请求读取登记变化；不调用完整 `status` 的资格、指纹与文件哈希计算。历史素材本来就可读，因此此路径不产生 current 或批准判断。`/api/state` 和所有 writer 仍执行原核验。
 
 Storyboard 顶部的「确认本轮，生成整片 Demo」复用 `update decision: authorize-demo`，附带所选 `storyboardIds`，在原版本事务内核验当前快照、内容、概念依据及适用反馈，所选／排除范围必须覆盖全部动画 Cue。该可选入口不改变普通制作委托语义，不建立第二次概念批准；页面只保存委托，Agent 以同 taskId 继续制作。`status.storyboard.productionRequest` 从决定和完成记录派生 pending/completed，刷新保留。暂缓勾选建议复用产品对象的反馈目标解析，用户提交时明确记录最终范围。
+
+新 full/local Demo 在产物 `reviewCues` 中只冻结所呈现场景的 id/objectId/title 与有理数 start/duration；既有 productionBasis、previewRequest 和原 authorize-demo 决定继续提供执行与范围依据。反馈 writer 用冻结时序核验场景及对象，不用当前时序解释旧片；无映射历史视频允许时间正文意见。明确返修的 review-submit 校验 artifact SHA 与准确反馈集合，按原委托复制展示、排除、时间边界并登记新 taskId，已有 roundId 可精确引用。普通提交无新委托；任务、事务和去重仍复用原机制。
+
+CLI 的 work_model_review_entry 为本次结果整理 reviewEntry；服务查找／启动仅在 CLI 层，媒体结果与 job 回执不写 URL。项目运行区 工程/review-service.json 只保留单个定位线索；/api/identity 返回进程启动时项目、模式、代码目录与内容身份。匹配才复用，不杀未知或旧进程；服务失败保留媒体成功。页面以 versionId/tab/artifactId 精确定位，明确缺失不降级。可见 Demo 空闲时每 15 秒读取已有 state，任务运行时沿用 4 秒；隐藏时停止定时读取，回前台／进入 Demo／手动刷新均可发现新片。防重叠与既有 revision 保护并用；同视频不重建播放器，切换须用户点击。

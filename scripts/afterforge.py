@@ -30,6 +30,9 @@ def main(argv=None):
             if request is None:
                 raise ValueError("write operations require --request-file")
             result = getattr(work_model, args.action)(args.target, request)
+        if args.action in {'preview', 'resume'} and result.get('status') == 'complete':
+            from scripts.work_model_review_entry import handoff
+            result = handoff(args.target, result)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:

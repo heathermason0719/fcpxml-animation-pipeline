@@ -573,6 +573,10 @@ def main() -> int:
     args = parser.parse_args()
     root = args.version_root.expanduser().resolve()
     server, mode = _server_for_root(root, args.host, args.port)
+    if mode == 'project' and args.host == '127.0.0.1':
+        from scripts.work_model_store import atomic_json, layout
+        afterforge = root if (root / '工程/project.json').is_file() else layout(root)[0]
+        atomic_json(afterforge / '工程/review-service.json', {'url':f'http://127.0.0.1:{server.server_port}'})
     print(json.dumps({"status": "serving", "url": f"http://{args.host}:{server.server_port}", "root": str(root), "mode": mode}, ensure_ascii=False), flush=True)
     try:
         server.serve_forever()

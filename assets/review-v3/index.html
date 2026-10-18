@@ -57,7 +57,7 @@
         <div class="demo-layout">
           <div class="demo-view">
             <div id="media" class="media-stage"><div class="empty">选择可审阅的预览素材</div></div>
-            <div id="previewActions" class="preview-actions"><span id="mediaTime" class="muted">全局时间：—</span><button id="locateTime" type="button">取当前播放时间</button></div>
+            <div id="newDemoNotice" class="context-warning" hidden>新 Demo 已生成，<button id="viewNewDemo" type="button">查看新版</button></div><div id="previewActions" class="preview-actions"><span id="mediaTime" class="muted">全局时间：—</span><button id="locateTime" type="button">取当前播放时间</button></div>
             <div class="demo-secondary">
               <details><summary>其他预览与历史视频</summary><div id="artifacts" class="artifact-list"></div></details>
               <details><summary>制作工具与任务记录</summary><div id="demoProductionActions" class="actions"></div><div id="demoTasks"></div></details>
@@ -66,7 +66,7 @@
           </div>
           <div class="demo-copy">
             <div id="demoFeedbackSlot" class="demoFeedbackSlot"></div>
-            <section class="demo-round"><h2>本轮意见 <span id="demoFeedbackCount" class="muted"></span></h2><div id="demoFeedbackList" class="feedback-list"></div><div class="demo-round-actions"><button id="submitDemoRound" type="button">提交本轮反馈</button><span id="demoRoundStatus" role="status" aria-live="polite"></span></div></section>
+            <section class="demo-round"><h2>本轮意见 <span id="demoFeedbackCount" class="muted"></span></h2><div id="demoFeedbackList" class="feedback-list"></div><div class="demo-round-actions"><button id="requestDemoRework" type="button">按这些意见修改并更新 Demo</button><button id="submitDemoRound" type="button">提交本轮反馈</button><span id="demoRoundStatus" role="status" aria-live="polite"></span></div></section>
             <details class="feedback-history"><summary>以往意见（含分镜）</summary><div id="demoFeedbackHistory" class="feedback-list"></div></details>
           </div>
         </div>

@@ -224,6 +224,10 @@ def _cache(root, snapshot, manifest, cue, quality, job):
 
 
 def _artifact(root, manifest, kind, path, key, time_range, cue_ids, complete=True, **extra):
+    if kind in {'full-preview', 'local-preview', 'cue-preview'}:
+        extra['reviewCues'] = [{**{k: copy.deepcopy(c[k]) for k in ('id', 'objectId', 'title') if k in c},
+            'resolvedTimeline':{k:c['resolvedTimeline'][k] for k in ('start','duration')}}
+            for c in manifest['cues'] if c['id'] in cue_ids]
     return {'id':'artifact-'+digest([kind,key,time_range,extra])[:20], 'kind':kind,
             'path':path.relative_to(root).as_posix(),'sha256':sha(path),'inputKey':key,
             'range':time_range,'cueIds':cue_ids,'complete':complete,'createdAt':now(),**extra}

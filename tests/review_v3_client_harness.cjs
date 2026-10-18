@@ -24,7 +24,7 @@ class Element {
 const elements = new Map();
 const byId = id => { if (!elements.has(id)) elements.set(id,new Element()); return elements.get(id); };
 const storage = new Map();
-const requests=[];let uuidSequence=0;
+const requests=[];const intervalCalls=[];const documentEvents={};let uuidSequence=0;
 let revision=7;
 let incomplete=false;
 let localPreview=false;
@@ -42,19 +42,35 @@ const version = () => ({
   availableActions:['update','preview','approve','authorize','approve-and-deliver','deliver'],
 });
 const context = vm.createContext({
-  document:{getElementById:byId,querySelectorAll:()=>[],createElement:()=>new Element()},
+  document:{hidden:false,addEventListener:(name,fn)=>{documentEvents[name]=fn},getElementById:byId,querySelectorAll:()=>[],createElement:()=>new Element()},
   Option:function(text,value){const x=new Element();x.textContent=text;x.value=value;return x;},
   localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
   crypto:{randomUUID:()=>`id-${++uuidSequence}`},
-  setInterval:()=>1,clearInterval:()=>{},setTimeout:fn=>{fn();return 1},
+  setInterval:(fn,ms)=>{intervalCalls.push({fn,ms});return intervalCalls.length},clearInterval:()=>{},setTimeout:fn=>{fn();return 1},
   fetch:async(url,options)=>{requests.push({url,options}); if(url==='/api/project') return {ok:true,json:async()=>projectData()}; if(url.startsWith('/api/state')) {const data=realStatus||version();if(!realStatus)data.identity.versionId=new URL(url,'http://review.test').searchParams.get('version');return {ok:true,json:async()=>data};} const request=options?.body&&JSON.parse(options.body).request; return {ok:true,json:async()=>request?.operation==='feedback'?{status:'saved',record:{id:'feedback-saved'}}:{status:'started',requestId:'x'}};},
 });
 
 async function main() {
+  if(process.argv[2]==='demo-missing-link'){context.location={search:'?versionId=v1&tab=preview&artifactId=missing',hash:''};context.URLSearchParams=URLSearchParams;}
   for(const name of ['review-state.js','review-common.js','review-scenes.js','review-v3.js'])vm.runInContext(fs.readFileSync('assets/review-v3/'+name,'utf8'),context);
   await new Promise(setImmediate);
   const scenario=process.argv[2];
-  if(scenario==='thread-delivery') {
+  if(scenario==='demo-poll') {
+    context.activateTab('preview');assert.equal(intervalCalls.at(-1).ms,15000,'visible idle Demo discovers future jobs');
+    let release,reads=0;context.fetch=async()=>{reads++;return new Promise(resolve=>{release=()=>resolve({ok:true,json:async()=>version()})})};const first=context.refreshReview();await Promise.resolve();context.refreshReview();assert.equal(reads,1,'no overlapping idle request');release();await first;
+    context.document.hidden=true;const before=intervalCalls.length;context.scheduleReviewPoll();assert.equal(intervalCalls.length,before,'hidden page has no idle interval');context.document.hidden=false;context.fetch=async()=>({ok:true,json:async()=>version()});await documentEvents.visibilitychange();
+  } else if(scenario==='demo-missing-link') {
+    assert.equal(byId('media').dataset.artifactId,undefined);assert.match(byId('media').innerHTML,/指定视频不可用/);await context.selectVersion('v1',{preserveTarget:true});assert.equal(byId('media').dataset.artifactId,undefined);assert.match(byId('demoStatus').textContent,/指定视频不可用/);
+  } else if(scenario==='demo-rework-retry') {
+    const data=version();data.storyboard={cues:[],rounds:[]};data.artifacts[0].coverage={presentedCueIds:['a','b']};data.feedback=[{id:'note',body:'edit A',target:{artifactId:'demo',cueIds:['a']}}];let attempts=[];context.fetch=async(url,options)=>{if(url.startsWith('/api/state'))return {ok:true,json:async()=>structuredClone(data)};attempts.push(JSON.parse(options.body).request);if(attempts.length===1){data.editRevision++;throw new Error('response lost')}return {ok:true,json:async()=>({editRevision:data.editRevision,record:{id:'round',feedbackIds:['note']}})}};
+    await context.selectVersion('v1');await context.submitDemoRound(true);await context.selectVersion('v1',{preserveTarget:true});await context.submitDemoRound(true);assert.deepEqual(attempts[1],attempts[0],'uncertain transport retries preserve task, request and revision identity');assert.equal(attempts[0].artifactId,'demo');context.showArtifact({...data.artifacts[0],id:'other'});assert.doesNotMatch(byId('demoRoundStatus').textContent,/已登记返修/);
+  } else if(scenario==='demo-reviewed-context') {
+    const data=version();data.storyboard={cues:[],rounds:[]};data.cues=[{id:'a',productionMode:'animation',resolvedTimeline:{start:'7s',duration:'2s'}}];data.artifacts[0].range={start:'0s',duration:'10s'};data.artifacts[0].reviewCues=[{id:'a',title:'Old A',resolvedTimeline:{start:'1s',duration:'2s'}}];data.artifacts[0].coverage={presentedCueIds:['a']};
+    context.fetch=async()=>({ok:true,json:async()=>structuredClone(data)});await context.selectVersion('v1');context.activateTab('preview');const player=byId('media').video;player.currentTime=1.5;byId('feedbackBody').value='Old A note';byId('feedbackBody').oninput();
+    data.editRevision++;data.artifacts.push({...data.artifacts[0],id:'new',createdAt:'2030',reviewCues:[{id:'a',resolvedTimeline:{start:'7s',duration:'2s'}}]});data.feedback=[{id:'old-note',target:{artifactId:'demo',cueIds:['a']}},{id:'new-note',target:{artifactId:'new',cueIds:['a']}}];
+    await context.selectVersion('v1',{preserveTarget:true});assert.equal(byId('media').video,player);assert.equal(byId('newDemoNotice').hidden,false);assert.equal(byId('submitFeedback').disabled,false);assert.deepEqual(Array.from(context.demoCueIdsAt(1.5)),['a']);assert.deepEqual(Array.from(context.demoFeedbackSelection().pending,f=>f.id),['old-note']);assert.equal(context.jumpToTime('1s','missing'),false);assert.equal(byId('media').dataset.artifactId,'demo');assert.deepEqual(Array.from(context.demoReworkRequest(data.feedback.slice(0,1)).decision.cueIds),['a']);
+    vm.runInContext("explicitDemoId='demo'",context);context.jumpToTime('7s','new');await context.selectVersion('v1',{preserveTarget:true});assert.equal(byId('media').dataset.artifactId,'new','explicit historical navigation survives refresh');byId('viewNewDemo').onclick();assert.equal(byId('media').dataset.artifactId,'new');assert.equal(byId('feedbackBody').value,'Old A note');assert.deepEqual(Array.from(context.demoCueIdsAt(1.5)),[]);
+  } else if(scenario==='thread-delivery') {
     // Removed delivery DOM must never be dereferenced while loading or switching versions.
     context.document.getElementById=id=>['delivery','deliveries'].includes(id)?null:byId(id);
     await context.selectVersion('v1');context.activateTab('preview');await context.selectVersion('v2');
@@ -262,7 +278,7 @@ async function main() {
     context.fetch=async()=>({ok:true,json:async()=>data});await context.selectVersion('v1');
     assert.deepEqual(Array.from(context.demoFeedbackSelection().pending,f=>f.id),['old-note']);
     assert.equal(data.feedback[0].target.artifactId,'demo','retain original evidence binding');
-    assert.match(byId('demoFeedbackList').innerHTML,/data-demo-feedback-artifact="new-encode"/);
+    assert.match(byId('demoFeedbackList').innerHTML,/data-demo-feedback-artifact="demo"/);
   } else if(scenario==='demo-auto-time') {
     context.activateTab('preview');const p=byId('media').querySelector('video');p.currentTime=3;p.paused=false;
     byId('feedbackBody').value='first';byId('feedbackBody').oninput();
@@ -607,7 +623,7 @@ async function main() {
     assert.match(byId('message').textContent,/时间必须/);
     assert.ok([...storage.values()].some(value=>JSON.parse(value).body==='保留的反馈'));
   } else if(scenario==='stale-draft') {
-    context.choose({artifactId:'demo',cueIds:['cue-a']});
+    context.choose({artifactId:'demo',storyboardId:'board-a',cueIds:['cue-a']});
     byId('feedbackBody').value='保留这条定位意见'; context.saveDraft();
     revision=8;
     await context.selectVersion('v1',{preserveTarget:true});
