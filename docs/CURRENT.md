@@ -2,7 +2,9 @@
 
 ## 已验证能力
 
-- 2026-10-18 审核闭环第一轮：完整 Demo 的 CLI preview／缓存／resume 自动返回精确制作版、Demo 页与产物的可用入口；服务身份查找／启动留在 CLI 层。可见空闲页低频发现新片并提示切换，保留旧播放器和草稿。新视频冻结最小场景时序，捕获、导航、反馈批次与明确返修均绑定所审产物；无映射历史视频仍可保存视频／时间／正文，旧对象范围不转给复用技术 ID 的新对象。明确返修在原事务登记新 taskId，普通保存／提交无制作授权；委托状态可查询。合成样例实际完成浏览器返修并生成两版 12 秒／24 fps Demo，A/B 从 1s/7s 改为 7s/1s；原页发现新版后继续审旧片，新意见及提交仍归旧 A，再手动查看新版。返修 A 重建、B 命中缓存，只有两次制作任务，输入哈希不变。最终固定代码 540 项 unittest 通过（138.547 秒），Skill／合同投影／JS 语法／diff 检查通过；19 个交付相关源码和测试与基线逐字节一致，协议 3 与交付合同未改。证据集中于 `work/review-integration-20261018/`。第二轮未施工，等待父级独立验收；本轮无真实作品修改、正式交付或 FCP 操作。
+- 2026-10-18 第二轮短查询与小写入：完整 status 保持兼容，summary／Cue／反馈详情从相同状态投影，开放意见仍按共享适用性规则展示；旧视频因新时序失效不自动废弃意见，明确返修可继续登记。局部 cueUpdates 只合并指定稳定 ID 的描述、时序和分镜字段，数组整项替换；批量概念沿用同一事务，逐项显式 recommend、每对象至多一项 true、全 false 合法。正式 SKILL 与新项目 AGENTS 默认采用这些入口，长参数集中到按需参考。551 项 unittest 通过（149.119 秒）。同一合成历史的实际 Agent 调用中，完整查询 22,472 字节／520 个递归对象字段，对照 summary 加 A 详情共 10,615 字节；局部编辑请求 2,271→265 字节，三次候选登记合为一次，正常 CLI 调用 5→4。两侧请求构造片段均为两段；未测算计费 token。B、原反馈、意图、推荐与概念确认保留，源样例 41 个文件不变，无新渲染或决定。证据位于 `work/review-integration-20261018/round2/`；第一轮已获父级验收，第二轮待独立验收。
+
+- 2026-10-18 审核闭环第一轮：完整 Demo 的 CLI preview／缓存／resume 自动返回精确制作版、Demo 页与产物的可用入口；服务身份查找／启动留在 CLI 层。可见空闲页低频发现新片并提示切换，保留旧播放器和草稿。新视频冻结最小场景时序，捕获、导航、反馈批次与明确返修均绑定所审产物；无映射历史视频仍可保存视频／时间／正文，旧对象范围不转给复用技术 ID 的新对象。明确返修在原事务登记新 taskId，普通保存／提交无制作授权；委托状态可查询。合成样例实际完成浏览器返修并生成两版 12 秒／24 fps Demo，A/B 从 1s/7s 改为 7s/1s；原页发现新版后继续审旧片，新意见及提交仍归旧 A，再手动查看新版。返修 A 重建、B 命中缓存，只有两次制作任务，输入哈希不变。最终固定代码 540 项 unittest 通过（138.547 秒），Skill／合同投影／JS 语法／diff 检查通过；19 个交付相关源码和测试与基线逐字节一致，协议 3 与交付合同未改。证据集中于 `work/review-integration-20261018/`；本轮无真实作品修改、正式交付或 FCP 操作。
 
 - 2026-10-18 审核页取消独立交付标签、列表及其渲染调用，保留三个核心工作区和可选探索。Demo 的准确 reviewSet 确认及全部后台交付生成、检查、历史、下载能力不变；完成后在线程提供真实交付目录、XML 和全部带 Alpha 通道的动画 MOV，不新增审批。本轮未触发正式交付，实际交付链路及 FCP 导入验收尚未由本轮验证。 定向 Review 16 项通过（11.580 秒，包含 37 个客户端场景和后台下载回归），Skill／合同投影／JS 语法／diff 检查通过；Chrome 实际刷新显示三个核心页，版本及 11 场正常加载，分镜／Demo 可切换，交付确认入口保留。8796 返回的 HTML/JS/CSS 与工作区字节一致，revision 213 未变。
 
@@ -126,6 +128,12 @@
 
 Review 与恢复项读取 harness 中明确列出的《楚门》历史源，只写隔离副本；其他机器需先具备相同只读 fixture，不能用原工程代替输出目录。Review fixture 建成后按返回的 AfterForge 路径运行通用 server，浏览器仅操作副本。
 
+第二轮短查询与小写入工具对照：只读取显式合成版本，输出目录必须不存在；prepare 只准备两个相同历史的隔离副本，实际工具选择由 Agent 按正式 SKILL 执行。
+
+```bash
+.venv/bin/python -B tests/work_model_agent_tools_smoke.py --source-version /absolute/synthetic-version --root work/review-integration-20261018/round2/agent-check
+```
+
 第一轮完整审核闭环使用 opt-in 合成样例，不读用户作品；prepare 的输出目录必须不存在，本地 runtime/vendor 已预先具备：
 
 ```bash
@@ -154,9 +162,9 @@ Agent 场景先准备独立状态，再由实际 Agent 根据原话选择请求�
 
 ## 边界与后续
 
-- 2026-10-18 原记录的两项衔接问题已在第一轮实现：明确返修原子登记新 Demo 委托，正常 CLI preview／缓存／resume 返回本次可用审核入口。保存留言与普通提交不委托制作；正式批准、交付授权及 FCP 边界未变。第二轮短查询、局部 Cue、批量候选与入口去重尚未施工，须第一轮独立验收通过后推进。
+- 2026-10-18 原记录的两项衔接问题已在第一轮实现：明确返修原子登记新 Demo 委托，正常 CLI preview／缓存／resume 返回本次可用审核入口。保存留言与普通提交不委托制作；正式批准、交付授权及 FCP 边界未变。第二轮短查询、局部 Cue、批量候选与入口去重已完成，停在父级独立验收前；未扩展为新核心引擎或服务管理系统。
 - D0002 实际导入验收与协议 3 往返基线均已完成并登记。后续普通交付沿用该协议基线；交付/FCPXML 语义变化时重验。仅支持上述有机制依据的有限规范化，未知样式差异仍须查证，不能自动泛化为任意字段忽略。
 - 当前交付仍要求单 Project sequence；多 Project 输入明确报出歧义，不扩展多 Project 交付。
-- 当前正常工作区为 `/Users/xiaobaimac/Developer/fcpxml-animation-pipeline`，当前授权第一轮在同一 checkout 的 `codex/review-loop-round1-20261018` 开发，评审基线为 `c1199f17bcf7cef49bd40c3ed7d5360c6a0956bf`；交父级独立验收，不推送或合并 main。上一轮实现与正式交付边界保护已包含在 `main`（本次封箱前基线 `d58887a`）；已核验 `codex/rework-lifecycle`、`codex/rework-lifecycle-smoke`、`codex/workflow-stage-contract` 全部提交均在 `main` 中，并删除仍存在的本地分支及对应 GitHub 远端引用。失效的 `/private/tmp/fcpxml-animation-pipeline-stage-contract` worktree 登记已清理，仅保留正常工作区。
+- 当前正常工作区为 `/Users/xiaobaimac/Developer/fcpxml-animation-pipeline`，两轮授权均在同一 checkout 的 `codex/review-loop-round1-20261018` 开发，初始评审基线为 `c1199f17bcf7cef49bd40c3ed7d5360c6a0956bf`，第二轮基于已验收第一轮 `201ff27a069b79b90c6e61bccc3e5a40c1792da4`；交父级独立验收，不推送或合并 main。上一轮实现与正式交付边界保护已包含在 `main`（本次封箱前基线 `d58887a`）；已核验 `codex/rework-lifecycle`、`codex/rework-lifecycle-smoke`、`codex/workflow-stage-contract` 全部提交均在 `main` 中，并删除仍存在的本地分支及对应 GitHub 远端引用。失效的 `/private/tmp/fcpxml-animation-pipeline-stage-contract` worktree 登记已清理，仅保留正常工作区。
 - 历史开发与迁移记录：此前在 `1ac7` 工作树开展 smoke 开发，以保护性提交 `86b93c5` 保存 Demo UX 与编码改动；后续实现经 `2151f7e` 收口，交付边界保护经 `d58887a` 登记。真实迁移和清理仅按当轮固定清单及追加确认执行；当轮未改 user-inbox 或 FCP Library，未执行 Git 历史操作、安装或部署。上述实际验收与迁移证据继续保留。
 - 动态拼接资源仍须声明依赖。没有引入后台 Agent、自动跨版本继承、数据库、云分析或转写。正式媒体的硬链接唯一性由交付后端维护。

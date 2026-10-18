@@ -109,7 +109,8 @@
       "register",
       "propose",
       "reopen",
-      "select"
+      "select",
+      "register-batch"
     ],
     "origins": [
       "codex-generated",
@@ -167,5 +168,45 @@
     "rework": "review-submit with artifactId, feedbackIds (or exact roundId), inline authorize-demo decision with new taskId, explicit cueIds and user source; inherits presentation, exclusions and time boundary from reviewed movie commission",
     "execution": "register only; Agent modifies and previews with the same taskId",
     "entry": "CLI preview/cache/resume adds live reviewEntry; shared production APIs do not manage services"
+  },
+  "agentTools": {
+    "statusViews": {
+      "defaultAgent": "summary",
+      "fullCompatibility": "plain status",
+      "cli": [
+        "--summary",
+        "--cue-id",
+        "--feedback-id"
+      ],
+      "authority": "read-only projection of existing status and feedback resolver; no new execution permission"
+    },
+    "cueUpdates": {
+      "operation": "edit",
+      "request": "cueUpdates: [{cueId, changes}]",
+      "allowedFields": [
+        "title",
+        "purpose",
+        "visualPlan",
+        "narrationAnchor",
+        "finalAnimationDescription",
+        "screenText",
+        "segmentIds",
+        "contentContext",
+        "storyboard",
+        "resolvedTimeline",
+        "layer",
+        "status"
+      ],
+      "merge": "omitted fields preserved; dictionaries merged recursively; arrays replaced",
+      "excludes": "patch.cues in same request; deletion, rename, object/adapter rebinding and arbitrary JSON Patch"
+    },
+    "conceptBatch": {
+      "operation": "concept",
+      "action": "register-batch",
+      "request": "items with cueId, imageSource, origin, idea, motion, explicit recommend",
+      "recommendation": "at most one true per object per batch; all false preserves existing recommendation",
+      "authority": "registration only; no adoption or confirmation",
+      "transaction": "existing update publication, rollback and request deduplication"
+    }
   }
 }

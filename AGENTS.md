@@ -67,7 +67,9 @@ commit、push、merge、rebase、tag、release、deploy 均需当前请求明确
 
 ```bash
 .venv/bin/python scripts/afterforge.py open "/workspace/AfterForge" --request-file /tmp/open.json
-.venv/bin/python scripts/afterforge.py status "<version-root>"
+.venv/bin/python scripts/afterforge.py status "<version-root>" --summary
+.venv/bin/python scripts/afterforge.py status "<version-root>" --cue-id "<cue-id>"
+.venv/bin/python scripts/afterforge.py status "<version-root>" --feedback-id "<feedback-id>"
 .venv/bin/python scripts/afterforge.py update "<version-root>" --request-file /tmp/update.json
 .venv/bin/python scripts/afterforge.py preview "<version-root>" --request-file /tmp/preview.json
 .venv/bin/python scripts/afterforge.py deliver "<version-root>" --request-file /tmp/deliver.json
@@ -130,3 +132,11 @@ Agent 场景要求实际 Agent 根据原话选择请求，对每个 case 执行 
 ```
 
 同一浏览器页等待新版提示，继续审旧片保存意见后手动查看新版；产物绑定及异常边界由自动测试补足。此合成验收不修改用户作品、不执行正式交付或 FCP 操作。
+
+第二轮 Agent 工具对照只复制显式合成版本，输出目录必须不存在；prepare 不替 Agent 选择或执行制作操作：
+
+```bash
+.venv/bin/python -B tests/work_model_agent_tools_smoke.py --source-version /absolute/synthetic-version --root work/review-integration-20261018/round2/agent-check
+```
+
+按正式 SKILL 读取摘要并按需展开，实际执行局部 edit／批量登记；旧接口对照和所有回执留在同一 work 子目录，不修改合成源或用户作品。

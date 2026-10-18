@@ -418,8 +418,9 @@ def media_status(version_root):
 
 
 @verified_operation
-def status(version_root):
+def status(version_root, *, view='full', cue_id=None, feedback_id=None):
     from scripts.work_model_content import content_context
+    from scripts.work_model_summary import project_view
     root = Path(version_root).expanduser().resolve()
     manifest = load(root)
     if manifest["schemaVersion"] == "2.0":
@@ -444,16 +445,17 @@ def status(version_root):
                 historical(frame.get("path"), "still", [cue["id"]], frame.get("sha256"))
             if not lock.get("reviewFrames") and adapter.get("stillSrc"):
                 historical(adapter["stillSrc"], "still", [cue["id"]])
-        return {"legacy": True, "editRevision": 0, "identity": {"projectId": "legacy", "episodeId": root.name,
+        result = {"legacy": True, "editRevision": 0, "identity": {"projectId": "legacy", "episodeId": root.name,
             "versionId": "legacy-" + digest(root.name)[:12], "episodeTitle": root.name, "versionTitle": "旧工程"},
             "brief": {"summary": "历史工程只读；继续制作请创建新工作副本。", "segments": []},
             "cues": manifest["cues"], "artifacts": artifacts, "feedback": [], "deliveries": [], "tasks": [],
             "availableActions": ["copy"], "reviewSet": None}
+        return project_view(manifest, result, view=view, cue_id=cue_id, feedback_id=feedback_id)
     afterforge, index = layout(root)
     signature = _display_signature(root, afterforge)
     cached = _DISPLAY_CACHE.get(str(root))
     if cached and cached[0] == signature:
-        return copy.deepcopy(cached[1])
+        return project_view(manifest, copy.deepcopy(cached[1]), view=view, cue_id=cue_id, feedback_id=feedback_id)
     result = {key: copy.deepcopy(manifest[key]) for key in ("identity", "editRevision", "brief", "cues", "artifacts", "feedback", "decisions", "deliveries")}
     result["legacy"] = False
     result['workModelVersion'] = manifest.get('workModelVersion', '2.0.0')
@@ -539,7 +541,7 @@ def status(version_root):
     if len(_DISPLAY_CACHE) >= 32:
         _DISPLAY_CACHE.pop(next(iter(_DISPLAY_CACHE)))
     _DISPLAY_CACHE[str(root)] = (signature, copy.deepcopy(result))
-    return result
+    return project_view(manifest, result, view=view, cue_id=cue_id, feedback_id=feedback_id)
 
 
 def _validate_edit(manifest):
@@ -565,6 +567,33 @@ def _validate_edit(manifest):
         timeline = cue.get("resolvedTimeline")
         if timeline and (parse_time(timeline["start"]) < 0 or parse_time(timeline["duration"]) <= 0):
             raise ValueError("invalid cue time")
+
+
+def _cue_updates(manifest, updates):
+    """Expand bounded Cue edits before the ordinary validators/publication path."""
+    allowed = {'title','purpose','visualPlan','narrationAnchor','finalAnimationDescription','screenText',
+               'segmentIds','contentContext','storyboard','resolvedTimeline','layer','status'}
+    if not isinstance(updates, list) or not updates:
+        raise ValueError('cueUpdates requires a nonempty list')
+    cues = copy.deepcopy(manifest['cues'])
+    known = {c['id']:c for c in cues}
+    selected = set()
+    def merge(previous, changes):
+        result = copy.deepcopy(previous)
+        for key,value in changes.items():
+            result[key] = merge(result[key],value) if isinstance(result.get(key),dict) and isinstance(value,dict) else copy.deepcopy(value)
+        return result
+    for item in updates:
+        if not isinstance(item,dict) or set(item) != {'cueId','changes'} or not isinstance(item['cueId'],str):
+            raise ValueError('cueUpdates items require cueId and changes')
+        cid, changes = item['cueId'], item['changes']
+        if cid not in known or cid in selected:
+            raise ValueError('cueUpdates requires unique known cueIds')
+        if not isinstance(changes,dict) or not changes or set(changes) - allowed:
+            raise ValueError('cueUpdates may change only descriptive, timing and Storyboard fields')
+        selected.add(cid)
+        known[cid].update(merge(known[cid], changes))
+    return cues
 
 
 def _record_decision(root, manifest, request):
@@ -636,6 +665,8 @@ def _prepare_files(root, request):
 @verified_operation
 def update(version_root, request):
     root = Path(version_root).expanduser().resolve()
+    if 'cueUpdates' in request and request.get('operation') != 'edit':
+        raise ValueError('cueUpdates is available only within operation=edit')
     # Check read-only before creating a lock in a historical directory.
     load(root, writable=True)
     afterforge, _ = layout(root)
@@ -723,6 +754,10 @@ def update(version_root, request):
             patch = request.get("patch", {})
             if not isinstance(patch, dict) or set(patch) - {"brief", "cues", "project"}:
                 raise ValueError("edit may change only brief, cues and project settings")
+            if 'cueUpdates' in request:
+                if operation != 'edit' or 'cues' in patch:
+                    raise ValueError('cueUpdates requires edit and cannot be combined with patch.cues')
+                patch = {**patch, 'cues':_cue_updates(manifest, request['cueUpdates'])}
             if "project" in patch:
                 project = copy.deepcopy(manifest["project"])
                 project.update(patch["project"])

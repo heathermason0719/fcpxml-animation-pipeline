@@ -130,3 +130,5 @@ Storyboard 顶部的「确认本轮，生成整片 Demo」复用 `update decisio
 新 full/local Demo 在产物 `reviewCues` 中只冻结所呈现场景的 id/objectId/title 与有理数 start/duration；既有 productionBasis、previewRequest 和原 authorize-demo 决定继续提供执行与范围依据。反馈 writer 用冻结时序核验场景及对象，不用当前时序解释旧片；无映射历史视频允许时间正文意见。明确返修的 review-submit 校验 artifact SHA 与准确反馈集合，按原委托复制展示、排除、时间边界并登记新 taskId，已有 roundId 可精确引用。普通提交无新委托；任务、事务和去重仍复用原机制。
 
 CLI 的 work_model_review_entry 为本次结果整理 reviewEntry；服务查找／启动仅在 CLI 层，媒体结果与 job 回执不写 URL。项目运行区 工程/review-service.json 只保留单个定位线索；/api/identity 返回进程启动时项目、模式、代码目录与内容身份。匹配才复用，不杀未知或旧进程；服务失败保留媒体成功。页面以 versionId/tab/artifactId 精确定位，明确缺失不降级。可见 Demo 空闲时每 15 秒读取已有 state，任务运行时沿用 4 秒；隐藏时停止定时读取，回前台／进入 Demo／手动刷新均可发现新片。防重叠与既有 revision 保护并用；同视频不重建播放器，切换须用户点击。
+
+Agent 的 status --summary／--cue-id／--feedback-id 由现有完整 status 派生，完整 HTTP／Python／CLI 默认接口保留。work_model_summary 只投影当前目标、意图、Cue 索引、原反馈及委托／预览定位；Cue 相关性复用 feedback_applies，所有 open 意见仍在索引中，不能以摘要代替执行核验。edit 的 cueUpdates 在原事务中展开为完整内存 Cue 列表，再走原对象绑定、Schema、依赖与发布校验；字典合并、数组替换。concept/register-batch 同一外层事务逐项调用原 register 图片准备器，先核对显式推荐每对象至多一个，再统一发布或回滚；没有额外资产或任务引擎。参数细节集中于 references/agent-operations.md，SKILL 和新项目模板默认使用短查询，不自动覆盖已有入口。

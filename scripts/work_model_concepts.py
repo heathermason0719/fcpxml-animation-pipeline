@@ -142,12 +142,39 @@ def confirm(root, manifest, request, *, prepared=None):
     return decision
 
 
+def register_batch(root, manifest, request):
+    """Prepare every candidate inside the caller's existing update transaction."""
+    if any(key in request for key in ('adopt','recommend','conceptId','cueId','imageSource')):
+        raise ValueError('batch registration uses per-item candidates and cannot adopt')
+    items = request.get('items')
+    if not isinstance(items,list) or not items:
+        raise ValueError('register-batch requires nonempty items')
+    allowed = {'cueId','imageSource','origin','idea','motion','recommend'}
+    recommended = set()
+    for item in items:
+        if not isinstance(item,dict) or set(item) - allowed or type(item.get('recommend')) is not bool:
+            raise ValueError('batch candidates require explicit recommend and cannot adopt')
+        oid = object_ids(manifest, [item.get('cueId')])[0]
+        if item['recommend']:
+            if oid in recommended:
+                raise ValueError('at most one recommended candidate per object in a batch')
+            recommended.add(oid)
+    records, images = [], []
+    for item in items:
+        record, prepared = update_concept(root, manifest, {**item, 'action':'register'})
+        records.append(record)
+        images.extend(prepared)
+    return records, images
+
+
 def update_concept(root, manifest, request):
     if not enabled(manifest):
         raise ValueError('concept work requires a fresh work model 2.2 version')
     if any(field in request for field in ('copiedFromConceptId', 'selectionSource')):
         raise ValueError('concept copy provenance is assigned only by the version writer')
     action = request.get('action')
+    if action == 'register-batch':
+        return register_batch(root, manifest, request)
     if action == 'select':
         # A user selection changes the recommended direction, never its approval.
         # Prepare and verify all bytes before touching the round; update() owns

@@ -11,7 +11,7 @@
 ```bash
 .venv/bin/python scripts/afterforge.py open "/workspace/AfterForge"
 .venv/bin/python scripts/afterforge.py open "/workspace/AfterForge" --request-file /tmp/open.json
-.venv/bin/python scripts/afterforge.py status "<version-root>"
+.venv/bin/python scripts/afterforge.py status "<version-root>" --summary
 .venv/bin/python scripts/afterforge.py update "<version-root>" --request-file /tmp/update.json
 .venv/bin/python scripts/afterforge.py preview "<version-root>" --request-file /tmp/preview.json
 .venv/bin/python scripts/serve_workflow_review.py "/workspace/AfterForge" --port 8765
@@ -125,3 +125,5 @@ AfterForge/
 开发约束见 [AGENTS.md](AGENTS.md)，项目边界见 [PROJECT](docs/PROJECT.md)，可靠状态见 [CURRENT](docs/CURRENT.md)，接口与实现见 [ARCHITECTURE](docs/ARCHITECTURE.md)，决策适用范围见 [DECISIONS](docs/DECISIONS.md)。
 
 完整 Demo 的正常 CLI preview、缓存返回与 resume 回执含本次 `reviewEntry`，Agent 在线程交给用户准确 URL。CLI 复用身份匹配的本地审核服务，缺失时启动；入口失败保留媒体成功及重开方法。URL 定位制作版、Demo 与视频；可见空闲页会低频发现新片并提示“查看新版”，旧播放、草稿及意见不改绑。场景定位来自所审产物的冻结时序；旧视频缺映射时仍可保存视频 ID、时间和正文，显示场景未定位。返修一轮由一个执行线程负责；浏览和留言可并行。受管过程资产通过工具换图和整理，不在 Finder 直接搬动。
+
+日常开始／恢复默认使用 `status --summary`，按需 `--cue-id` 或 `--feedback-id` 展开，原全量 `status` 保留。局部 Cue 用 edit 的 `cueUpdates`；多张概念候选用 `concept/register-batch` 并逐项明确推荐，登记不确认。请求例子与字段按需见 [Agent 操作细节](references/agent-operations.md)。已有项目入口不自动覆盖。
