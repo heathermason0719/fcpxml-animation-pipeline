@@ -202,6 +202,30 @@ def _has_unresolved_narrow_anchor(source):
     return any(source.get(key) is not None for key in ("storyboardId", "artifactId", "cueIds", "segmentIds", "timeStart", "timeEnd"))
 
 
+def _concept_lineage(manifest, concept_id):
+    """Follow immutable copied-byte provenance within one creative object only."""
+    records = {c['id']: c for c in manifest.get('concepts', [])}
+    record = records.get(concept_id)
+    result = set()
+    while record and record['id'] not in result:
+        result.add(record['id'])
+        parent = records.get(record.get('copiedFromConceptId'))
+        if (not parent or parent['objectId'] != record['objectId'] or parent['sha256'] != record['sha256']
+                or parent['round'] >= record['round']):
+            break
+        record = parent
+    return result
+
+
+def same_concept_image(manifest, left_id, right_id):
+    """Share opinions only across a proved copied-byte family, not equal rasters."""
+    records = {c['id']: c for c in manifest.get('concepts', [])}
+    left, right = records.get(left_id), records.get(right_id)
+    return bool(left and right and left['objectId'] == right['objectId']
+                and left['sha256'] == right['sha256']
+                and _concept_lineage(manifest, left_id).intersection(_concept_lineage(manifest, right_id)))
+
+
 def feedback_applies(manifest, feedback, target):
     """Whether a pending feedback fact applies to a resolved canonical target."""
     if not isinstance(feedback, dict) or not isinstance(target, dict):
@@ -213,10 +237,10 @@ def feedback_applies(manifest, feedback, target):
         return False
     if source.get('conceptId'):
         if target.get('kind') == 'concept':
-            return source['conceptId'] in target.get('conceptIds', [])
+            return any(same_concept_image(manifest, source['conceptId'], cid) for cid in target.get('conceptIds', []))
         from scripts.work_model_concepts import confirmed
         adopted = [confirmed(manifest, oid) for oid in target.get('objectIds', [])]
-        return any(c and c['id'] == source['conceptId'] for c in adopted)
+        return any(c and same_concept_image(manifest, source['conceptId'], c['id']) for c in adopted)
     exploration = _feedback_exploration(manifest, feedback)
     if exploration:
         adopted = [adoption for adoption in _adoptions(manifest, exploration)

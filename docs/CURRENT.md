@@ -2,6 +2,14 @@
 
 ## 已验证能力
 
+- 2026-10-18 审核页取消独立交付标签、列表及其渲染调用，保留三个核心工作区和可选探索。Demo 的准确 reviewSet 确认及全部后台交付生成、检查、历史、下载能力不变；完成后在线程提供真实交付目录、XML 和全部带 Alpha 通道的动画 MOV，不新增审批。本轮未触发正式交付，实际交付链路及 FCP 导入验收尚未由本轮验证。 定向 Review 16 项通过（11.580 秒，包含 37 个客户端场景和后台下载回归），Skill／合同投影／JS 语法／diff 检查通过；Chrome 实际刷新显示三个核心页，版本及 11 场正常加载，分镜／Demo 可切换，交付确认入口保留。8796 返回的 HTML/JS/CSS 与工作区字节一致，revision 213 未变。
+
+- 2026-10-18 用户确认新版审核页前三页（画面方案、分镜与动画、整片 Demo）没有问题。本条仅记录页面验收，不代表整片批准、交付授权、正式交付生成或 FCP 导入链路通过；用户随后批准取消独立交付页，成品在线程提供；整片 Demo 的明确交付确认保留。
+
+- 2026-10-18 审核页接入定稿原型，沿用真实版本选择与 API：画面方案、分镜与动画和整片 Demo 三个工作区使用连续场景卡；概念候选浏览、采用与确认分开，同卡切换实际静帧与本场视频。静帧／动画单场确认保存内容绑定的 sceneReviews，只是审阅进度，不新增制作门或生产权限。概念 select 原子处理已确认后的明确改选／历史图重用，原图、来源链与反馈保留。此布局取代下方旧三列卡片与按钮文案记录，历史 2.1 确认语义保留。 概念顶部及弹窗主按钮使用“确认方案，继续制作分镜”，成功提示为“方案和本次制作范围已保存。回到对话后可继续制作分镜。”，范围摘要使用“本次制作／暂不制作”；仅文案调整，交棒与回执两个定向客户端场景通过。
+- 草稿、保存与提交分别显示；开始输入冻结原图／帧／视频与场景时间。隔离真实 Review 验证切帧后仍保存原帧、Demo 从 03:21 跳到 07:39 后仍保存原时间和场景、刷新恢复单场进度，以及新增反馈显示待处理；提交没有新建 Demo 委托。明确整片合并批准／交付绑定准确 reviewSet，调用现有交付入口，正式协议和发布校验器未修改。本轮没有实际渲染、正式交付或 FCP 操作。
+- 未来创作输入沿用本版 `.staging/creative-inputs/<round>/` 中转与 `assets/concepts/` 全候选登记，参考和提示词保存到 `assets/design-inputs/`，制作素材保存到 `assets/materials/`。工具目录与临时路径只作来源追溯，不能是唯一可用副本。历史文件不自动移动、删除或补登记；本轮明确批准的 60 张固定清单归档见下方当前验收证据；开发验收证据统一位于已忽略的 `work/review-integration-20261018/`。
+
 - 2.2 Storyboard 已恢复「通过并开始制作动画」入口：明确勾选制作／暂缓范围，复用 authorize-demo 保存当前静帧依据和 taskId，不直接渲染或重复确认概念。交棒状态刷新保留，Agent 按原 taskId 继续；未保存草稿、旧快照及范围缺口拒绝提交。新增回归先复现缺少入口和快照校验，再验证保存、重复点击、暂缓、刷新和过期依据；507 项完整测试、Skill／合同投影／JS 语法检查通过。实际 Chrome 已核对本版 10 条制作＋五线谱 1 条暂缓的弹窗，未向制作工程提交测试批准。
 
 - 概念大图支持当前 Cue 内的前后箭头、键盘左右键和张数提示，首尾停止；单图及 Storyboard 图片隐藏导航。顶部列出未确认 Cue 的名称和原因，反馈阻塞卡片显示待处理状态。回归先复现缺少导航，再验证候选边界、静帧切换清理及待确认清单；真实 Chrome 验证箭头与键盘切图，504 项完整测试通过。
@@ -57,6 +65,12 @@
 
 ## 当前验收证据
 
+- 2026-10-18 跟进：concept-handoff 将待确认概念和包含／排除范围原子保存为 storyboardHandoffs；全部已确认仍保存，status 恢复最新交棒，失效仅提示。实际写入回执与刷新分开，确认概念／采用候选／单场确认的刷新失败只重试读取。最终关联 69 项通过（23.628 秒，包含真实 Review HTTP 测试与客户端 36 场景），客户端另行 36 场景直跑通过，均为本次定向证据，日志位于 work/review-integration-20261018/followup/。下方 524 项是此前主施工完整回归，未冒充本次跟进的完整回归。
+- 经明确批准，固定 60 张历史 PNG（91,597,985 字节）已从对应 .codex/generated_images 会话移入单集 episode-f8eae2f90598 的过程归档/20261018/generated_images/原会话目录；原名和逐项完整 SHA 全部一致。48 张受控概念同字节副本与 12 张未登记会话过程图分开记录，后者未推断 Cue、未补登记。归档索引保留原来源；冻结制作版 manifest SHA 前后同为 8785399dd634caf892d6c8112d539fa296f49627906fd44d1704bfce7a58d700，受控图片字节未改；归档在正式版本外。证据 followup/historical-archive-result.json。
+
+- 2026-10-18 最终完整 unittest：524 项、74.271 秒全部通过，日志 `work/review-integration-20261018/unittest-final.log`；其中客户端 harness 覆盖 34 个交互场景。独立复核发现的切版错投、跨版迟到弹窗、本场视频场外定位和复制谱系反馈逃逸均留有先失败后通过证据，交付重复点击也有专门回归。Skill、合同投影、五份 JavaScript 语法及 diff 检查通过；14 个受保护交付模块／测试文件 SHA 与开工前相同，交付合同对象及协议号未变。
+- 隔离审核 UI 副本与证据均在 `work/review-integration-20261018/`：`browser-fixture/prepare-evidence.json`、`candidate-browser-evidence.json`、`browser-evidence.json`、`demo-feedback-desktop.png`。原制作版 manifest SHA 前后相同；单场确认和反馈提交没有改变决定、制作任务或 productionRuns。浏览器决定只属于副本，整片交付弹窗仅查看不提交；没有真实渲染或正式发布。该副本不是新制作资格或 FCP 验收证据。
+
 - 2026-09-22 当前分支复核：最终完整 unittest 运行 451 项并全部通过，日志 `/private/tmp/trumen-unittest-0922-final.log`。逐帧旁白映射另有 `ReviewContentTests.test_frame_narration_mapping_invalidates_review_and_reuses_pngs` 与 legacy fallback 定向回归，覆盖映射变更失效审阅、PNG 复用、多帧同句、缺省映射及无 `reviewInputKey` 历史快照失效。本轮生产实测另验证纯映射更新的3张PNG哈希一致且零重渲，浏览器逐帧旁白显示已核对；生产数据不纳入仓库。
 - 2026-09-20 审核页实现：449 项 unittest 通过（原 439 项及新增 10 项，客户端场景同时增加），日志 `/private/tmp/afterforge-review-unittest-final.log`。覆盖说明快照/引用、旧合同与损坏图片、图片输入失效、发布并发、意图对批准后交付依据无影响，以及反馈、批量确认、迟到响应和 hero 原有规则。Skill 校验、旧合同一致性与 diff 检查通过。
 - 真实 PNG 复用与隔离页面：`/private/tmp/afterforge-review-content-20260920-r2/evidence.json`。只读 0917 制作源的隔离副本，2 Cue / 13 张实际 PNG；首次 13 次渲染，纯说明更新 0 次，13 个 SHA 一致，产生新 Storyboard，原制作源全文件哈希未变。第一次沙箱 Chromium 启动被 macOS MachPort 权限拒绝；在获准的隔离运行环境中通过，未为此改渲染实现。
@@ -92,31 +106,38 @@
 2.2 概念优先真实验收分 prepare / render；prepare 输出目录必须不存在，生成图须实际来自图像工具，外部图须有真实来源。浏览器确认仅在隔离工程模拟，render 读取持久化确认图并产出 PNG/MOV。旧 real/review harness 明确使用 2.1 历史 fixture；事故恢复保持历史源合同，不代替新版验收。
 
 ```bash
-.venv/bin/python -B tests/work_model_concept_smoke.py prepare --run --root /private/tmp/afterforge-concept-check --generated-concept /absolute/generated.png --external-concept /absolute/external.png --annotation-concept /absolute/annotation.png --source-frame /absolute/source.png --poster-frame /absolute/poster.png --font-source /absolute/chinese.woff2 --gsap-source /absolute/gsap.min.js --runtime 0.8.146
-.venv/bin/python scripts/serve_workflow_review.py /private/tmp/afterforge-concept-check/AfterForge --port 8788
+.venv/bin/python -B tests/work_model_concept_smoke.py prepare --run --root work/concept-check --generated-concept /absolute/generated.png --external-concept /absolute/external.png --annotation-concept /absolute/annotation.png --source-frame /absolute/source.png --poster-frame /absolute/poster.png --font-source /absolute/chinese.woff2 --gsap-source /absolute/gsap.min.js --runtime 0.8.146
+.venv/bin/python scripts/serve_workflow_review.py work/concept-check/AfterForge --port 8788
 # 在隔离 Review 查看并确认三图，刷新、重启服务、重新 open 后执行：
-.venv/bin/python -B tests/work_model_concept_smoke.py render --run --root /private/tmp/afterforge-concept-check
+.venv/bin/python -B tests/work_model_concept_smoke.py render --run --root work/concept-check
 ```
 
 真实渲染仅使用预先可用的本地精确 runtime、vendor 和中文字体，不安装或升级依赖。所有输出目录必须不存在；本地 Chromium 需具有正常启动权限：
 
 ```bash
-.venv/bin/python -B tests/work_model_real_smoke.py --run --root /private/tmp/afterforge-real-check --runtime 0.8.33 --gsap-source /absolute/local/gsap.min.js --font-source /absolute/local/chinese.woff2
-.venv/bin/python -B tests/work_model_real_smoke.py --run --cold-only --root /private/tmp/afterforge-cold-check --runtime 0.8.33 --gsap-source /absolute/local/gsap.min.js --font-source /absolute/local/chinese.woff2
-.venv/bin/python -B tests/work_model_review_smoke.py --run --root /private/tmp/afterforge-review-check
-.venv/bin/python -B tests/work_model_review_smoke.py --run --review-content --root /private/tmp/afterforge-review-content-check
-.venv/bin/python -B tests/work_model_production_recovery.py --run --root /private/tmp/afterforge-recovery-check
+.venv/bin/python -B tests/work_model_real_smoke.py --run --root work/real-check --runtime 0.8.33 --gsap-source /absolute/local/gsap.min.js --font-source /absolute/local/chinese.woff2
+.venv/bin/python -B tests/work_model_real_smoke.py --run --cold-only --root work/cold-check --runtime 0.8.33 --gsap-source /absolute/local/gsap.min.js --font-source /absolute/local/chinese.woff2
+.venv/bin/python -B tests/work_model_review_smoke.py --run --root work/review-check
+.venv/bin/python -B tests/work_model_review_smoke.py --run --review-content --root work/review-content-check
+.venv/bin/python -B tests/work_model_production_recovery.py --run --root work/recovery-check
 ```
 
 Review 与恢复项读取 harness 中明确列出的《楚门》历史源，只写隔离副本；其他机器需先具备相同只读 fixture，不能用原工程代替输出目录。Review fixture 建成后按返回的 AfterForge 路径运行通用 server，浏览器仅操作副本。
 
+仅验证审核 UI 时使用独立字节副本，不运行渲染。输出目录必须不存在；副本移除交付及整片批准／交付决定，模拟反馈和确认只留在副本：
+
+```bash
+.venv/bin/python -B tests/review_ui_fixture.py --source-version /absolute/read-only-version --root work/review-ui-check
+.venv/bin/python scripts/serve_workflow_review.py work/review-ui-check/AfterForge --port 8796
+```
+
 Agent 场景先准备独立状态，再由实际 Agent 根据原话选择请求；每个 case 均需 observe/act，不能仅运行 verify 冒充一次 Agent 交互：
 
 ```bash
-.venv/bin/python -B tests/work_model_agent_scenarios.py prepare --root /private/tmp/afterforge-agent-check
-.venv/bin/python -B tests/work_model_agent_scenarios.py observe --root /private/tmp/afterforge-agent-check --case cold-continue
-.venv/bin/python -B tests/work_model_agent_scenarios.py act --root /private/tmp/afterforge-agent-check --case cold-continue --action preview --request-file /tmp/agent-request.json
-.venv/bin/python -B tests/work_model_agent_scenarios.py verify --root /private/tmp/afterforge-agent-check
+.venv/bin/python -B tests/work_model_agent_scenarios.py prepare --root work/agent-check
+.venv/bin/python -B tests/work_model_agent_scenarios.py observe --root work/agent-check --case cold-continue
+.venv/bin/python -B tests/work_model_agent_scenarios.py act --root work/agent-check --case cold-continue --action preview --request-file /tmp/agent-request.json
+.venv/bin/python -B tests/work_model_agent_scenarios.py verify --root work/agent-check
 ```
 
 ## 边界与后续

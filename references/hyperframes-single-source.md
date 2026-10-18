@@ -4,21 +4,47 @@
 
 ## 概念图与确认接口
 
-每条动画（含简单文字和标注）先登记真实概念图，再进入代码制作。图片与 artifact/Storyboard 分开；生成图和外部图都从本版 `.staging/` 发布不可变副本到 `assets/concepts/`，保留 SHA、尺寸、Cue/object、轮次、原始来源、文字快照、创意和运动说明。原图只读，不依赖聊天链接。`origin.model` 仅在实际已知时填写。
+每条动画（含简单文字和标注）先登记真实概念图，再进入代码制作。图片与 artifact/Storyboard 分开；生成图和外部图都经本版 `.staging/creative-inputs/<round>/` 中转，再发布不可变副本到 `assets/concepts/`，保留 SHA、尺寸、Cue/object、轮次、原始来源、文字快照、创意和运动说明。原图只读，不依赖聊天链接。`origin.model` 仅在实际已知时填写。
 
 ```json
-{"requestId":"concept-1","expectedRevision":2,"operation":"concept","action":"register","cueId":"A","imageSource":"<version-root>/.staging/concept.png","origin":{"kind":"user-imported","reference":"实际原图路径或生成调用引用"},"idea":"主要构图及表达意图","motion":"出现顺序、运动与停留"}
+{"requestId":"concept-1","expectedRevision":2,"operation":"concept","action":"register","cueId":"A","imageSource":"<version-root>/.staging/creative-inputs/round-1/concept.png","origin":{"kind":"user-imported","reference":"实际原图路径或生成调用引用"},"idea":"主要构图及表达意图","motion":"出现顺序、运动与停留"}
 ```
 
-默认 `recommend: true` 设为当前推荐，`false` 仅保存候选；`action: "propose", conceptId` 切换本轮推荐。未确认可连续改稿，每次图片更新都登记新稿；历史反馈仍绑定原 conceptId。明确提供并采用可在 register 同时传 `adopt: true` 和真实 `source`，一笔事务登记及确认；仅导入没有资格。
+默认 `recommend: true` 设为当前推荐，`false` 仅保存候选；`action: "propose", conceptId` 切换本轮推荐。未确认可连续改稿，每次图片更新都登记新稿；历史反馈仍绑定原 conceptId。页面“采用这版候选”仅切换当前推荐，不等于确认。`action: "select", conceptId, source` 用于有用户来源的改选：当前未确认同轮等同 propose；已确认后选择另一图，原子开启新轮并以原字节建立带 `copiedFromConceptId` 的当前轮记录，选择原确认图不重开。重用历史轮次也追加当前轮记录，不改旧 round、图片或反馈；反馈归属沿复制来源链保留。明确提供图片并确认视觉方向时仍可在 register 同时传 `adopt: true` 和真实 `source`，一笔事务登记及确认；不能用它实现仅选择的采用按钮。
 
 ```json
 {"requestId":"confirm-1","expectedRevision":3,"operation":"decision","kind":"confirm-concept","conceptIds":["concept-A","concept-B"],"source":{"channel":"chat","text":"用户明确采用这些图的原话","reference":"实际消息引用"}}
 ```
 
-确认针对各对象当前推荐稿，整批原子校验真实图片、两渠道内容及相关未解决反馈；支持有用户来源的 `feedbackResolutions`。普通实现修改保留确认。只有用户明确要求修改已确认概念时，提交 `operation: "concept", action: "reopen", cueIds, source` 开始新轮；原确认作为历史保留，新轮确认前不继续制作。未确认对象无需 reopen。
+确认针对各对象当前推荐稿，整批原子校验真实图片、两渠道内容及相关未解决反馈；支持有用户来源的 `feedbackResolutions`。普通实现修改保留确认。已确认图片丢失时恢复原受控字节，不抹除历史确认。只有用户明确要求修改已确认概念时，提交 `operation: "concept", action: "reopen", cueIds, source` 开始新轮；原确认作为历史保留，新轮确认前不继续制作。未确认对象无需 reopen。
+
+概念页顶部交棒使用以下请求；待确认图片与本轮范围在同一事务保存，全部已确认也保存记录。cueIds/conceptIds 按索引对应当前推荐图，excludedCueIds 与选中项准确覆盖全部动画 Cue；source 必须来自实际用户动作。
+
+```json
+{"requestId":"concept-handoff-1","expectedRevision":12,"operation":"concept-handoff","cueIds":["A"],"conceptIds":["<A当前推荐图ID>"],"excludedCueIds":["B"],"source":{"channel":"review","text":"按所选概念交棒A的分镜制作，本轮排除B","reference":"实际页面动作引用"}}
+```
+
+追加 storyboardHandoffs，保存 selected/excluded 的 cueId/objectId/conceptId 快照、requestId、source 和 createdAt。status.conceptDesign.storyboardHandoff 供恢复读取并投影 current/problems，排除图片自身换图不使所选工作失效。此记录不产生 Motion／Demo／交付授权或新制作门；页面不唤醒 Agent 或渲染。
 
 `update` 的源码发布和代码探索／采用复用已有 source closure 判断受影响对象；`_spec` 在既有预览、缓存、恢复及发布路径读取同一份 concept basis，并随任务复制图片快照。图片候选、文字策划、素材登记和 runtime bootstrap 不因此获得或要求代码制作资格。当前概念与决定 ID 进入 productionBasis，图片仍以各自真实制作源决定媒体缓存。
+
+## 创作输入归属
+
+每次生成或导入后及时复制并登记全部候选，包括未推荐过程图（`recommend: false`）；`.staging/creative-inputs/<round>/` 是稳定命名的版本内中转，`assets/concepts/` 才是不可变候选归属。`.codex/generated_images` 可以是图像工具的输出位置，但不能是未来改稿唯一可依赖副本。
+
+参考图、原片参考帧与提示词／来源记录先经 `edit.files` 发布到本版 `assets/design-inputs/`，再以版本内受控路径引用；实际制作素材用 `assets/materials/`。来源字符串可以保留原工具路径、生成调用或导入出处，另保留可读的受控副本引用，不能依赖会消失的临时绝对路径重做。登记和发布沿用 update 的文件校验、版本锁、revision 与回滚，不新增存储权威。合法 `.staging`、工具缓存及历史未登记文件不自动搬迁、清理或改写。`previews/`、`cache/`、`jobs/` 与 `releases/` 保持各自 writer 职责。
+
+## 单场审阅进度接口
+
+`update operation: "scene-review"` 记录用户对实际呈现的审阅进度，`kind` 为 `storyboard` 或 `animation`，并提供 `cueId`、真实用户 `source` 及对应 `storyboardId` 或 `artifactId`：
+
+```json
+{"requestId":"scene-review-1","expectedRevision":12,"operation":"scene-review","kind":"storyboard","cueId":"A","storyboardId":"<当前快照ID>","source":{"channel":"review","text":"确认此场分镜","reference":"实际页面动作引用"}}
+```
+
+后端重新核验对象、Storyboard 的 `reviewInputKey` 或覆盖本场完整时长的视频 artifact 的实际输入身份及文件，追加版本内 `sceneReviews`。动画记录另存 `sceneInputKey`，绑定本场区间、重叠层、背景与审阅文字；整片其他场景变化不会单独清空本场进度。status 为记录投影 `current`／`problems`，并在 `storyboard.cues[].sceneReview` 返回 `{storyboard, animation}` 最新记录或 null。实际相关内容变化只使受影响记录失效，不改旧记录。审阅进度不进入媒体指纹、不改变概念首次资格，不授予制作、完整 Review 批准或交付，也不成为普通继续制作的新硬门。新留言仍按真实未解决反馈显示，历史单场确认不代表无条件通过。
+
+“确认本轮，生成整片 Demo”单独使用现有 `authorize-demo`、`taskId` 与准确 Storyboard、工作／呈现／排除范围；单场确认不触发渲染。`review-submit` 只冻结已保存反馈与快照，不自动授权已完成任务的下一轮整版 Demo。整片批准与合并交付沿用当前完整 `reviewSetId` 和已有 `approve`／`authorize`／`approve-and-deliver` 语义。
 
 ## Canonical source
 

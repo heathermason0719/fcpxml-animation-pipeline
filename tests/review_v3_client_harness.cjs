@@ -24,7 +24,7 @@ class Element {
 const elements = new Map();
 const byId = id => { if (!elements.has(id)) elements.set(id,new Element()); return elements.get(id); };
 const storage = new Map();
-const requests=[];
+const requests=[];let uuidSequence=0;
 let revision=7;
 let incomplete=false;
 let localPreview=false;
@@ -45,16 +45,118 @@ const context = vm.createContext({
   document:{getElementById:byId,querySelectorAll:()=>[],createElement:()=>new Element()},
   Option:function(text,value){const x=new Element();x.textContent=text;x.value=value;return x;},
   localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
-  crypto:{randomUUID:()=>`id-${requests.length}`},
+  crypto:{randomUUID:()=>`id-${++uuidSequence}`},
   setInterval:()=>1,clearInterval:()=>{},setTimeout:fn=>{fn();return 1},
-  fetch:async(url,options)=>{requests.push({url,options}); if(url==='/api/project') return {ok:true,json:async()=>projectData()}; if(url.startsWith('/api/state')) return {ok:true,json:async()=>realStatus||version()}; const request=options?.body&&JSON.parse(options.body).request; return {ok:true,json:async()=>request?.operation==='feedback'?{status:'saved',record:{id:'feedback-saved'}}:{status:'started',requestId:'x'}};},
+  fetch:async(url,options)=>{requests.push({url,options}); if(url==='/api/project') return {ok:true,json:async()=>projectData()}; if(url.startsWith('/api/state')) {const data=realStatus||version();if(!realStatus)data.identity.versionId=new URL(url,'http://review.test').searchParams.get('version');return {ok:true,json:async()=>data};} const request=options?.body&&JSON.parse(options.body).request; return {ok:true,json:async()=>request?.operation==='feedback'?{status:'saved',record:{id:'feedback-saved'}}:{status:'started',requestId:'x'}};},
 });
 
 async function main() {
-  vm.runInContext(fs.readFileSync('assets/review-v3/review-v3.js','utf8'),context);
+  for(const name of ['review-state.js','review-common.js','review-scenes.js','review-v3.js'])vm.runInContext(fs.readFileSync('assets/review-v3/'+name,'utf8'),context);
   await new Promise(setImmediate);
   const scenario=process.argv[2];
-  if(scenario==='storyboard-production') {
+  if(scenario==='thread-delivery') {
+    // Removed delivery DOM must never be dereferenced while loading or switching versions.
+    context.document.getElementById=id=>['delivery','deliveries'].includes(id)?null:byId(id);
+    await context.selectVersion('v1');context.activateTab('preview');await context.selectVersion('v2');
+    const data=version();data.identity.versionId='v2';data.reviewSet={id:'review-7',inputKey:'input-a',artifactIds:['demo']};
+    context.fetch=async(url,options)=>url.startsWith('/api/state')?{ok:true,json:async()=>structuredClone(data)}:{ok:true,json:async()=>({status:'started'})};
+    await context.selectVersion('v2');context.openDeliveryConfirmation();assert.equal(byId('deliveryConfirmDialog').open,true);assert.match(byId('deliveryConfirmContent').textContent,/review-7/);
+    assert.equal(requests.filter(r=>r.url==='/api/action').length,0,'loading and inspecting Demo confirmation never starts delivery');
+  } else if(scenario==='saved-mutation-refresh-failure') {
+    withStoryboard=true;const data=version();data.concepts=[{id:'c1',round:1,objectId:'o',cueId:'cue-a',path:'one.png',sha256:'a',idea:'一'},{id:'c2',round:1,objectId:'o',cueId:'cue-a',path:'two.png',sha256:'b',idea:'二'}];
+    data.conceptDesign={cues:[{cueId:'cue-a',title:'场景A',objectId:'o',recommendedId:'c1',firstConfirmed:false,canConfirm:true,conceptIds:['c1','c2'],confirmationProblems:[]}]};
+    const posts=[];let failRefresh=false;
+    context.fetch=async(url,options)=>{if(url.startsWith('/api/state')){if(failRefresh)throw new Error('refresh unavailable');return {ok:true,json:async()=>structuredClone(data)}}const payload=JSON.parse(options.body);posts.push(payload);failRefresh=true;return {ok:true,json:async()=>({editRevision:++data.editRevision,record:{id:'server-receipt-'+posts.length}})}};
+    for(const operation of ['confirm','adopt','scene']){
+      failRefresh=false;await context.selectVersion('v1');const before=posts.length;
+      const invoke=()=>operation==='confirm'?context.confirmConcepts(['c1']):operation==='adopt'?context.adoptConcept('c2'):context.confirmSceneReview('cue-a');
+      assert.equal(await invoke(),true,`${operation} reports saved despite refresh failure`);
+      const message=operation==='scene'?context.productionSceneHtml(data.storyboard.cues[0]):byId('conceptActionStatus').textContent;
+      assert.match(message,/已保存.*刷新失败/,`${operation} distinguishes the actual write receipt`);assert.doesNotMatch(message,/确认未完成|采用未完成|原选择保持/);
+      assert.equal(posts.length,before+1);assert.equal(await invoke(),true);assert.equal(posts.length,before+1,'retry refresh never creates a new mutation');
+    }
+  } else if(scenario==='concept-storyboard-handoff') {
+    const data=version();data.concepts=[{id:'ca',round:1,objectId:'oa',cueId:'a',path:'a.png'},{id:'cb',round:1,objectId:'ob',cueId:'b',path:'b.png'}];
+    data.conceptDesign={cues:['a','b'].map(id=>({cueId:id,title:'场景'+id,objectId:'o'+id,recommendedId:'c'+id,confirmedId:'c'+id,firstConfirmed:true,canConfirm:false,conceptIds:['c'+id],confirmationProblems:[]}))};
+    const posts=[];let release;context.fetch=async(url,options)=>{if(url.startsWith('/api/state')){const next=structuredClone(data);next.identity.versionId=new URL(url,'http://review.test').searchParams.get('version');return {ok:true,json:async()=>next}}const payload=JSON.parse(options.body);posts.push(payload);return new Promise(resolve=>{release=()=>{data.conceptDesign.storyboardHandoff={id:'handoff-1',requestId:payload.request.requestId,current:true,selected:[{cueId:'a',objectId:'oa',conceptId:'ca'}],excluded:[{cueId:'b',objectId:'ob',conceptId:'cb'}]};resolve({ok:true,json:async()=>({editRevision:++data.editRevision,record:data.conceptDesign.storyboardHandoff})})}})};
+    await context.selectVersion('v1');assert.match(byId('brief').innerHTML,/确认方案，继续制作分镜/);assert.match(fs.readFileSync('assets/review-v3/index.html','utf8'),/id="confirmConceptProduction"[^>]*>确认方案，继续制作分镜</);context.openConceptProduction();vm.runInContext("conceptProduction.selected.delete('b')",context);context.renderConceptProductionScope();assert.match(byId('conceptProductionMessage').textContent,/本次制作：场景a；暂不制作：场景b/);
+    const first=context.submitConceptProduction();await new Promise(setImmediate);
+    assert.equal(posts.length,1,'all-confirmed selection still persists exactly one handoff');assert.equal(await context.submitConceptProduction(),false);assert.equal(posts[0].request.operation,'concept-handoff');assert.deepEqual(posts[0].request.cueIds,['a']);assert.deepEqual(posts[0].request.conceptIds,['ca']);assert.deepEqual(posts[0].request.excludedCueIds,['b']);
+    release();assert.equal(await first,true);await context.selectVersion('v1');assert.match(byId('conceptActionStatus').textContent,/方案和本次制作范围已保存。回到对话后可继续制作分镜。/);assert.match(byId('conceptActionStatus').textContent,/本次制作：场景a；暂不制作：场景b/);assert.doesNotMatch(byId('conceptActionStatus').textContent,/Motion|权威|交棒/);assert.match(byId('conceptActionStatus').textContent,/场景a/);assert.match(byId('conceptActionStatus').textContent,/场景b/);
+    context.openConceptProduction();const late=context.submitConceptProduction();await new Promise(setImmediate);await context.selectVersion('v2');context.openConceptProduction();release();await late;assert.equal(byId('conceptProductionDialog').open,true,'late handoff receipt preserves the next version dialog');
+    await context.selectVersion('v1');context.openConceptProduction();let attempts=0;const retryIds=[];context.fetch=async(url,options)=>{if(url.startsWith('/api/state'))return {ok:true,json:async()=>structuredClone(data)};const request=JSON.parse(options.body).request;retryIds.push(request.requestId);if(++attempts===1)throw new Error('write disconnected');return {ok:true,json:async()=>({editRevision:data.editRevision})}};
+    assert.equal(await context.submitConceptProduction(),false);assert.match(byId('conceptProductionMessage').textContent,/暂未确认保存结果.*write disconnected/,'failed request explanation remains visible');assert.equal(await context.submitConceptProduction(),true);assert.equal(retryIds[0],retryIds[1],'retry retains the request identity');
+  } else if(scenario==='candidate-selection') {
+    const data=version();data.concepts=[{id:'c1',round:1,objectId:'o',cueId:'a',path:'one.png',sha256:'a',idea:'第一稿',origin:{kind:'codex-generated'}},{id:'c2',round:1,objectId:'o',cueId:'a',path:'two.png',sha256:'b',idea:'第二稿',origin:{kind:'codex-generated'}}];
+    data.conceptDesign={cues:[{cueId:'a',title:'场景A',objectId:'o',recommendedId:'c1',confirmedId:null,firstConfirmed:false,canConfirm:true,conceptIds:['c1','c2'],segmentIds:[],confirmationProblems:[]}]};
+    const posts=[];context.fetch=async(url,options)=>{if(url.startsWith('/api/state'))return {ok:true,json:async()=>structuredClone(data)};const req=JSON.parse(options.body).request;posts.push(req);data.editRevision++;data.conceptDesign.cues[0].recommendedId=req.conceptId;return {ok:true,json:async()=>({editRevision:data.editRevision})}};
+    await context.selectVersion('v1');context.openConceptPreview('c2');
+    assert.equal(posts.length,0,'browsing has no effect');
+    assert.equal(typeof context.adoptConcept,'function');
+    await context.adoptConcept('c2');assert.equal(posts.length,1);assert.equal(posts[0].action,'propose');assert.equal(posts[0].kind,undefined);
+    assert.equal(data.conceptDesign.cues[0].firstConfirmed,false,'selection must not confirm');
+    data.conceptDesign.cues[0].firstConfirmed=true;data.conceptDesign.cues[0].confirmedId='c2';await context.selectVersion('v1');
+    assert.equal(await context.adoptConcept('c1'),false,'confirmed change requires a visible second decision');assert.equal(posts.length,1);
+    await context.adoptConcept('c1',{acceptRevision:true});assert.equal(posts.length,2);assert.equal(posts[1].action,'select');assert.ok(posts[1].source.text.includes('重新确认'));assert.equal(posts[1].adopt,undefined);
+  } else if(scenario==='scene-anchor-progress') {
+    withStoryboard=true;const data=version();data.conceptDesign={cues:[]};const cue=data.storyboard.cues[0];cue.reviewInputKey='review-a';cue.productionProblems=[];cue.frames.push({...cue.frames[0],frameId:'second',artifactId:'frame-b',path:'frames/b.png'});data.artifacts.push(...cue.frames.map(f=>({...f,id:f.artifactId,kind:'storyboard-frame'})));
+    const posts=[];context.fetch=async(url,options)=>{if(url.startsWith('/api/state'))return {ok:true,json:async()=>structuredClone(data)};const payload=JSON.parse(options.body);posts.push(payload);data.editRevision++;return {ok:true,json:async()=>({editRevision:data.editRevision,record:{id:'saved',status:'pending',body:payload.request.body,target:payload.request.target}})}};
+    await context.selectVersion('v1');context.activateTab('storyboard');assert.equal(typeof context.setSceneDraft,'function');
+    context.setSceneDraft('cue-a','第一帧要慢一点');context.selectSceneFrame('cue-a','second');context.setSceneDraft('cue-a','第一帧要慢一点，停久一点');
+    assert.equal(context.getSceneDraft('cue-a').target.frameId,'hero');
+    await context.saveSceneFeedback('cue-a');assert.equal(posts[0].request.target.frameId,'hero');assert.equal(posts[0].request.operation,'feedback');
+    await context.confirmSceneReview('cue-a');assert.equal(posts[1].request.operation,'scene-review');assert.equal(posts[1].request.kind,'storyboard');assert.equal(posts[1].request.storyboardId,'board-a');assert.equal(posts[1].action,'update');
+    assert.ok(posts.every(p=>p.action==='update'),'scene confirmation never starts rendering');
+  } else if(scenario==='version-loading-writer') {
+    withStoryboard=true;const originalFetch=context.fetch;let release;
+    await context.selectVersion('v1');
+    context.fetch=async(url,options)=>url==='/api/state?version=v2'?new Promise(resolve=>{release=()=>{const next=version();next.identity.versionId='v2';resolve({ok:true,json:async()=>next})}}):originalFetch(url,options);
+    const loading=context.selectVersion('v2');await new Promise(setImmediate);
+    const before=requests.filter(r=>r.url==='/api/action').length;
+    assert.equal(await context.runAction('preview','生成完整预览'),false,'old displayed state must never authorize the loading version');
+    assert.equal(requests.filter(r=>r.url==='/api/action').length,before);
+    await assert.rejects(context.postVersionAction('v2',{requestId:'old-dom',expectedRevision:7,operation:'scene-review',kind:'storyboard',cueId:'cue-a',storyboardId:'board-a'}),/读取/);
+    release();await loading;await context.runAction('preview','生成完整预览');
+    const sent=JSON.parse(requests.filter(r=>r.url==='/api/action').at(-1).options.body);assert.equal(sent.version,'v2');
+  } else if(scenario==='dialog-late-version') {
+    const data=version();data.reviewSet={id:'review-7',inputKey:'input-a',artifactIds:['demo']};
+    data.concepts=[{id:'c1',objectId:'o',cueId:'cue-a',round:1,path:'one.png',sha256:'a',idea:'第一稿'}];
+    data.conceptDesign={cues:[{cueId:'cue-a',title:'场景A',objectId:'o',recommendedId:'c1',firstConfirmed:false,canConfirm:true,conceptIds:['c1'],confirmationProblems:[]}]};
+    let release;context.fetch=async(url,options)=>{if(url.startsWith('/api/state')){const next=structuredClone(data);next.identity.versionId=new URL(url,'http://review.test').searchParams.get('version');return {ok:true,json:async()=>next}}return new Promise(resolve=>{release=()=>resolve({ok:true,json:async()=>({editRevision:8})})})};
+    for(const kind of ['delivery','concept']){
+      await context.selectVersion('v1');if(kind==='delivery')context.openDeliveryConfirmation();else context.openConceptProduction();
+      const pending=kind==='delivery'?context.submitDeliveryConfirmation():context.submitConceptProduction();await new Promise(setImmediate);
+      await context.selectVersion('v2');if(kind==='delivery')context.openDeliveryConfirmation();else context.openConceptProduction();
+      release();await pending;
+      assert.equal(byId(kind==='delivery'?'deliveryConfirmDialog':'conceptProductionDialog').open,true,`late ${kind} response never closes the next version's dialog`);
+      assert.doesNotMatch(byId('conceptActionStatus').textContent,/所选方案已有明确概念确认/,'late confirmation does not declare another version confirmed');
+    }
+  } else if(scenario==='scene-video-bounds') {
+    withStoryboard=true;const data=version();data.conceptDesign={cues:[]};data.cues[0].resolvedTimeline={start:'2s',duration:'2s'};
+    data.artifacts[0]={...data.artifacts[0],range:{start:'0s',duration:'10s'},cueIds:['cue-a']};
+    context.fetch=async()=>({ok:true,json:async()=>structuredClone(data)});await context.selectVersion('v1');context.selectSceneMode('cue-a','animation');
+    const player=new Element();player.currentTime=8;context.document.querySelector=selector=>selector==='[data-scene-video="cue-a"]'?player:null;
+    context.setSceneDraft('cue-a','这句在场景之外');assert.equal(context.getSceneDraft('cue-a'),undefined,'outside video time cannot bind the card cue');
+    assert.match(context.sceneFeedbackHtml('cue-a','production'),/本场区间/);
+    player.currentTime=3;context.setSceneDraft('cue-a','回到本场再留言');assert.equal(context.getSceneDraft('cue-a').target.timeStart,'3s');
+  } else if(scenario==='scene-save-failure') {
+    withStoryboard=true;const data=version();data.conceptDesign={cues:[]};data.storyboard.cues[0].reviewInputKey='review-a';
+    const posts=[];context.fetch=async(url,options)=>{if(url.startsWith('/api/state'))return {ok:true,json:async()=>structuredClone(data)};posts.push(JSON.parse(options.body));return {ok:false,status:409,json:async()=>({error:'stale edit revision'})}};
+    await context.selectVersion('v1');context.setSceneDraft('cue-a','第一帧原意见');
+    await context.submitSceneRound('production');assert.equal(posts.length,0,'submission does not silently save drafts');
+    assert.equal(await context.saveSceneFeedback('cue-a'),false);assert.equal(posts.length,1);
+    assert.equal(context.getSceneDraft('cue-a').body,'第一帧原意见');assert.equal(context.getSceneDraft('cue-a').target.frameId,'hero');
+    assert.match(context.sceneFeedbackHtml('cue-a','production'),/保存失败/);
+    data.identity.versionId='v2';await context.selectVersion('v2');assert.equal(context.getSceneDraft('cue-a'),undefined,'other version never inherits the draft');
+    data.identity.versionId='v1';await context.selectVersion('v1');assert.equal(context.getSceneDraft('cue-a').target.frameId,'hero');
+  } else if(scenario==='delivery-dialog') {
+    const data=version();data.reviewSet={id:'review-7',inputKey:'input-a',artifactIds:['demo']};const posts=[];
+    context.fetch=async(url,options)=>{if(url.startsWith('/api/state'))return {ok:true,json:async()=>structuredClone(data)};posts.push(JSON.parse(options.body));return {ok:true,json:async()=>({editRevision:++data.editRevision})}};
+    await context.selectVersion('v1');context.openDeliveryConfirmation();assert.equal(byId('deliveryConfirmDialog').open,true);assert.match(byId('deliveryConfirmContent').textContent,/review-7/);
+    data.reviewSet.id='review-8';await context.submitDeliveryConfirmation();assert.equal(posts.length,0,'changing review set invalidates the visible confirmation');assert.match(byId('deliveryConfirmMessage').textContent,/已经变化/);
+    context.openDeliveryConfirmation();byId('feedbackBody').value='尚未保存';await context.submitDeliveryConfirmation();assert.equal(posts.length,0,'drafts are not silently discarded or approved');
+    byId('feedbackBody').value='';const submitting=context.submitDeliveryConfirmation();assert.equal(await context.submitDeliveryConfirmation(),false,'duplicate clicks do not create another delivery request');await submitting;assert.equal(posts.length,1);assert.equal(posts[0].action,'deliver');assert.equal(posts[0].request.decision.kind,'approve-and-deliver');assert.equal(posts[0].request.decision.reviewSetId,'review-8');assert.equal(byId('deliveryConfirmDialog').open,false);
+  } else if(scenario==='storyboard-production') {
     withStoryboard=true;
     const data=version();data.conceptDesign={cues:[]};
     data.storyboard.cues[0].productionProblems=[];

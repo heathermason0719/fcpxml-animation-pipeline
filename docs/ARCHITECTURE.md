@@ -1,12 +1,11 @@
 # 架构
 
-2.2 的概念图片是生产前的独立设计记录：`creativeObjects[].concept` 保存当前轮次、推荐/确认稿及决定引用，`concepts[]` 保存不可变图片、来源与内容快照。新稿追加，旧反馈按 conceptId 和产品对象解析。确认只建立该轮方向；显式用户改概念才 reopen，普通技术修改不改变资格。概念模块准备 bytes，现有 update 事务负责发布/回滚；jobs snapshot 携带图片依据并在原 `_spec` 调用点复核。媒体缓存仍依赖实际制作源，不因浏览概念候选而重渲染。Review 概念区跨 Cue 使用桌面固定三列、窄窗口两列或单列的卡片网格，旁白与运动说明按需展开，原段落说明保留在折叠区；历史候选按登记倒序展示缩略图并沿用原 conceptId 的放大与反馈定位。过程稿通过现有 register 的 recommend:false 追加，不改推荐与确认。概念大图导航以打开时的 Cue 候选集合为边界，推荐稿在前、历史登记倒序在后；切换版本或打开 Storyboard 图片时清除导航。待确认清单从原 conceptDesign 状态派生，不放宽反馈或确认条件。
-
+2.2 的概念图片是生产前的独立设计记录：`creativeObjects[].concept` 保存当前轮次、推荐／确认稿及决定引用，`concepts[]` 保存不可变图片、来源与内容快照。新稿追加，旧反馈按 conceptId、复制来源链和产品对象解析。推荐选择不建立确认；未确认当前轮用 propose，select 在需要改稿／历史重用时原子创建新轮候选，保留 `copiedFromConceptId`，不改旧图片或 round。已确认后换图需要有来源的明确用户改选；普通技术修改保留确认，图片缺失要求恢复原字节。概念模块准备 bytes，现有 update 事务负责发布／回滚；jobs snapshot 携带图片依据并在原 `_spec` 调用点复核。媒体缓存依赖实际制作源，不因浏览或单场审阅进度改变。
 ## 工作对象与权威
 
 新版是 manifest 3.0 / work model 2.2.0 / delivery protocol 3。`references/work-model-contract.json` 定义操作和词汇；`animation-manifest.json` 是单个制作版本生产事实的唯一入口。系列 `工程/project.json` 只记录稳定系列/集/版本身份、路径注册和经验证的协议基线。
 
-`brief` 保存本集理解与论证段落，`cues` 保存具体表达源、依赖及有理数摆放。Cue 的 `contentContext` 分别记录 narration/screenText 的 present、none 或 unknown；实际文本仍只在既有 Cue 或关联 brief 段落中，none 保存 text/reference 依据。`artifacts` 保存实际产物 SHA、生成输入、全局覆盖范围和完整性；`reviewSets` 绑定完整小样与必要的重叠 Cue 补审；`feedback` 保存原话、位置、来源、澄清及处理；`decisions` 单独保存有来源的用户决定；`deliveries` 绑定不可变包及快照。反馈冲突、非空最终说明、技术上的当前 board 与历史 `firstConfirmed` 是分别核验的事实，互不替代。执行任务不保存批准权威。
+`brief` 保存本集理解与论证段落，`cues` 保存具体表达源、依赖及有理数摆放。Cue 的 `contentContext` 分别记录 narration/screenText 的 present、none 或 unknown；实际文本仍只在既有 Cue 或关联 brief 段落中，none 保存 text/reference 依据。`artifacts` 保存实际产物 SHA、生成输入、全局覆盖范围和完整性；`reviewSets` 绑定完整小样与必要的重叠 Cue 补审；`feedback` 保存原话、位置、来源、澄清及处理；`sceneReviews` 保存绑定实际 Storyboard／视频输入的单场审阅进度，不是批准或生产依据；`decisions` 单独保存有来源的用户决定；`deliveries` 绑定不可变包及快照。反馈冲突、非空最终说明、技术上的当前 board 与历史 `firstConfirmed` 是分别核验的事实，互不替代。执行任务不保存批准权威。
 
 旧 schema 2.0 位于 `references/legacy/animation-manifest-v2.schema.json`；Stage Contract 1.0.0 与原阶段语义不变。旧生产实现的解释见 [legacy 架构](../references/legacy/architecture-v2.md)，仅在读取历史合同或显式旧工具维护时加载。新版不调用阶段 resolver。
 
@@ -21,9 +20,13 @@ AfterForge/
     episodes/<episodeId>/<versionId>/
       animation-manifest.json
       frame.md, package.json, hyperframes.json
-      compositions/, assets/, .staging/
+      compositions/
+      assets/concepts/, assets/design-inputs/, assets/materials/
+      .staging/creative-inputs/<round>/
       previews/, cache/, jobs/, releases/
 ```
+
+生成／导入的全部候选及时经 `.staging/creative-inputs/<round>/` 中转，再由 concept/register 发布到 `assets/concepts/`；非推荐过程图也登记 `recommend: false`。设计参考、原片参考帧、提示词与来源记录经 edit.files 发布到 `assets/design-inputs/`，实际制作素材在 `assets/materials/`。来源字符串可保留工具原路径，实际输入须另有可读版本内引用，不能依赖 `.codex` 或临时目录唯一副本。中转与缓存仍合法，历史收纳按明确维护范围执行，不自动移动已登记资产。仓库开发／验收输出集中在已忽略的 `work/<轮次>/`，它与真实作品版本目录职责不同。
 
 `work_model_store.layout` 从项目标记与注册路径解析归属，不猜父目录层数。`sourceVersion` 原样保存输入目录名，与制作版 ID 和交付号分离。包名只用可读显示名，完整指纹保存在记录中；改名不移动已发布包。每集交付编号跨制作版本协调。
 
@@ -35,7 +38,7 @@ AfterForge/
 
 ## 应用层
 
-`update` 的创作交互包括 `feedback`、`review-submit`、`review-progress`、`feedback-applicability`、`decision`/原子 `decisions`、`exploration` 与 `exploration-adopt`。`preview` 支持 `storyboard`、`exploration`、局部与 `full`；full 绑定已有或 inline `authorize-demo` 的 taskId 和范围。`work_model_policy.py` 管对象关系、生产依据和可执行来源发布，`work_model_feedback.py` 管反馈/轮次，`work_model_storyboard.py` 管静帧，`work_model_exploration.py` 管候选与采用。
+`update` 的创作交互包括 `concept`、`concept-handoff`、`scene-review`、`feedback`、`review-submit`、`review-progress`、`feedback-applicability`、`decision`/原子 `decisions`、`exploration` 与 `exploration-adopt`。`preview` 支持 `storyboard`、`exploration`、局部与 `full`；full 绑定已有或 inline `authorize-demo` 的 taskId 和范围。`work_model_policy.py` 管对象关系、生产依据和可执行来源发布，`work_model_feedback.py` 管反馈/轮次，`work_model_storyboard.py` 管静帧，`work_model_exploration.py` 管候选与采用。
 
 | 组件 | 职责 |
 |---|---|
@@ -46,10 +49,11 @@ AfterForge/
 | `work_model_runtime.py` | 初始化明确且本地可用的精确 runtime；以 runtimeIdentity 区分 bootstrap/enrollment/same-byte repair 与实际变更，不安装或查询 latest |
 | `work_model_jobs.py` | 固定快照、可恢复执行、缓存验证、产物/交付发布 |
 | `work_model_media.py` | 受应用层制作依据核验后的原生渲染、FFmpeg 合成与实际 Alpha |
-| `work_model_concepts.py` | 概念图片校验、受控登记、推荐/改稿轮次、批量确认及生产依据 |
+| `work_model_concepts.py` | 概念图片校验、受控登记、推荐／原子改稿选择、历史图重用与来源链、批量确认、原子分镜交棒及生产依据 |
 | `work_model_policy.py` | 产品创作对象、首次确认、限定探索、整版任务依据及资格核验 |
 | `work_model_storyboard_production.py` | Storyboard 制作交棒的范围／快照校验、暂缓提示与委托状态投影 |
 | `work_model_storyboard.py` | PNG 合同 5 输入、旧合同核验复用、完整 Storyboard 文字快照及局部说明引用 |
+| `work_model_scene_review.py` | 实际 Storyboard／视频单场进度记录及局部输入／反馈状态投影，无生产权威 |
 | `work_model_intent.py` | 本版非权威 focus/preserve 条目的定向更新，不调用生产策略 |
 | `work_model_feedback.py` / `work_model_feedback_targets.py` / `work_model_exploration.py` | 固定反馈批次、处理与接受分离；统一目标解析用于确认、批准、交付；候选工作区及原子采用 |
 | `work_model_delivery.py` | 协议 3 授权、XML/媒体闭包、唯一性与轻量证据的不可覆盖发布 |
@@ -101,13 +105,19 @@ CLI 与 HTTP 调用同一应用层。短写入在已有 `manifest_transaction` �
 
 `workingIntent.items` 与生产数据并列存于版本 manifest，包含稳定 ID、focus/preserve、文字、定位、用户来源与 writer 时间。独立 writer 分支在版本锁内去重/校验/保存，不运行 upgrade 或生产历史纠正；仅更新意图及必要 revision/request 记录。定位失效非阻塞；Agent 更新定位与被替代条目。它不进入任何媒体、Review、资格或交付输入，不继承到新制作版，不写入系列记忆。
 
-正式 Review 在现有 API 上读取这两份数据。顶部显示单集/制作版/历史版与 Cue 跳转；桌面三列等尺寸帧，窄屏两列。说明按当前快照帧序挂在最后关联帧下，关系按钮只负责阅读高亮。图片弹窗、桌面 sticky 反馈栏、逐版本/对象/帧的留言开合偏好属于浏览器状态，不改变批准。逐帧反馈写请求按制作版串行，保存回执立即推进客户端 revision；状态刷新独立进行，迟到的低 revision 响应不覆盖较新状态。版本冲突仍保留草稿，不自动重发或改绑。保存反馈、交棒仍使用原接口；新 2.2 概念确认复用 update 决定接口，历史完整 Cue 确认保留；新 Storyboard 清除旧依据勾选，草稿不自动转绑。顶部提交、确认、生成按钮在原位显示回执并防重复点击；静帧生成按 tasks 的 requestId（持久 job 的原请求身份）关联本次异步任务，成功／失败不从无关历史任务推断。后台 hero 约束与抽帧用途不变。
+正式 Review 在现有 shell 和真实 API 上读取版本数据，保留单集／制作版／历史版选择及可选探索，取消独立交付标签页。整片 Demo 保留绑定准确 reviewSet 的明确交付确认；后台交付生成、检查、历史与下载能力不变。交付完成后由 Agent 在线程提供真实交付目录、XML 和全部带 Alpha 通道的动画 MOV 及导入顺序，不增加审批。三个核心标签页使用连续纵向场景组织，取代旧桌面三列帧／概念卡布局；场景数量来自真实版本，每场左图右文，目录每场一个状态标记。“画面方案”浏览全部候选，查看、选择当前推荐和概念确认独立；“分镜与动画”在同卡切换实际 Storyboard／本场视频，以紧凑帧选择显示关联旁白与说明；“整片 Demo”专注全片节奏和时长。深蓝灰底、蓝紫粉点缀、3px 渐变边框微光及回顶部属于仓库主题，作品 frame.md 不驱动 shell。
+
+页面渲染、状态读写和共享组件分工，生产状态只从服务端恢复；浏览器仅持有草稿、阅读偏好和临时选择，不复制三个 localStorage 生产状态。评论开始输入时冻结版本、对象、快照／artifact 与时间锚点，切版本、切帧或播放跳转不改绑。逐帧反馈按版本串行写入，保存回执立即推进 revision；刷新独立进行，低 revision 迟到响应不覆盖新状态。冲突保留原草稿与定位，不自动重发；草稿、已保存反馈与已提交轮次分别显示。新增相关未解决反馈仍提示待处理，历史确认不投影为无条件通过。图片放大、阅读高亮不改变目标。顶部操作原位回执并防重复；静帧生成按本次 requestId 跟踪 tasks，不采用无关历史成功／失败，后台 hero 与抽帧规则不变。
+
+`concept-handoff` 复用 update 的同一版本事务：验证选中／排除是全部动画 Cue 的准确分区、所选当前推荐概念 ID 和真实用户来源；批量确认尚未确认的所选概念，并追加 `storyboardHandoffs[]`。全部已确认也保存范围。记录含稳定 requestId、source、createdAt 及 selected/excluded 的 cueId/objectId/conceptId 快照，排除项概念可为空。status.conceptDesign.storyboardHandoff 返回最新记录与 current/problems；所选依据、对象或分区变化会提示失效，排除图片自身更新不使所选工作失效。它不进入媒体身份、不新增制作门或 Motion/Demo/交付授权，也不唤醒 Agent；恢复时按记录范围继续。浏览器保存回执与随后状态读取分开处理，读取失败不把成功写入显示为失败，保留请求身份并只重试读取。
+
+`scene-review` 的单场确认是最小版本内进度记录：kind 为 storyboard／animation，cueId 定位对象，分别提交 storyboardId／artifactId 与真实 source。后端重新核验当前 reviewInputKey／视频输入与实际文件；动画记录的 sceneInputKey 绑定本场时间区间、重叠层、背景和审阅文字，不因整片其他场景变化一并重置；status.sceneReviews 投影 current／problems，storyboard.cues[].sceneReview 给出两类最新记录。实际内容变化仅使相关记录失效，旧记录保留；它不进入媒体指纹、不改变首次概念资格、不授予生产或交付，也不成为普通继续制作的新硬门。历史 2.1 原确认接口及事实保持原义。
 
 ## Demo 审阅交互
 
-Demo 沿用 Review shell，播放器下方为紧凑反馈表单，左侧动画 Cue 导览不改反馈目标。初次选择优先当前完整视频；静帧与探索帧不进入 Demo 素材列表。取时间暂停同一个播放器并显式绑定所看 artifact 与全局有理数时间；导航和意见回看只移动播放位置，历史意见优先回到原视频。文本输入与输入法组合以外的空格在 Demo 控制播放／暂停，并拦截按钮默认激活。
+Demo 是 Review shell 内独立标签页，定位条紧邻视频，反馈表单锚定开始输入时的原视频／场景／时间；场景导览只改变播放位置。总时长反馈仍是绑定视频与场景的意见，不改音频时间线。初次选择优先当前完整视频；静帧与探索帧不进入 Demo 素材列表。取时间暂停同一个播放器并显式绑定所看 artifact 与全局有理数时间；导航和意见回看只移动播放位置，历史意见优先回到原视频。文本输入与输入法组合以外的空格在 Demo 控制播放／暂停，并拦截按钮默认激活。
 
-单条反馈与 Storyboard 写入共用版本写队列及 revision 回执，保存中防重复，失败保留草稿；成功后刷新失败不声称保存失败。本轮列表从最新完整 Demo 的 artifactId 与已持久化 reviewRounds 投影，排除 Storyboard／探索反馈。handoff 复用 `review-submit`，`storyboardIds: []` 加明确 feedbackIds；刷新恢复已提交状态，不把新意见补入已提交轮次。效果通过复用 `decision: approve` 与当前 reviewSetId，不生成交付授权。制作与历史任务收在次级区域，旧失败不覆盖当前操作回执。
+单条反馈与 Storyboard 写入共用版本写队列及 revision 回执，保存中防重复，失败保留草稿；成功后刷新失败不声称保存失败。本轮列表从最新完整 Demo 的 artifactId 与已持久化 reviewRounds 投影，排除 Storyboard／探索反馈。handoff 复用 `review-submit`，`storyboardIds: []` 加明确 feedbackIds；刷新恢复已提交状态，不把新意见补入已提交轮次。效果通过复用 `decision: approve` 与当前完整 reviewSetId，不生成交付授权；明确“确认整片，生成交付文件”可沿现有 deliver 入口传 approve-and-deliver，绑定准确当前完整集合。提交反馈不隐含已完成任务的下一轮 full Demo 委托，既有语义缺口仍在 CURRENT 标注。制作与历史任务收在次级区域，旧失败不覆盖当前操作回执。
 
 Demo 视频反馈的撤回复用 `feedback-applicability`：`not-applicable` 配合 `review-feedback-withdraw:` 来源标识显示已撤回，恢复写回 `current`。原文、身份与已提交轮次不删除；非 current 意见不进入 Demo 待提交列表。撤回／恢复与提交共用就地忙状态，并沿用按版本串行写入和 revision 冲突保护。
 
@@ -115,4 +125,4 @@ Demo 视频反馈的撤回复用 `feedback-applicability`：`not-applicable` 配
 
 Review `/media` 使用 `media_status` 读取当前 manifest 的已登记素材及交付媒体索引，保留版本白名单、路径及符号链接检查，逐请求读取登记变化；不调用完整 `status` 的资格、指纹与文件哈希计算。历史素材本来就可读，因此此路径不产生 current 或批准判断。`/api/state` 和所有 writer 仍执行原核验。
 
-Storyboard 的「通过并开始制作动画」复用 `update decision: authorize-demo`，附带所选 `storyboardIds`，在原版本事务内核验当前快照、内容、概念依据及适用反馈，所选／排除范围必须覆盖全部动画 Cue。该可选入口不改变普通制作委托语义，不建立第二次概念批准；页面只保存委托，Agent 以同 taskId 继续制作。`status.storyboard.productionRequest` 从决定和完成记录派生 pending/completed，刷新保留。暂缓勾选建议复用产品对象的反馈目标解析，用户提交时明确记录最终范围。
+Storyboard 顶部的「确认本轮，生成整片 Demo」复用 `update decision: authorize-demo`，附带所选 `storyboardIds`，在原版本事务内核验当前快照、内容、概念依据及适用反馈，所选／排除范围必须覆盖全部动画 Cue。该可选入口不改变普通制作委托语义，不建立第二次概念批准；页面只保存委托，Agent 以同 taskId 继续制作。`status.storyboard.productionRequest` 从决定和完成记录派生 pending/completed，刷新保留。暂缓勾选建议复用产品对象的反馈目标解析，用户提交时明确记录最终范围。

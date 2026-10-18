@@ -8,7 +8,7 @@
 
 新版操作词汇以 `references/work-model-contract.json` 为准。只有解释 schema 2.0 历史、维护 legacy 工具或处理旧阶段合同时，才读 `references/workflow-stage-contract.md`；Stage ID 和正式名称以对应 JSON 为 canonical。新版生产不调用旧 resolver，不维护 currentStage/blockingStage/nextEligibleStage。
 
-新 2.2 制作每条动画先有真实概念图；未确认可自由改图，明确采用后才发布代码及渲染。仅用户明确要求改概念时开启新确认轮次；普通制作反馈保留确认。
+新 2.2 制作每条动画先有真实概念图；未确认可自由改图；采用候选只选择推荐图，明确确认概念后才发布代码及渲染。仅用户明确要求改概念时开启新确认轮次；普通制作反馈保留确认。
 
 初始设计与反馈修改均遵循 `SKILL.md` 的创意澄清、概念图迭代、素材选择和运动默认；概念提示词与比较方法见 `references/visual-grammar.md` 第 4 节。Agent 负责看图、筛选和必要的多轮修改，不把每次生成都交回用户判断；不将某次审美取舍固化为通用风格或新增批准门。不让用户选择 static/motion 或办理阶段回退。
 
@@ -27,6 +27,8 @@
 - AfterForge 是可替换的门牌，内部 ID 不变；既有 AGENTS/CLAUDE 不自动覆盖。
 - 系列、单集、制作版与交付分别有稳定身份；路径由布局解析器和注册信息取得，不猜父目录层级。
 - 新生产使用统一 afterforge.py。源码先放本版 .staging，再经 update 校验发布；不手工更改批准、产物或交付事实。
+- 创作图片生成或导入后及时复制到本版 `.staging/creative-inputs/<round>/` 中转，并经 concept/register 登记全部候选到 `assets/concepts/`，非推荐稿用 recommend:false。参考图与提示词经 update 发布到 `assets/design-inputs/`，实际制作素材到 `assets/materials/`；引用使用版本内受控路径，原工具路径仅供来源追溯。`.codex` 输出及系统临时目录不能是创作唯一可依赖副本。合法中转、缓存和已有历史文件不因此自动迁移或清理。
+- 开发、测试、构建与 UX 验收产物统一收纳到本仓库已忽略的 `work/<轮次>/`，跨轮沿用 `work/` 父目录；本轮为 `work/review-integration-20261018/`。测试源码留在 tests，不把运行生成物混入源码或分散到临时目录。
 - 所有受控版本 writer 复用 manifest_transaction，读取、更新、发布/回滚在同一版本锁；项目与版本同锁时先项目后版本。长任务固定输入快照、释放锁执行，发布前复核实际内容与用户决定。
 - .afterforge-manifest.lock 是稳定协调文件，不随 manifest 原子替换删除。仅给最终 save 加锁不能保护前面的旧读取。
 - 保持源帧率与有理数时间。runtime 固定精确 pin，普通恢复不查询 latest；安装及实际迁移需明确授权。
@@ -42,6 +44,8 @@
 - 临时 QA 环境异常只有在目标环境复现或有实际可用性受损证据时才修复，不单独当交付故障。
 
 恢复工作时读取 `status.workingIntent.items`；按用户原话定向维护 focus/preserve，泛泛继续不清空，失效定位由 Agent 修订且不形成阻塞。意图不进入资格或渲染/审阅/交付指纹，不存入系列创作记忆。局部 animationNotes 随帧重组维护引用，2.2 首次确认针对概念图，Storyboard 只检查实际制作；纯说明通过预览发布新快照并复用已验证 PNG。
+
+审核页的单场 Storyboard／动画确认仅保存绑定当前内容的审阅进度，不授予制作或交付、不改变概念首次资格，也不是普通继续制作的新硬门。部分推进必须列明包含与排除场景；提交反馈只交棒，不隐含下一轮完整 Demo 委托。
 
 固定 runtime 配置与 vendor 由 runtime writer 维护身份；bootstrap 和同指纹修复不产生 Motion 授权。反馈随产品对象与实际采用的候选输入关联，技术改名或摆放变化不自动解决旧反馈。
 
@@ -74,16 +78,16 @@ commit、push、merge、rebase、tag、release、deploy 均需当前请求明确
 2.2 概念优先真实验收分 prepare / render；prepare 输出目录必须不存在，生成图须实际来自图像工具，外部图须有真实来源。浏览器确认仅在隔离工程模拟，render 读取持久化确认图并产出 PNG/MOV。旧 real/review harness 明确使用 2.1 历史 fixture；事故恢复保持历史源合同，不代替新版验收。
 
 ```bash
-.venv/bin/python -B tests/work_model_concept_smoke.py prepare --run --root /private/tmp/afterforge-concept-check --generated-concept /absolute/generated.png --external-concept /absolute/external.png --annotation-concept /absolute/annotation.png --source-frame /absolute/source.png --poster-frame /absolute/poster.png --font-source /absolute/chinese.woff2 --gsap-source /absolute/gsap.min.js --runtime 0.8.146
-.venv/bin/python scripts/serve_workflow_review.py /private/tmp/afterforge-concept-check/AfterForge --port 8788
+.venv/bin/python -B tests/work_model_concept_smoke.py prepare --run --root work/concept-check --generated-concept /absolute/generated.png --external-concept /absolute/external.png --annotation-concept /absolute/annotation.png --source-frame /absolute/source.png --poster-frame /absolute/poster.png --font-source /absolute/chinese.woff2 --gsap-source /absolute/gsap.min.js --runtime 0.8.146
+.venv/bin/python scripts/serve_workflow_review.py work/concept-check/AfterForge --port 8788
 # 在隔离 Review 查看并确认三图，刷新、重启服务、重新 open 后执行：
-.venv/bin/python -B tests/work_model_concept_smoke.py render --run --root /private/tmp/afterforge-concept-check
+.venv/bin/python -B tests/work_model_concept_smoke.py render --run --root work/concept-check
 ```
 
 显式隔离真实渲染回归（输出目录必须不存在，本地 runtime 与 vendor 预先可用）：
 
 ```bash
-.venv/bin/python -B tests/work_model_real_smoke.py --run --root /private/tmp/afterforge-real-check --runtime 0.8.33 --gsap-source /absolute/local/gsap.min.js --font-source /absolute/local/chinese.woff2
+.venv/bin/python -B tests/work_model_real_smoke.py --run --root work/real-check --runtime 0.8.33 --gsap-source /absolute/local/gsap.min.js --font-source /absolute/local/chinese.woff2
 ```
 
 上一个命令加 `--cold-only` 可在交棒后、首次确认与 Motion 编写前保留冷启动快照及视频调用计数。
@@ -91,19 +95,28 @@ commit、push、merge、rebase、tag、release、deploy 均需当前请求明确
 正式 Storyboard 与真实事故恢复使用只读历史源的隔离副本；模拟用户决定只留在副本中。输出目录必须不存在：
 
 ```bash
-.venv/bin/python -B tests/work_model_review_smoke.py --run --root /private/tmp/afterforge-review-check
-.venv/bin/python -B tests/work_model_review_smoke.py --run --review-content --root /private/tmp/afterforge-review-content-check
-.venv/bin/python -B tests/work_model_production_recovery.py --run --root /private/tmp/afterforge-recovery-check
-.venv/bin/python -B tests/work_model_agent_scenarios.py prepare --root /private/tmp/afterforge-agent-check
-.venv/bin/python -B tests/work_model_agent_scenarios.py observe --root /private/tmp/afterforge-agent-check --case cold-continue
-.venv/bin/python -B tests/work_model_agent_scenarios.py act --root /private/tmp/afterforge-agent-check --case cold-continue --action preview --request-file /tmp/agent-request.json
-.venv/bin/python -B tests/work_model_agent_scenarios.py verify --root /private/tmp/afterforge-agent-check
+.venv/bin/python -B tests/work_model_review_smoke.py --run --root work/review-check
+.venv/bin/python -B tests/work_model_review_smoke.py --run --review-content --root work/review-content-check
+.venv/bin/python -B tests/work_model_production_recovery.py --run --root work/recovery-check
+.venv/bin/python -B tests/work_model_agent_scenarios.py prepare --root work/agent-check
+.venv/bin/python -B tests/work_model_agent_scenarios.py observe --root work/agent-check --case cold-continue
+.venv/bin/python -B tests/work_model_agent_scenarios.py act --root work/agent-check --case cold-continue --action preview --request-file /tmp/agent-request.json
+.venv/bin/python -B tests/work_model_agent_scenarios.py verify --root work/agent-check
 ```
 
 Agent 场景要求实际 Agent 根据原话选择请求，对每个 case 执行 observe/act；没有自动语义路由器。prepare 使用媒体 stub，实际渲染另由真实 harness 证明。
+
+仅验证审核 UI 时，可从显式只读 schema 3.0 制作版生成独立字节副本；输出目录必须不存在，副本移除交付及整片批准／交付决定，只在副本模拟反馈和确认，不执行渲染或实际交付：
+
+```bash
+.venv/bin/python -B tests/review_ui_fixture.py --source-version /absolute/read-only-version --root work/review-ui-check
+.venv/bin/python scripts/serve_workflow_review.py work/review-ui-check/AfterForge --port 8796
+```
 
 旧命令只按 [legacy 生产说明](references/legacy/production-v2.md) 和旧合同维护，不用于新版普通制作。新增验证命令必须同步本节与 CURRENT。
 
 ## 同步规则
 
 稳定使用方式变更更新 README；Agent 约束/命令更新 AGENTS；目标/边界更新 PROJECT；可靠状态/待验证项更新 CURRENT；架构/接口更新 ARCHITECTURE；重要决定新增或推翻同时更新 DECISIONS。只在当前授权范围内修正文档，以代码、Git 和可复现验证为准。
+
+概念页分镜交棒使用 concept-handoff 原子保存待确认图与包含／排除对象范围；恢复读取 status.conceptDesign.storyboardHandoff，不新增制作门或 Motion／Demo／交付授权，不自动启动 Agent 或渲染。写入成功后刷新失败保留回执并只重试读取。

@@ -51,11 +51,15 @@ Cue 总体说明继续使用 `finalAnimationDescription`，局部说明写在 `s
 
 这里 A 是创作范围，A 与 D 是呈现范围；D 可以复用有效媒体，缓存缺失时按原实现重建。`taskId` 覆盖任务内恢复和必要重算，不授权以后新的改版。
 
-新 work model 2.2 的“脚本与思路”页先展示每条动画的真实概念图、对应文字、创意和运动说明，以桌面每行三张的卡片浏览（窄窗口降为两张或一张），点图放大后可用两侧箭头或键盘左右键查看当前 Cue 的其他候选，首尾停止；说明按需展开，支持历史候选与批量确认，顶部列出未确认 Cue 及原因。迭代过程图也保留在历史候选中，可逐稿留言，不改变已选方案。默认用 Codex 可用的图像生成能力；用户从其他模型带来的图片同等接入。未确认可自由改稿和推荐，上传本身不算采用；明确的聊天采用可直接登记，无需网页重复确认。确认后才发布静态／运动代码或代码型探索、生成实际 Storyboard 与动画。Storyboard 检查制作结果，不再承担第二次首次设计确认。顶部「通过并开始制作动画」可勾选本轮制作范围，存在暂缓意见的 Cue 默认不选；提交后持久显示交棒状态，回到对话让 Agent 继续制作，完成后在 Demo 审阅。只有用户明确要求修改概念图才开启新确认轮次，普通制作反馈沿用确认。
+审核页在同一真实 API 和版本选择器内提供三个核心工作区：“画面方案”连续纵向展示任意数量场景，每场左图右文，可浏览全部概念候选；“采用这版候选”只切当前推荐，“确认此场”才确认概念。已确认后主动改选会明确开启本场改稿并等待重新确认，保留原图与反馈；普通制作反馈保留概念确认。聊天中明确确认可直接登记，不要求重复点击。 顶部“确认方案，继续制作分镜”把待确认概念与本轮包含／排除范围一起保存，全部已确认时也保留范围；刷新或 Agent 恢复可读取原交棒。页面不会自动唤醒 Agent 或渲染，交棒不新增 Motion、Demo 或交付授权。保存成功后刷新失败会保留实际回执，仅重试读取。
+
+“分镜与动画”在同一卡片切换 Storyboard 和本场视频，紧凑关键帧选择呈现旁白、总体／局部说明与反馈。这里的单场确认只保存绑定实际内容的审阅进度，不重复首次设计确认、不授权制作，也不是普通继续编辑的新硬门。顶部“确认本轮，生成整片 Demo”独立记录准确快照、taskId 和包含／排除范围的制作委托，页面保存交棒后由 Agent 继续执行。场景数量由真实版本决定，原型的 11 场不是产品限制。
+
+“整片 Demo”独立标签页用于节奏和总时长审阅，定位条紧邻视频；评论开始输入时冻结原视频、场景与时间，后续播放和导航不改绑。总时长意见不自动改音频时间线。草稿、已保存意见和已提交轮次分别显示，提交只交棒，不隐含下一轮完整 Demo 委托。当前完整 Review 可单独批准；明确“确认整片，生成交付文件”可合并批准与交付授权，仍绑定后端核验的准确 reviewSet。历史版本只读，版本选择保留，各页可回顶部。审核页只保留三个核心工作区，不再提供独立交付页；整片 Demo 中的明确交付确认保留。交付完成后，Agent 在线程中提供真实交付目录、XML 和全部带 Alpha 通道的动画 MOV，并说明先导入全部 MOV、再导入 XML。后台生成、检查、历史记录及下载能力保留，不增加审批。
 
 概念图制作先向图像模型说明视频情境、准确内容、参考图用途和时间中的呈现关系，保留可发挥的设计空间。Agent 看图后主动筛选并多轮修改，方向错误时回到原始素材重起，再提交值得比较的候选；用户无需逐张指导修复。多方案分别解决同一视频需求，以表达和编排的实质差异供选择，不固定生成数量或默认审美。方法见 [概念图设计参考](references/visual-grammar.md)，实际运动在采用后的制作中验证。
 
-`update operation: "concept", action: "register"` 从本版 `.staging/` 接收实际 PNG/JPEG/单帧 WebP，保存到受控资产目录；`decision kind: "confirm-concept", conceptIds` 可批量确认。明确提供并采用可用 `register` 的 `adopt: true` 加真实用户 `source` 原子完成。概念图和原稿反馈永久对应，不能用新图替换旧记录。内容事实仍分别声明 narration/screenText 的 `present`、`none` 或 `unknown`，明确无内容需有依据，未知不能靠另一渠道掩盖。确认可携带有用户来源的 `feedbackResolutions`。完整 Demo 的 taskId、工作／时间／展示范围及独立批准规则不变。概念接口示例见 [制作源合同](references/hyperframes-single-source.md)。历史 2.1 版本保留原 Storyboard 确认语义，新版不从历史资格推断概念确认。
+`update operation: "concept", action: "register"` 从本版 `.staging/creative-inputs/<round>/` 接收实际 PNG/JPEG/单帧 WebP，每次生成后及时登记全部候选到 `assets/concepts/`，过程稿用 `recommend: false`；`decision kind: "confirm-concept", conceptIds` 可批量确认。明确提供图片并确认方向可用 `register` 的 `adopt: true` 加真实用户 `source` 原子完成，单纯采用按钮不走此合并确认。当前未确认同轮改选用 `propose`；改稿或历史重用用 `select` 加真实用户 source，原记录和反馈保留。概念图和原稿反馈永久对应，不能用新图替换旧记录。内容事实仍分别声明 narration/screenText 的 `present`、`none` 或 `unknown`，明确无内容需有依据，未知不能靠另一渠道掩盖。确认可携带有用户来源的 `feedbackResolutions`。完整 Demo 的 taskId、工作／时间／展示范围及独立批准规则不变。概念接口示例见 [制作源合同](references/hyperframes-single-source.md)。历史 2.1 版本保留原 Storyboard 确认语义，新版不从历史资格推断概念确认。
 
 合并批准与授权的交付请求：
 
@@ -88,7 +92,9 @@ AfterForge/
         └── releases/
 ```
 
-页面保留通用 shell 的脚本思路、Storyboard、可选视觉探索、Demo 与交付入口；Storyboard 同页呈现旁白、Cue 总体说明、三列等尺寸静帧（窄屏两列）与局部动画说明。局部说明只显示一次，位于关联的最后一帧下；点击对应帧编号高亮关联图片，不改变留言目标。点击图片可放大，Esc 关闭。留言框默认展开，按版本、创意对象与稳定帧 ID 记住开合；桌面反馈栏随滚动保持可见。顶部保留单集、制作版、历史版及 Cue 导航。提交本轮反馈只交棒，设计确认独立操作；反馈目标由同一解析器用于确认、批准与交付。未采用的探索候选评论不会阻塞 canonical 成果，采用时才按冻结的候选 revision、内容身份与对象范围参与核验。支持从当前版本内容导出 Markdown 脚本、局部时间定位、多 Cue 评论、版本对照与独立 MOV 下载。Demo 默认展示最新完整视频，动画 Cue 导览只跳转播放位置；静帧不混入视频列表，其他视频与以往意见折叠。视频下方保存单条意见，「取当前播放时间」暂停并定位反馈；文本输入区以外的空格控制播放／暂停。「提交本轮反馈」将当前完整 Demo 的已保存意见交棒，不批准效果；「本版效果通过」只批准当前完整 Review，之后才显示交付操作，仍需单独授权。480p 预览保留原粗剪声音，采用 H.264 CRF 23、3 Mbps 峰值约束、6 Mb 缓冲、约两秒关键帧与 MP4 faststart；不使用无损 H.264，整版、局部与补充 Cue 视频共用此设置。仅编码变化且内容输入指纹相同的当前预览，继续展示既有反馈而不改写反馈绑定；正式交付为源帧率 1920×1080 ProRes 4444。正式目录中仅同级普通 XML 与 MOV，源时间线不改。
+审核页以连续纵向场景卡取代旧三列卡片布局；目录每场一个彩色状态标记，深蓝灰底、蓝紫粉点缀和场景边框属于仓库 Review 主题，不跟随作品 frame.md。查看、选择候选、保存反馈、提交反馈、单场确认和本轮推进分别操作；反馈原文、addressed 与 accepted 保留区别，未采用候选意见不冒充当前成果问题。已确认场景新增未解决意见仍明确提示。评论草稿与偏好可留在浏览器，生产事实只来自服务端；写入沿用串行队列、revision 回执和幂等保护，冲突及迟到响应不清空或改绑草稿。支持 Markdown 脚本导出、局部定位、多 Cue 评论和独立 MOV 下载。
+
+生成图的原工具输出可在 `.codex`，但不能是创作唯一可依赖副本。设计参考、原片参考帧及提示词先经 update 持久保存到版本 `assets/design-inputs/` 后再引用；原路径仅保留来源追溯，实际制作素材在 `assets/materials/`。`.staging` 是合法中转，现行 previews/cache/jobs/releases 继续由各 writer 维护，已有历史文件不自动搬迁或清理。480p 预览保留原粗剪声音，采用 H.264 CRF 23、3 Mbps 峰值约束、6 Mb 缓冲、约两秒关键帧与 MP4 faststart；整版、局部与补充 Cue 视频共用设置。仅编码变化且内容输入相同的当前预览继续展示既有反馈，不改写原绑定；正式交付为源帧率 1920×1080 ProRes 4444。正式目录中仅同级普通 XML 与 MOV，源时间线不改。
 
 请先把该目录内**全部 MOV** 导入并管理到 FCP Library，再导入同目录 XML；历史沿用动画也已包含在这一批媒体中。内部 `releases/dNNNN/` 仅留冻结 manifest、必要源 XML、依赖哈希、验证清单与批准关联，不复制 MOV、字体、插画、Demo 或粗剪。正式目录是媒体权威；相同内容只用普通硬链接，失败即拒绝，不退回复制。AfterForge 内的受保护历史路径也参与唯一性核验；用户管理到 FCP Library 的副本不计入此范围。
 
@@ -100,7 +106,7 @@ AfterForge/
 
 ## 开发验证
 
-首次依赖设置经授权后执行 `python3 -m venv .venv` 和 `.venv/bin/python -m pip install -r requirements.txt`。常规检查：
+首次依赖设置经授权后执行 `python3 -m venv .venv` 和 `.venv/bin/python -m pip install -r requirements.txt`。开发、测试及 UX 验收输出统一保存在仓库已忽略的 `work/<轮次>/`；本轮为 `work/review-integration-20261018/`，后续沿用父目录，测试源码仍在 tests。常规检查：
 
 ```bash
 .venv/bin/python -B -m unittest discover -s tests -v
@@ -111,7 +117,7 @@ AfterForge/
 另有显式、隔离的真实一分钟样片回归；使用合成媒体与已有本地中文字体，输出目录不得已存在：
 
 ```bash
-.venv/bin/python -B tests/work_model_real_smoke.py --run --root /private/tmp/afterforge-real-check --runtime 0.8.33 --gsap-source /absolute/local/gsap.min.js --font-source /absolute/local/chinese.woff2
+.venv/bin/python -B tests/work_model_real_smoke.py --run --root work/real-check --runtime 0.8.33 --gsap-source /absolute/local/gsap.min.js --font-source /absolute/local/chinese.woff2
 ```
 
 不修改已交付《楚门》工程，不默认 commit、push、安装、迁移或 FCP 导入。事故恢复与正式 Storyboard 基线的隔离命令见 [CURRENT](docs/CURRENT.md)；协议 3 实际 FCP 往返结果见 [CURRENT](docs/CURRENT.md)，与自动测试证据分别记录。

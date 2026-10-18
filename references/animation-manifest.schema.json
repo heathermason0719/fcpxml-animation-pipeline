@@ -1171,6 +1171,18 @@
       "items": {
         "$ref": "#/$defs/concept"
       }
+    },
+    "sceneReviews": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sceneReview"
+      }
+    },
+    "storyboardHandoffs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/storyboardHandoff"
+      }
     }
   },
   "additionalProperties": false,
@@ -2495,6 +2507,13 @@
         },
         "contentContext": {
           "$ref": "#/$defs/contentSnapshot"
+        },
+        "copiedFromConceptId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selectionSource": {
+          "$ref": "#/$defs/source"
         }
       },
       "required": [
@@ -2510,6 +2529,220 @@
         "idea",
         "motion",
         "contentContext"
+      ],
+      "additionalProperties": false
+    },
+    "sceneReview": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "storyboard",
+            "animation"
+          ]
+        },
+        "cueId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "objectId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storyboardId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reviewInputKey": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "artifactId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputKey": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "sceneInputKey": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "cueId",
+        "objectId",
+        "source",
+        "createdAt"
+      ],
+      "additionalProperties": false,
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "storyboard"
+            }
+          },
+          "required": [
+            "storyboardId",
+            "reviewInputKey"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "artifactId"
+                ]
+              },
+              {
+                "required": [
+                  "inputKey"
+                ]
+              },
+              {
+                "required": [
+                  "sha256"
+                ]
+              },
+              {
+                "required": [
+                  "sceneInputKey"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "animation"
+            }
+          },
+          "required": [
+            "artifactId",
+            "inputKey",
+            "sha256",
+            "sceneInputKey"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "storyboardId"
+                ]
+              },
+              {
+                "required": [
+                  "reviewInputKey"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "storyboardHandoff": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requestId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "createdAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "cueId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "objectId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "conceptId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "cueId",
+              "objectId",
+              "conceptId"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "excluded": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "cueId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "objectId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "conceptId": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1
+              }
+            },
+            "required": [
+              "cueId",
+              "objectId",
+              "conceptId"
+            ],
+            "additionalProperties": false
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "requestId",
+        "source",
+        "createdAt",
+        "selected",
+        "excluded"
       ],
       "additionalProperties": false
     }

@@ -108,7 +108,8 @@
     "actions": [
       "register",
       "propose",
-      "reopen"
+      "reopen",
+      "select"
     ],
     "origins": [
       "codex-generated",
@@ -123,6 +124,41 @@
     "confirmation": "confirm-concept with explicit conceptIds and user source",
     "beforeConfirmation": "free-image-exploration; no-code-production",
     "afterConfirmation": "ordinary-production-retains-confirmation; explicit-user-concept-revision-only",
-    "legacyWorkModel": "2.1.0 retains Storyboard first-confirmation"
+    "legacyWorkModel": "2.1.0 retains Storyboard first-confirmation",
+    "selection": "recommendation-only; select with user source atomically revises confirmed concept or reuses historical image",
+    "history": "immutable records; copiedFromConceptId preserves source-chain feedback",
+    "storyboardHandoff": {
+      "operation": "concept-handoff",
+      "storage": "storyboardHandoffs",
+      "request": "cueIds with aligned exact conceptIds, excludedCueIds, stable requestId, expectedRevision and actual user source",
+      "transaction": "confirm pending selected concepts and append selected/excluded object snapshots atomically; all-confirmed still persists scope",
+      "status": "conceptDesign.storyboardHandoff latest record with advisory current/problems",
+      "authority": "storyboard scope handoff only; no new production gate or Motion/Demo/delivery authorization",
+      "execution": "saved by browser; Agent continues from conversation; no automatic wake or rendering"
+    }
+  },
+  "sceneReview": {
+    "operation": "scene-review",
+    "kinds": [
+      "storyboard",
+      "animation"
+    ],
+    "storage": "sceneReviews",
+    "targets": "cueId plus storyboardId or artifactId and user source",
+    "identity": "storyboard reviewInputKey or verified video artifact with sceneInputKey for the cue interval",
+    "status": "sceneReviews current/problems and storyboard.cues[].sceneReview",
+    "authority": "non-authoritative-review-progress-only",
+    "affectsMediaIdentity": false,
+    "requiresForProduction": false
+  },
+  "creativeInputs": {
+    "staging": ".staging/creative-inputs/{round}",
+    "candidates": "assets/concepts",
+    "allCandidates": "register after generation/import; recommend:false for non-recommended images",
+    "referencesAndPrompts": "assets/design-inputs",
+    "productionMaterials": "assets/materials",
+    "sourceReferences": "original paths are provenance; actual inputs have readable version-owned copies",
+    "existingWriters": "previews/cache/jobs/releases unchanged",
+    "historicalMaintenance": "explicit scoped authorization; no automatic migration or cleanup"
   }
 }

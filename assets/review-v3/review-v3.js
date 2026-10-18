@@ -1,72 +1,39 @@
-const $=id=>document.getElementById(id);let project=null,state=null,versionId=null,target={},pollTimer=null,comparisonState=null,draftBasisRevision=null,draftStale=false;
-const frameFeedbackWrites=new Map(),reviewRevisions=new Map(),storyboardActionStates=new Map();
-const storyboardSaveStates=new Map(),storyboardDrafts=new Map(),confirmedDesignCueIds=new Set(),savedStoryboardFeedbackIds=new Set();
-const storyboardStorageKey=(id=versionId)=>`afterforge-review-v3:storyboard:${id||'none'}`;
-const storageKey=()=>`afterforge-review-v3:${versionId||'none'}:${target.artifactId||'all'}:${state?.editRevision??'none'}`;const draftPointerKey=()=>`afterforge-review-v3:pointer:${versionId||'none'}:${state?.editRevision??'none'}`;
-const api=async(path,options)=>{const r=await fetch(path,options);const body=await r.json();if(!r.ok){const e=new Error(body.error||'请求失败');e.status=r.status;throw e}return body};
-function text(value){return value||'—'}function esc(v){const d=document.createElement('div');d.textContent=String(v??'');return d.innerHTML.replaceAll('"','&quot;')}
 function renderProject(){const root=$('projectTree');root.innerHTML=(project.episodes||[]).map(ep=>{const versions=ep.versions||[],selected=versions.find(v=>v.id===versionId)||versions.at(-1),older=versions.filter(v=>v!==selected);const button=v=>`<button class="version ${v.id===versionId?'active':''} ${v.legacy?'legacy':''}" data-version="${esc(v.id)}">${esc(v.title||v.id)}</button>`;return `<section><div class="episode">${esc(ep.title||ep.id)}</div>${selected?button(selected):''}${older.length?`<details><summary>其他制作版（${older.length}）</summary>${older.map(button).join('')}</details>`:''}</section>`}).join('');document.querySelectorAll('[data-version]').forEach(el=>el.onclick=()=>selectVersion(el.dataset.version))}
 function renderState(){if(!state)return;$('versionTitle').textContent=`${state.identity?.episodeTitle||''} · ${state.identity?.versionTitle||''}`;$('title').textContent=state.brief?.summary||state.identity?.versionTitle||'审阅工作台';$('summary').textContent=state.legacy?'这是旧版记录，可查看历史产物。':'集中查看预览、反馈和交付状态。';$('revision').textContent=`编辑版本 ${state.editRevision}`;$('exportScript').href=`/script?version=${encodeURIComponent(versionId)}`;renderBrief();renderWorkingIntent();renderCueNavigation();renderStoryboards();renderExplorations();renderCues();renderArtifacts();renderFeedback();renderActions();renderTasks();renderComparison();restoreDraft();layoutFeedbackPanel();renderDemoFeedback();updateDemoTimeAnchor();renderFeedbackSaveStatus()}
 const conceptSelections=new Map(),conceptWrites=new Set(),conceptMessages=new Map();
 let conceptGallery=null;
-function clearConceptGallery(){conceptGallery=null;$('previousConcept').hidden=true;$('nextConcept').hidden=true;$('conceptGalleryPosition').textContent=''}
-function renderConceptGallery(){
-  if(!conceptGallery||conceptGallery.versionId!==versionId)return;
-  const {records,index,title}=conceptGallery,concept=records[index],multiple=records.length>1;
-  $('lightboxTitle').textContent=concept.idea;$('lightboxImage').src=artifactUrl(concept);$('lightboxImage').alt=concept.idea;
-  $('conceptGalleryPosition').textContent=`${title} · ${index+1} / ${records.length}`;
-  $('previousConcept').hidden=!multiple;$('nextConcept').hidden=!multiple;
-  $('previousConcept').disabled=index===0;$('nextConcept').disabled=index===records.length-1;
-}
+function clearConceptGallery(){conceptGallery=null;candidateChange=null;$('previousConcept').hidden=true;$('nextConcept').hidden=true;$('conceptGalleryPosition').textContent='';for(const id of ['galleryAdopt','galleryFeedback','galleryThumbnails','galleryIdea','galleryStatus'])$(id).hidden=true}
 function openConceptPreview(id){
   const cue=conceptCues().find(c=>c.conceptIds.includes(id));if(!cue)return;
   const records=cue.conceptIds.map(key=>state.concepts.find(c=>c.id===key)).filter(Boolean),current=records.find(c=>c.id===cue.recommendedId);
   const ordered=[...(current?[current]:[]),...records.filter(c=>c!==current).reverse()],index=ordered.findIndex(c=>c.id===id);if(index<0)return;
   conceptGallery={versionId,title:cue.title,records:ordered,index};renderConceptGallery();if(!$('frameLightbox').open)$('frameLightbox').showModal();
 }
-function moveConceptPreview(step){if(!conceptGallery||conceptGallery.versionId!==versionId)return;const index=conceptGallery.index+step;if(index<0||index>=conceptGallery.records.length)return;conceptGallery.index=index;renderConceptGallery()}
+function moveConceptPreview(step){if(!conceptGallery||conceptGallery.versionId!==versionId)return;const index=conceptGallery.index+step;if(index<0||index>=conceptGallery.records.length)return;conceptGallery.index=index;candidateChange=null;renderConceptGallery()}
 function openFramePreview(title,url){clearConceptGallery();$('lightboxTitle').textContent=title;$('lightboxImage').src=url;$('lightboxImage').alt=title;$('frameLightbox').showModal()}
 function conceptMode(){return !!state?.conceptDesign}
 function conceptCues(){return state?.conceptDesign?.cues||[]}
 function selectedConcepts(){if(!conceptSelections.has(versionId))conceptSelections.set(versionId,new Set());return conceptSelections.get(versionId)}
 function conceptImageHtml(concept,title){const url=artifactUrl(concept);return `<button class="concept-image" type="button" data-concept-preview="${esc(concept.id)}" aria-label="放大概念图 ${esc(title)}"><img src="${esc(url)}" alt="${esc(title)}的概念图" loading="lazy"></button>`}
-function conceptCardHtml(cue){
-  const records=(state.concepts||[]).filter(c=>cue.conceptIds.includes(c.id)),current=records.find(c=>c.id===cue.recommendedId),history=records.filter(c=>c!==current).reverse(),selected=selectedConcepts();
-  if(!cue.canConfirm)selected.delete(cue.recommendedId);
-  const imageProblems=(cue.confirmationProblems||[]).filter(p=>p.code==='concept-image-unavailable'),visibleProblems=cue.firstConfirmed?imageProblems:(cue.confirmationProblems||[]);
-  const label=cue.firstConfirmed?(imageProblems.length?'已确认 · 概念图不可用':'已确认 · 可进入制作'):cue.revisionPending?'概念改稿 · 待重新确认':current?(visibleProblems.some(p=>p.code==='unresolved-feedback')?'待确认 · 先处理反馈':'推荐稿 · 待确认'):'待概念图';
-  const content=cue.contentContext||{},narration=content.narration?.text||(content.narration?.state==='none'?'本段无旁白':'旁白待补全'),words=content.screenText?.text||(content.screenText?.state==='none'?'不添加屏幕文字':'屏幕文字待明确');
-  return `<article class="concept-card" id="concept-${esc(cue.cueId)}"><header><div><h3>${esc(cue.title)}</h3><p class="concept-state ${cue.firstConfirmed&&!imageProblems.length?'confirmed':''}">${esc(label)}</p></div>${cue.canConfirm?`<label><input type="checkbox" data-select-concept="${esc(current.id)}" ${selected.has(current.id)?'checked':''}> 选择此稿</label>`:''}</header>${current?conceptImageHtml(current,cue.title):''}<details class="concept-details"><summary>旁白、文字与运动思路</summary><div class="concept-context"><p><span class="eyebrow">对应旁白</span> ${esc(narration)}</p><p><span class="eyebrow">屏幕文字</span> ${esc(words)}</p></div>${current?`<div class="concept-notes"><p><strong>创意</strong> ${esc(current.idea)}</p><p><strong>运动思路</strong> ${esc(current.motion)}</p></div>`:''}</details>${current?`<div class="concept-caption"><span>${current.origin.kind==='codex-generated'?'Codex 生成概念图':'外部导入概念图'}</span><button data-concept-feedback="${esc(current.id)}" type="button">对此稿留言</button></div>${visibleProblems.length?`<p class="stale-frame">${esc(visibleProblems.map(p=>p.message).join('；'))}</p>`:''}`:'<div class="empty">先生成或导入概念图，再确认视觉方向。</div>'}${history.length?`<details class="concept-history"><summary>历史候选（${history.length}）</summary><div class="concept-history-grid">${history.map(c=>`<figure>${conceptImageHtml(c,cue.title+' · 历史候选')}<figcaption>${esc(c.idea)}${c.id===cue.confirmedId?' · 以往已确认':''}</figcaption><button type="button" data-concept-feedback="${esc(c.id)}">对此稿留言</button></figure>`).join('')}</div></details>`:''}</article>`
-}
-function renderBrief(){
-  const b=state.brief||{},change=typeof b.changeSummary==='string'&&b.changeSummary.trim()?`<section class="change-summary"><h3>本轮变化</h3><p>${esc(b.changeSummary)}</p></section>`:'',cards=conceptCues(),placed=new Set();
-  const segments=(b.segments||[]).map(s=>{const associated=cards.filter(c=>c.segmentIds.includes(s.id)&&!placed.has(c.cueId));associated.forEach(c=>placed.add(c.cueId));return `<article class="segment"><strong>${esc(s.title||s.id)}</strong><p class="muted">${esc(s.purpose||s.narration||s.visualPlan||'')}</p>${conceptMode()?'':associated.map(conceptCardHtml).join('')}</article>`}).join('');
-  const remaining=cards.filter(c=>!placed.has(c.cueId)).map(conceptCardHtml).join('');
-  $('brief').innerHTML=`<h3>本版说明</h3><p>${esc(b.summary||'尚未填写概述。')}</p>${change}${conceptMode()?'<section class="concept-actions"><div><h2>概念图 · 视觉方向</h2><p class="muted">先确认画面方向，再制作代码。实际静帧和运动分别在 Storyboard 与 Demo 中查看。</p></div><div><button id="confirmSelectedConcepts" type="button">确认所选概念图</button><button id="confirmAllConcepts" type="button" class="primary">确认全部待定概念图</button></div><p id="conceptActionStatus" role="status" aria-live="polite"></p><div id="conceptPendingList" class="concept-pending-list"></div></section>':''}${conceptMode()?`<div class="concept-grid">${cards.map(conceptCardHtml).join('')}</div><details class="concept-segments"><summary>查看全部段落说明</summary><div class="segments">${segments}</div></details>`:`<div class="segments">${segments}</div>${remaining}`}`;
-  if(!conceptMode())return;
-  document.querySelectorAll('[data-select-concept]').forEach(box=>box.onchange=()=>{box.checked?selectedConcepts().add(box.dataset.selectConcept):selectedConcepts().delete(box.dataset.selectConcept);renderConceptActions()});
-  document.querySelectorAll('[data-concept-preview]').forEach(button=>button.onclick=()=>openConceptPreview(button.dataset.conceptPreview));
-  document.querySelectorAll('[data-concept-feedback]').forEach(button=>button.onclick=()=>{const concept=state.concepts.find(c=>c.id===button.dataset.conceptFeedback),cue=cards.find(c=>c.objectId===concept.objectId);target={versionId};choose({conceptId:concept.id,cueIds:cue?[cue.cueId]:[]});$('feedbackBody').focus()});
-  $('confirmSelectedConcepts').onclick=()=>confirmConcepts(cards.filter(c=>c.canConfirm&&selectedConcepts().has(c.recommendedId)).map(c=>c.recommendedId));
-  $('confirmAllConcepts').onclick=()=>confirmConcepts(cards.filter(c=>!c.firstConfirmed).map(c=>c.recommendedId));
-  renderConceptActions();
-}
 function renderConceptActions(){
   if(!conceptMode()||!$('confirmSelectedConcepts'))return;
   const pending=conceptCues().filter(c=>!c.firstConfirmed),selected=conceptCues().filter(c=>c.canConfirm&&selectedConcepts().has(c.recommendedId)),busy=conceptWrites.has(versionId);
   $('confirmSelectedConcepts').disabled=busy||!selected.length;$('confirmSelectedConcepts').textContent=`确认所选概念图（${selected.length}）`;
   $('confirmAllConcepts').disabled=busy||!pending.length||pending.some(c=>!c.canConfirm);$('confirmAllConcepts').textContent=pending.length?`确认全部待定概念图（${pending.length}）`:'全部概念图已确认';
   $('conceptPendingList').innerHTML=pending.length?`<p>尚未确认 ${pending.length} 组</p><ul>${pending.map(c=>`<li><a href="#concept-${esc(c.cueId)}">${esc(c.title)}</a><span>${esc(c.canConfirm?'可勾选确认':(c.confirmationProblems||[]).map(p=>p.message).join('；')||'尚未就绪')}</span></li>`).join('')}</ul>`:'<p>全部概念图已确认。</p>';
-  $('conceptActionStatus').textContent=busy?'正在保存确认…':conceptMessages.get(versionId)||'';
+  $('conceptActionStatus').textContent=busy?'正在保存确认…':conceptMessages.get(versionId)||conceptHandoffSummary();
 }
 async function confirmConcepts(ids){
   if(conceptWrites.has(versionId)||!ids.length)return false;
-  if($('feedbackBody').value.trim()){conceptMessages.set(versionId,'还有未保存的留言，请先保存或清空后再确认。');renderConceptActions();return false}
+  if(conceptReceipts.get(versionId)?.needsRefresh)return refreshSavedMutation(conceptReceipts.get(versionId));
+  if($('feedbackBody').value.trim()||hasSceneDrafts('concept')){conceptMessages.set(versionId,'还有未保存的留言，请先保存或清空后再确认。');renderConceptActions();return false}
   const actionVersion=versionId;conceptWrites.add(actionVersion);conceptMessages.delete(actionVersion);renderConceptActions();
   try{
-    await postVersionAction(actionVersion,{...requestBase(),operation:'decision',kind:'confirm-concept',conceptIds:ids,source:source(`确认采用所选 ${ids.length} 张概念图，可以按此方向制作动画。`)});
-    ids.forEach(id=>conceptSelections.get(actionVersion)?.delete(id));conceptMessages.set(actionVersion,`已确认 ${ids.length} 张概念图。`);
-    if(versionId===actionVersion)await selectVersion(actionVersion,{preserveTarget:true});return true;
+    const request={...requestBase(),operation:'decision',kind:'confirm-concept',conceptIds:ids,source:source(`确认采用所选 ${ids.length} 张概念图，可以按此方向制作动画。`)};
+    const result=await postVersionAction(actionVersion,request);
+    const receipt={versionId:actionVersion,requestId:request.requestId,result,needsRefresh:true,message:`✓ 已保存：已确认 ${ids.length} 张概念图。`};conceptReceipts.set(actionVersion,receipt);
+    ids.forEach(id=>conceptSelections.get(actionVersion)?.delete(id));conceptMessages.set(actionVersion,receipt.message);
+    if(versionId===actionVersion)await refreshSavedMutation(receipt);return true;
   }catch(error){conceptMessages.set(actionVersion,`确认未完成：${error.message}。所选方案已保留。`);return false}
   finally{conceptWrites.delete(actionVersion);renderConceptActions()}
 }
@@ -132,7 +99,7 @@ function renderStoryboardActionStatus(){
   }
   const lastRound=state?.storyboard?.rounds?.filter(r=>r.storyboardIds?.length).at(-1),fallback=lastRound?`最近一轮反馈已提交：${lastRound.feedbackIds?.length||0} 条 · ${{submitted:'待处理',processing:'处理中',processed:'已处理'}[lastRound.status]||lastRound.status}。`:'';
   const message=$('storyboardActionStatus');if(message){message.textContent=item?.message||(pendingStoryboardProduction()?'✓ 动画制作已交棒。回到对话让 Agent 继续制作，完成后在 Demo 审阅。':fallback);message.className=`storyboard-action-status ${item?.kind||(fallback?'success':'')}`}
-  document.querySelectorAll('[data-storyboard-produce]').forEach(button=>{button.disabled=storyboardActionBusy()||productionChecking||pendingStoryboardProduction();button.textContent=pendingStoryboardProduction()?'动画制作已交棒':'通过并开始制作动画'});
+  document.querySelectorAll('[data-storyboard-produce]').forEach(button=>{button.disabled=storyboardActionBusy()||productionChecking||pendingStoryboardProduction();button.textContent=pendingStoryboardProduction()?'动画制作已交棒':'确认本轮，生成整片 Demo'});
   renderStoryboardQualification();
   const busy=storyboardActionBusy(),labels={preview:'生成静帧',submit:'提交本轮反馈',confirm:`确认所选设计（${confirmedDesignCueIds.size}）`},pending={preview:'生成中…',submit:'提交中…',confirm:'确认中…'};
   for(const [action,selector] of Object.entries({preview:'[data-storyboard-preview]',submit:'[data-storyboard-submit]',confirm:'[data-confirm-design]'}))document.querySelectorAll(selector).forEach(button=>{button.disabled=busy||(action==='confirm'&&!confirmedDesignCueIds.size);button.textContent=busy&&item?.action===action?pending[action]:labels[action]})
@@ -179,7 +146,7 @@ function roundDesignAnchor(){
 }
 function designDraftProblem(){
   if(frameFeedbackWrites.has(versionId))return '逐帧反馈正在保存，请等保存完成后再确认。';
-  if(currentStoryboardDrafts().length||$('feedbackBody').value.trim())return '还有未保存的留言草稿，请先保存／提交意见，或清空不再需要的草稿后再确认。';
+  if(currentStoryboardDrafts().length||hasSceneDrafts()||$('feedbackBody').value.trim())return '还有未保存的留言草稿，请先保存／提交意见，或清空不再需要的草稿后再确认。';
   return '';
 }
 function cancelRoundDesignConfirmation(){designConfirmation=null;$('designConfirmDialog').close()}
@@ -227,7 +194,7 @@ async function submitRoundDesignConfirmation(){
 }
 function renderStoryboardQualification(){
   const {cues,pending,existing}=roundDesignPlan(),root=$('storyboardQualificationStatus');
-  if(root)root.textContent=conceptMode()?'视觉方向在「脚本与思路」中确认；此处查看实际制作静帧。':!cues.length?'':!pending.length?`✓ 当前 ${cues.length} 组均已完成首次设计确认，可继续制作与修改。`:`${cues.length} 组设计 · ${existing.length} 组已有确认 · ${pending.length} 组待首次确认`;
+  if(root)root.textContent=conceptMode()?'视觉方向在「画面方案」中确认；此处查看实际制作静帧。':!cues.length?'':!pending.length?`✓ 当前 ${cues.length} 组均已完成首次设计确认，可继续制作与修改。`:`${cues.length} 组设计 · ${existing.length} 组已有确认 · ${pending.length} 组待首次确认`;
   for(const button of document.querySelectorAll('[data-confirm-round]')){button.disabled=storyboardActionBusy()||!pending.length;button.textContent=pending.length?'确认本轮设计':'本轮首次设计已确认'}
 }
 
@@ -237,24 +204,6 @@ function updateFrameSaveState(key,kind,message){
   storyboardSaveStates.set(key,{kind,message});
   document.querySelectorAll('[data-frame-save-status]').forEach(el=>{if(el.dataset.frameSaveStatus===key){el.textContent=message;el.className=`frame-save-status ${kind}`}});
   document.querySelectorAll('[data-save-frame]').forEach(button=>{if(JSON.stringify([versionId,button.dataset.cueId,button.dataset.storyboardId,button.dataset.saveFrame])===key){button.disabled=kind==='pending';button.textContent=kind==='pending'?'保存中…':'保存此帧反馈'}})
-}
-async function postVersionAction(actionVersion,request,action='update'){
-  // Serialize writes for this version, but do not wait for its expensive display refresh.
-  const send=async()=>{
-    request.expectedRevision=Math.max(request.expectedRevision,reviewRevisions.get(actionVersion)||0);
-    const response=await api('/api/action',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({version:actionVersion,action,request})});
-    if(Number.isInteger(response.editRevision)){
-      const revision=Math.max(response.editRevision,reviewRevisions.get(actionVersion)||0);
-      reviewRevisions.set(actionVersion,revision);
-      if(versionId===actionVersion&&state?.identity?.versionId===actionVersion){
-        state.editRevision=revision;$('revision').textContent=`编辑版本 ${revision}`;
-      }
-    }
-    return response;
-  };
-  const previous=frameFeedbackWrites.get(actionVersion),pending=previous?previous.catch(()=>{}).then(send):send();
-  frameFeedbackWrites.set(actionVersion,pending);
-  try{return await pending}finally{if(frameFeedbackWrites.get(actionVersion)===pending)frameFeedbackWrites.delete(actionVersion)}
 }
 async function saveStoryboardFeedback(cueId,storyboardId,frameId){
   const actionVersion=versionId,key=JSON.stringify([actionVersion,cueId,storyboardId,frameId]);
@@ -283,6 +232,7 @@ async function saveStoryboardFeedback(cueId,storyboardId,frameId){
 }
 function recoverStoryboardFeedbackIds(){const submitted=new Set((state?.storyboard?.rounds||[]).flatMap(round=>round.feedbackIds||[]));for(const id of submitted)savedStoryboardFeedbackIds.delete(id);for(const feedback of state?.feedback||[]){if(feedback.target?.versionId===versionId&&feedback.target?.storyboardId&&!submitted.has(feedback.id))savedStoryboardFeedbackIds.add(feedback.id)}}
 async function submitStoryboardRound(){
+  if(conceptMode())return submitSceneRound('production');
   if(storyboardActionBusy())return false;
   const actionVersion=versionId;captureStoryboardDrafts();
   const all=currentStoryboardDrafts(),stale=all.filter(storyboardDraftIsStale);
@@ -319,13 +269,14 @@ function storyboardFrameHtml(cue,frame,index){
   return `<figure class="review-frame storyboard-frame" data-frame="${esc(frame.frameId)}" data-frame-cue="${esc(cue.id)}"><button class="frame-preview" type="button" data-frame-preview data-image-url="${esc(url)}" data-image-title="${esc(alt)}" aria-label="放大 ${esc(alt)}"><img src="${esc(url)}" alt="${esc(alt)}" loading="lazy"></button><figcaption class="frame-meta"><span class="frame-number">${String(index+1).padStart(2,'0')}</span><span class="frame-name">${esc(frame.label||frame.frameId)}</span>${frame.current?'':'<span class="stale-frame">历史图片</span>'}</figcaption><p class="frame-narration"><span class="eyebrow">对应旁白</span> ${esc(narration)}</p>${localNotesHtml(cue,frame)}${comments}<details class="frame-comment" data-comment-key="${esc(commentId)}" ${commentIsOpen(commentId)?'open':''}><summary>此帧留言</summary><textarea data-storyboard-draft data-cue-id="${esc(cue.id)}" data-storyboard-id="${esc(cue.storyboardId)}" data-frame-id="${esc(frame.frameId)}" ${stale?'disabled':''} placeholder="对这张静帧留下意见">${esc(draft?.body||'')}</textarea>${stale?'<p class="stale-frame">静帧已更新；草稿保留在原帧，核对后才可重新绑定。</p>':''}<div>${action}</div><p class="frame-save-status ${esc(saveState?.kind||'')}" data-frame-save-status="${esc(key)}" role="status" aria-live="polite" aria-atomic="true">${esc(saveState?.message||'')}</p></details></figure>`
 }
 function confirmationProblemText(problem){return ({'missing-storyboard':'请先生成当前 Storyboard。','storyboard-not-current':'图片或说明已更新，请生成当前 Storyboard 后再确认。','missing-final-animation-description':'请先补充总体动画说明。','unresolved-feedback':'此 Cue 还有待处理或待澄清的反馈。'}[problem.code]||'旁白或屏幕文字的内容依据仍待补全。')}
-function storyboardCueHtml(cue){
+function legacyStoryboardCueHtml(cue){
   const selected=confirmedDesignCueIds.has(cue.id),frames=(cue.frames||[]).map((frame,index)=>storyboardFrameHtml(cue,frame,index)).join(''),hasNotes=!!cue.animationNotes?.length;
   return `<article class="storyboard-card" id="frames-${esc(cue.id)}"><div class="storyboard-head"><div><h3>${esc(cue.title||cue.id)}</h3><p class="narration-anchor"><span class="eyebrow">对应旁白</span> ${esc(cue.narration||'—')}</p><p class="muted">${conceptMode()?(cue.firstConfirmed?'概念图已确认 · 实际制作静帧':'请先在脚本与思路中确认概念图'):(cue.firstConfirmed?'首次设计已确认 · 可继续修改':'尚未首次确认')}</p></div>${conceptMode()?'':`<label><input type="checkbox" data-confirm-cue="${esc(cue.id)}" ${selected?'checked':''} ${cue.canConfirm?'':'disabled'}> 确认完整 Cue</label>`}</div><section class="cue-intent"><span class="intent-label">总体意图 · 最终动画说明</span><p>${esc(cue.finalAnimationDescription||'尚未填写')}</p></section>${!conceptMode()&&!cue.canConfirm&&cue.storyboardId?`<p class="stale-frame">${esc((cue.confirmationProblems||[]).map(confirmationProblemText).join('；')||'审阅依据已更新，请生成当前 Storyboard。')}</p>`:''}<div class="frame-toolbar"><span>${(cue.frames||[]).length} 张静帧 · 编号为 Cue 内帧序号</span>${hasNotes?`<button class="all-notes" data-all-notes="${esc(cue.id)}" type="button">展开全部说明</button>`:''}</div><div class="review-frame-grid frame-grid">${frames}</div></article>`
 }
+function storyboardCueHtml(cue){return conceptMode()?productionSceneHtml(cue):legacyStoryboardCueHtml(cue)}
 let activeTab='overview',activeStoryboardCue=null;
 function intentPreferenceKey(){return `afterforge-review-v3:intent-open:${versionId}:${activeTab}`}
-function workingIntentIsOpen(){try{const value=localStorage.getItem(intentPreferenceKey());return value===null?!['storyboard','preview'].includes(activeTab):value==='true'}catch{return !['storyboard','preview'].includes(activeTab)}}
+function workingIntentIsOpen(){try{const value=localStorage.getItem(intentPreferenceKey());return value===null?false:value==='true'}catch{return !['storyboard','preview'].includes(activeTab)}}
 function toggleWorkingIntent(){
   const open=!workingIntentIsOpen();
   try{localStorage.setItem(intentPreferenceKey(),String(open))}catch{}
@@ -352,15 +303,14 @@ function jumpToStoryboardCue(id){
 }
 function renderCueNavigation(){
   const cues=storyboardCues();
+  const status=cue=>{if(activeTab==='overview'&&conceptMode()){const c=conceptCues().find(c=>c.cueId===cue.id);return c?.confirmationProblems?.length?'待处理':c?.firstConfirmed?'已确认':'待确认'}const p=cue.sceneReview?.[sceneView(cue.id).mode];return p?.problems?.length?'待处理':p?.current?'已审阅':conceptMode()?'待审阅':cue.firstConfirmed?'已确认':cue.canConfirm?'待确认':'待处理'};
+  const marker=cue=>`<span class="nav-dot ${['已确认','已审阅'].includes(status(cue))?'confirmed':''}" aria-label="${status(cue)}"></span>`;
   $('cueNavigation').hidden=activeTab==='storyboard'||activeTab==='preview';
-  $('cueNavigation').innerHTML=cues.map(cue=>`<a href="#${esc(encodeURIComponent((conceptMode()?'concept-':'frames-')+cue.id))}" data-cue-jump="${esc(cue.id)}">${esc(cue.title||cue.id)}</a>`).join('');
+  $('cueNavigation').innerHTML=cues.map(c=>`<a href="#${esc(encodeURIComponent((conceptMode()?'concept-':'frames-')+c.id))}" data-cue-jump="${esc(c.id)}"><span>${esc(c.title||c.id)}<small>${status(c)}</small></span>${marker(c)}</a>`).join('');
   document.querySelectorAll('[data-cue-jump]').forEach(link=>link.onclick=event=>{event.preventDefault();if(conceptMode())$('concept-'+link.dataset.cueJump)?.scrollIntoView?.({block:'start'});else jumpToStoryboardCue(link.dataset.cueJump)});
   $('storyboardNavigator').hidden=activeTab!=='storyboard'||!cues.length;
-  $('storyboardNavProgress').textContent=`${cues.length} 组 · ${cues.filter(c=>!c.firstConfirmed).length} 组待确认`;
-  $('storyboardCueNavigation').innerHTML=cues.map((cue,index)=>{
-    const status=cue.firstConfirmed?'已确认':cue.canConfirm?'待确认':'待处理',tone=cue.firstConfirmed?'confirmed':cue.canConfirm?'pending':'blocked';
-    return `<a href="#${esc(encodeURIComponent('frames-'+cue.id))}" data-storyboard-jump="${esc(cue.id)}" class="storyboard-nav-link"><span class="storyboard-nav-number">${String(index+1).padStart(2,'0')}</span><span class="storyboard-nav-label">${esc(cue.title||cue.id)}<small class="${tone}">${status}</small></span></a>`;
-  }).join('');
+  $('storyboardNavProgress').textContent=`${cues.length} 场 · ${cues.filter(c=>!['已确认','已审阅'].includes(status(c))).length} 场待处理`;
+  $('storyboardCueNavigation').innerHTML=cues.map((c,i)=>`<a href="#${esc(encodeURIComponent('frames-'+c.id))}" data-storyboard-jump="${esc(c.id)}" class="storyboard-nav-link"><span class="storyboard-nav-number">${String(i+1).padStart(2,'0')}</span><span class="storyboard-nav-label">${esc(c.title||c.id)}<small>${status(c)}</small></span>${marker(c)}</a>`).join('');
   document.querySelectorAll('[data-storyboard-jump]').forEach(link=>link.onclick=event=>{event.preventDefault();jumpToStoryboardCue(link.dataset.storyboardJump)});
   setActiveStoryboardCue(cues.some(c=>c.id===activeStoryboardCue)?activeStoryboardCue:cues[0]?.id);renderDemoNavigation();
 }
@@ -389,7 +339,7 @@ function bindStoryboardPresentation(){
 }
 function orphanStoryboardHtml(){return currentStoryboardDrafts().filter(storyboardDraftIsStale).map(draft=>{const cue=storyboardCues().find(item=>item.id===draft.cueId),frame=cue&&storyboardFrame(cue,draft);return `<article class="storyboard-card"><h3>${esc(draft.cueId)} · 旧静帧草稿</h3><p class="stale-frame">${esc(draft.body)}。此草稿绑定 ${esc(draft.storyboardId)}，不会自动绑定新静帧。</p>${frame?`<button data-orphan-rebind="${esc(JSON.stringify([versionId,draft.cueId,draft.storyboardId,draft.frameId]))}" data-cue-id="${esc(cue.id)}" data-storyboard-id="${esc(cue.storyboardId)}" data-frame-id="${esc(frame.frameId)}">核对后绑定当前同名帧</button>`:'<p class="muted">当前没有同名帧；草稿保留供复制。</p>'}</article>`}).join('')}
 function captureCommentPreferences(){document.querySelectorAll('[data-comment-key]').forEach(details=>rememberCommentOpen(details.dataset.commentKey,details.open))}
-function renderStoryboards(){captureCommentPreferences();const root=$('storyboards'),cues=storyboardCues();if(!cues.length){root.innerHTML=orphanStoryboardHtml();renderCueNavigation();return}recoverStoryboardFeedbackIds();const selected=cues.filter(cue=>confirmedDesignCueIds.has(cue.id)).length,rounds=(state.storyboard.rounds||[]).filter(round=>round.storyboardIds?.length).map(round=>({submitted:'已交棒，待 Agent 处理',processing:'Agent 处理中',processed:'本轮意见已处理，设计确认单独记录'}[round.status]||round.status)).join('；')||'尚未提交',header=`<section class="storyboard-round-actions"><div><h2>Storyboard · 设计审阅</h2><p class="muted">${conceptMode()?'检查实际构图、文字和素材关系，留下制作反馈。':'旁白、静帧和最终动画说明在同一处审阅；确认始终针对完整 Cue 的 Storyboard。'}审阅轮次：${esc(rounds)}</p></div><div><button data-storyboard-preview type="button">生成静帧</button> <button data-storyboard-submit type="button">提交本轮反馈</button>${conceptMode()?' <button class="primary" data-storyboard-produce type="button">通过并开始制作动画</button>':` <button data-confirm-design type="button" ${selected?'':'disabled'}>确认所选设计（${selected}）</button> <button class="primary" data-confirm-round type="button">确认本轮设计</button>`}</div><p id="storyboardQualificationStatus" class="storyboard-qualification" role="status"></p><p id="storyboardActionStatus" class="storyboard-action-status" role="status" aria-live="polite" aria-atomic="true"></p>${conceptMode()?'':'<p class="storyboard-action-help">整轮通过请直接「确认本轮设计」；只通过部分设计时，再勾选「确认完整 Cue」。</p>'}</section>`;root.innerHTML=header+cues.map(storyboardCueHtml).join('')+orphanStoryboardHtml();document.querySelectorAll('[data-storyboard-draft]').forEach(area=>area.oninput=()=>setStoryboardDraft(area.dataset.cueId,area.dataset.storyboardId,area.dataset.frameId,area.value));document.querySelectorAll('[data-confirm-cue]').forEach(box=>box.onchange=()=>toggleConfirmDesignCue(box.dataset.confirmCue));document.querySelectorAll('[data-save-frame]').forEach(button=>button.onclick=()=>saveStoryboardFeedback(button.dataset.cueId,button.dataset.storyboardId,button.dataset.saveFrame));document.querySelectorAll('[data-rebind-frame]').forEach(button=>button.onclick=()=>rebindStoryboardDraft(button.dataset.cueId,button.dataset.storyboardId,button.dataset.rebindFrame));document.querySelectorAll('[data-orphan-rebind]').forEach(button=>button.onclick=()=>rebindStoryboardDraft(button.dataset.cueId,button.dataset.storyboardId,button.dataset.frameId,button.dataset.orphanRebind));const preview=document.querySelectorAll('[data-storyboard-preview]')[0],submit=document.querySelectorAll('[data-storyboard-submit]')[0],confirm=document.querySelectorAll('[data-confirm-design]')[0];if(preview)preview.onclick=previewStoryboards;if(submit)submit.onclick=submitStoryboardRound;if(confirm)confirm.onclick=confirmSelectedDesigns;const round=document.querySelectorAll('[data-confirm-round]')[0];if(round)round.onclick=openRoundDesignConfirmation;const produce=document.querySelectorAll('[data-storyboard-produce]')[0];if(produce)produce.onclick=openStoryboardProduction;bindStoryboardPresentation();renderStoryboardActionStatus();renderCueNavigation()}
+function renderStoryboards(){captureCommentPreferences();const root=$('storyboards'),cues=storyboardCues();if(!cues.length){root.innerHTML=orphanStoryboardHtml();renderCueNavigation();return}recoverStoryboardFeedbackIds();const selected=cues.filter(cue=>confirmedDesignCueIds.has(cue.id)).length,rounds=(state.storyboard.rounds||[]).filter(round=>round.storyboardIds?.length).map(round=>({submitted:'已交棒，待 Agent 处理',processing:'Agent 处理中',processed:'本轮意见已处理，设计确认单独记录'}[round.status]||round.status)).join('；')||'尚未提交',header=`<section class="storyboard-round-actions"><div><h2>分镜与动画 · 逐场审阅</h2><p class="muted">${conceptMode()?'检查实际构图、文字和素材关系，留下制作反馈。':'旁白、静帧和最终动画说明在同一处审阅；确认始终针对完整 Cue 的 Storyboard。'}审阅轮次：${esc(rounds)}</p></div><div><button data-storyboard-preview type="button">生成静帧</button> <button data-storyboard-submit type="button">提交本轮反馈</button>${conceptMode()?' <button class="primary" data-storyboard-produce type="button">确认本轮，生成整片 Demo</button>':` <button data-confirm-design type="button" ${selected?'':'disabled'}>确认所选设计（${selected}）</button> <button class="primary" data-confirm-round type="button">确认本轮设计</button>`}</div><p id="storyboardQualificationStatus" class="storyboard-qualification" role="status"></p><p id="storyboardActionStatus" class="storyboard-action-status" role="status" aria-live="polite" aria-atomic="true"></p>${conceptMode()?'':'<p class="storyboard-action-help">整轮通过请直接「确认本轮设计」；只通过部分设计时，再勾选「确认完整 Cue」。</p>'}</section>`;root.innerHTML=header+cues.map(storyboardCueHtml).join('')+orphanStoryboardHtml();document.querySelectorAll('[data-storyboard-draft]').forEach(area=>area.oninput=()=>setStoryboardDraft(area.dataset.cueId,area.dataset.storyboardId,area.dataset.frameId,area.value));document.querySelectorAll('[data-confirm-cue]').forEach(box=>box.onchange=()=>toggleConfirmDesignCue(box.dataset.confirmCue));document.querySelectorAll('[data-save-frame]').forEach(button=>button.onclick=()=>saveStoryboardFeedback(button.dataset.cueId,button.dataset.storyboardId,button.dataset.saveFrame));document.querySelectorAll('[data-rebind-frame]').forEach(button=>button.onclick=()=>rebindStoryboardDraft(button.dataset.cueId,button.dataset.storyboardId,button.dataset.rebindFrame));document.querySelectorAll('[data-orphan-rebind]').forEach(button=>button.onclick=()=>rebindStoryboardDraft(button.dataset.cueId,button.dataset.storyboardId,button.dataset.frameId,button.dataset.orphanRebind));const preview=document.querySelectorAll('[data-storyboard-preview]')[0],submit=document.querySelectorAll('[data-storyboard-submit]')[0],confirm=document.querySelectorAll('[data-confirm-design]')[0];if(preview)preview.onclick=previewStoryboards;if(submit)submit.onclick=submitStoryboardRound;if(confirm)confirm.onclick=confirmSelectedDesigns;const round=document.querySelectorAll('[data-confirm-round]')[0];if(round)round.onclick=openRoundDesignConfirmation;const produce=document.querySelectorAll('[data-storyboard-produce]')[0];if(produce)produce.onclick=openStoryboardProduction;bindStoryboardPresentation();if(conceptMode())bindSceneCards();renderStoryboardActionStatus();renderCueNavigation()}
 const explorationSelection=new Map();
 function explorationReferences(variant){return (variant?.references||[]).map(ref=>{const label=ref.title||ref.label||ref.description||ref.url||ref.path||'参考资料';return /^https?:\/\//i.test(ref.url||'')?`<p class="muted"><a href="${esc(ref.url)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a></p>`:`<p class="muted">参考：${esc(label)}</p>`}).join('')}
 function renderExplorations(){const root=$('explorations'),items=state?.explorations||[],artifacts=new Map((state?.artifacts||[]).map(item=>[item.id,item]));$('explorationTab').hidden=!items.length;if(!items.length){root.innerHTML='';return}root.innerHTML=`<section class="exploration"><h2>可选视觉探索</h2><p class="muted">切换候选只改变当前浏览；采用意向会作为普通反馈提交，实际采用由 Agent 按确认范围落实到制作源。</p>${items.map(item=>{const chosen=explorationSelection.get(item.id)||item.variants?.[0]?.id,variant=item.variants?.find(value=>value.id===chosen)||item.variants?.[0],images=(variant?.artifactIds||[]).map(id=>artifacts.get(id)).filter(Boolean).map(artifact=>`<img class="exploration-image" src="${esc(artifactUrl(artifact))}" alt="${esc(variant.label||variant.id)}">`).join('')||'<p class="muted">候选尚无 PNG。</p>';return `<details open><summary>${esc(item.question||item.id)} · ${esc(item.description||'')}</summary><div class="exploration-switch">${(item.variants||[]).map(value=>`<button data-exploration-id="${esc(item.id)}" data-variant-id="${esc(value.id)}" class="${value.id===chosen?'active':''}">${esc(value.label||value.id)}</button>`).join('')}</div><article class="exploration-variant"><strong>${esc(variant?.label||variant?.id)}</strong><p>${esc(variant?.description||'')}</p><div class="exploration-gallery">${images}</div>${explorationReferences(variant)}<button data-adopt-exploration="${esc(item.id)}" data-variant-id="${esc(variant?.id)}" type="button">作为反馈目标</button></article></details>`}).join('')}</section>`;document.querySelectorAll('[data-exploration-id]').forEach(button=>button.onclick=()=>{explorationSelection.set(button.dataset.explorationId,button.dataset.variantId);renderExplorations()});document.querySelectorAll('[data-adopt-exploration]').forEach(button=>button.onclick=()=>{choose({explorationId:button.dataset.adoptExploration,variantId:button.dataset.variantId,cueIds:target.cueIds||[]});$('feedbackBody').focus?.()})}
@@ -398,8 +348,6 @@ function choose(next,{persist=true}={}){if(target.conceptId&&!('conceptId' in ne
 function renderCues(){$('cues').innerHTML=(state.cues||[]).filter(c=>!conceptMode()||c.productionMode==='source-only').map(c=>`<article class="cue ${(target.cueIds||[]).includes(c.id)?'selected':''}" data-cue="${esc(c.id)}"><div class="cue-meta"><strong>${esc(c.title||c.id)}</strong><span>${esc(c.range?.start||'')}</span></div><p>${esc(c.purpose||c.finalAnimationDescription||c.visualPlan||'等待设计说明')}</p></article>`).join('')||(conceptMode()?'':'<div class="empty">此版本还没有可审阅的镜头。</div>');document.querySelectorAll('[data-cue]').forEach(el=>el.onclick=()=>{const selected=new Set(target.cueIds||[]);selected.has(el.dataset.cue)?selected.delete(el.dataset.cue):selected.add(el.dataset.cue);choose({cueIds:[...selected]})})}
 function artifactUrl(a,forVersion=versionId){return a.url||`/media?version=${encodeURIComponent(forVersion)}&path=${encodeURIComponent(a.path)}&v=${encodeURIComponent(a.sha256||a.id||'current')}`}
 function incompleteText(a){const missing=(a.missingCueIds||[]).join('、');return missing?`不完整：缺少 ${missing}`:'不完整，不能用于批准或交付'}
-function normalizeTime(value){const raw=String(value??'').trim();if(!raw)return '';const rational=/^(-?)(\d+)(?:\/(\d+))?s$/.exec(raw);if(rational){if(rational[3]!==undefined&&BigInt(rational[3])===0n)return null;return raw}const decimal=/^(-?)(\d+)\.(\d+)s?$/.exec(raw);if(!decimal)return null;const sign=decimal[1]==='-'?'-':'';const numerator=BigInt(decimal[2]+decimal[3]),denominator=10n**BigInt(decimal[3].length);const gcd=(a,b)=>b?gcd(b,a%b):a;const factor=gcd(numerator,denominator);return `${sign}${numerator/factor}/${denominator/factor}s`}function secondsToTime(value){if(!Number.isFinite(value))return null;return normalizeTime(`${Math.round(value*1000000)/1000000}s`)}function parseTime(value){const normalized=normalizeTime(value),match=/^(-?)(\d+)(?:\/(\d+))?s$/.exec(normalized||'');return match?(match[1]==='-'?-1:1)*Number(match[2])/(Number(match[3])||1):Number.NaN}
-function formatTime(seconds){const value=Math.max(0,Number(seconds)||0),minutes=Math.floor(value/60),remain=value-minutes*60;return `${String(minutes).padStart(2,'0')}:${remain.toFixed(3).padStart(6,'0')}`}
 function updateMediaTime(a,localTime=0){$('mediaTime').textContent=`全局时间：${formatTime(parseTime(a?.range?.start)+localTime)}`}
 function isVideoArtifact(a){return /\.(mp4|mov|webm)$/i.test(a?.path||'')}
 function playingArtifact(){return (state?.artifacts||[]).find(a=>a.id===$('media').dataset.artifactId)}
@@ -434,7 +382,7 @@ function capturePlaybackTime(){
   player.pause();
   if(draftStale||($('feedbackBody').value.trim()&&(target.storyboardId||target.explorationId||target.artifactId&&target.artifactId!==art.id))){setDraftNotice('这份草稿属于原素材。请先保存，或明确重新定位草稿。',true);draftStale=true;return}
   const time=secondsToTime(parseTime(art.range?.start||'0s')+(player.currentTime||0));
-  target={versionId,artifactId:art.id,timeStart:time};$('timeStart').value=time;$('timeEnd').value='';draftBasisRevision=state.editRevision;
+  target={versionId,artifactId:art.id,cueIds:demoCueIdsAt(parseTime(time)),timeStart:time};$('timeStart').value=time;$('timeEnd').value='';draftBasisRevision=state.editRevision;
   $('demoWholeFeedback').checked=false;$('feedbackTarget').textContent='当前播放时间';updateDemoTimeAnchor();saveDraft();$('feedbackBody').focus?.();
 }
 const feedbackStatus={pending:'待处理',"needs-clarification":'待澄清',addressed:'已处理',accepted:'已接受'};
@@ -448,36 +396,15 @@ function renderActions(){
   $('demoProductionActions').innerHTML=scopeNote+allowed.filter(a=>a==='preview').map(button).join('');
   $('demoDeliveryButtons').innerHTML=approved?allowed.filter(a=>['authorize','deliver'].includes(a)).map(button).join(''):'';
   $('demoDeliveryActions').hidden=!approved;
-  document.querySelectorAll('[data-tab="delivery"]').forEach(b=>b.hidden=!approved&&!(state.deliveries||[]).length);
   document.querySelectorAll('[data-action]').forEach(el=>el.onclick=()=>runAction(el.dataset.action,el.textContent));
   renderDemoStatus();
 }
-function renderDeliveries(){$('deliveries').innerHTML=(state.deliveries||[]).map(d=>`<article class="delivery-card"><strong>${esc(d.title||d.id||'交付物')}</strong><p class="muted">${esc(d.status||d.path||'')}</p>${d.packagePath?`<p><a href="/download?version=${encodeURIComponent(versionId)}&delivery=${encodeURIComponent(d.id)}">${d.protocolVersion==='3'?'下载 XML 与全部 MOV':'下载历史 FCP 导入包'}</a></p>`:''}${d.protocolVersion==='3'?'<p class="muted">先将全部 MOV 导入 FCP Library，再导入 XML。</p>':''}${(d.media||[]).map(m=>`<p><a href="/media?version=${encodeURIComponent(versionId)}&path=${encodeURIComponent(m.path)}" download>${esc(m.label||m.fileName||m.path)}</a></p>`).join('')}</article>`).join('')||'<div class="empty">尚未生成正式交付。</div>'}
 function renderTasks(){
   const tasks=state.tasks||[];$('demoTasks').innerHTML=tasks.map(task=>`<details><summary>${esc({failed:'历史失败',complete:'已完成',completed:'已完成'}[task.status]||'执行中')} · ${esc(task.createdAt||task.id)}</summary><p class="muted">${esc(task.error||task.id)}</p>${task.status==='failed'?`<button data-resume="${esc(task.id)}">恢复此任务</button>`:''}</details>`).join('')||'<p class="muted">暂无任务记录。</p>';
   document.querySelectorAll('[data-resume]').forEach(el=>el.onclick=()=>sendAction('resume',{...requestBase(),jobId:el.dataset.resume}));
 }
 function draft(){return {wholeDemo:$('demoWholeFeedback').checked,body:$('feedbackBody').value,timeStart:$('timeStart').value,timeEnd:$('timeEnd').value,target,basisRevision:draftBasisRevision??state?.editRevision}}function setDraftNotice(message,stale=false){$('draftNotice').hidden=false;$('draftNotice').textContent=message;$('retargetDraft').hidden=!stale;$('submitFeedback').disabled=stale}function saveDraft(){const key=storageKey();localStorage.setItem(key,JSON.stringify(draft()));localStorage.setItem(draftPointerKey(),key)}function clearDraft(){const key=storageKey();localStorage.removeItem(key);if(localStorage.getItem(draftPointerKey())===key)localStorage.removeItem(draftPointerKey())}function markDraftStale(previous){draftStale=true;draftBasisRevision=previous;setDraftNotice(`草稿基于编辑版本 ${previous}，当前已更新为 ${state.editRevision}；请核对后重新定位。`,true)}function restoreDraft(){const raw=localStorage.getItem(localStorage.getItem(draftPointerKey())||storageKey());if(!raw)return;try{const d=JSON.parse(raw);$('demoWholeFeedback').checked=d.wholeDemo??!!(d.body&&!d.timeStart);if(d.target?.versionId===versionId)target=d.target;$('feedbackBody').value=d.body||'';$('timeStart').value=d.timeStart||'';$('timeEnd').value=d.timeEnd||'';draftBasisRevision=d.basisRevision??state.editRevision;if(d.body){$('feedbackTarget').textContent=(target.conceptId||target.artifactId||(target.cueIds||[]).length||target.timeStart)?'已定位反馈':'整个版本';renderCues();if(draftBasisRevision!==state.editRevision)markDraftStale(draftBasisRevision);else setDraftNotice('已恢复本版本、素材和编辑版本对应的本地草稿。')}}catch{}}
 function selectionAnchor(cue){return JSON.stringify([cue.storyboardId,(cue.frames||[]).map(storyboardAnchor)])}
-async function selectVersion(id,{preserveTarget=false}={}){
-  captureCommentPreferences();
-  if(versionId!==id&&$('frameLightbox').open){$('frameLightbox').close();clearConceptGallery()}
-  const previous=target,hadDraft=!!$('feedbackBody').value.trim(),basis=draftBasisRevision??state?.editRevision;
-  if(versionId!==id){cancelRoundDesignConfirmation();cancelStoryboardProduction();activeStoryboardCue=null;$('message').textContent='';$('feedbackTarget').textContent='整个版本';$('media').innerHTML='<div class="empty">此版本尚无预览素材。</div>';delete $('media').dataset.artifactId;$('mediaTime').textContent='全局时间：—';if(versionId&&hadDraft)saveDraft();for(const field of ['feedbackBody','timeStart','timeEnd'])$(field).value='';draftBasisRevision=null;draftStale=false;$('demoWholeFeedback').checked=false;confirmedDesignCueIds.clear();savedStoryboardFeedbackIds.clear()}
-  const selectedBasis=new Map(storyboardCues().filter(cue=>confirmedDesignCueIds.has(cue.id)).map(cue=>[cue.id,selectionAnchor(cue)]));
-  versionId=id;target=preserveTarget&&previous.versionId===id?previous:{versionId};comparisonState=null;
-  $('draftNotice').hidden=true;$('retargetDraft').hidden=true;$('submitFeedback').disabled=false;
-  const nextState=await api(`/api/state?version=${encodeURIComponent(id)}`);
-  if(versionId!==id||nextState.editRevision<(reviewRevisions.get(id)||0))return;
-  reviewRevisions.set(id,nextState.editRevision);
-  state=nextState;
-  for(const cueId of confirmedDesignCueIds){const cue=storyboardCues().find(item=>item.id===cueId);if(!cue?.canConfirm||selectedBasis.get(cueId)!==selectionAnchor(cue))confirmedDesignCueIds.delete(cueId)}
-  restoreStoryboardDrafts();renderProject();renderState();
-  if(preserveTarget&&hadDraft&&basis!==state.editRevision)markDraftStale(basis);
-  renderDeliveries();clearInterval(pollTimer);
-  if((state.tasks||[]).some(t=>!['complete','completed','failed'].includes(t.status))||storyboardActionStates.get(id)?.kind==='running')pollTimer=setInterval(()=>selectVersion(id,{preserveTarget:true}).catch(error=>{if(versionId===id&&storyboardActionStates.get(id)?.kind==='running')setStoryboardActionState(id,{...storyboardActionStates.get(id),message:`静帧任务状态刷新失败：${error.message}。正在重试…`})}),4000)
-}
-function requestBase(){return {requestId:crypto.randomUUID(),expectedRevision:state.editRevision}}
 async function submitFeedback(e){
   e.preventDefault();if(feedbackSaveStates.get(versionId)?.busy||demoRoundStates.get(versionId)?.busy)return;if(draftStale){markDraftStale(draftBasisRevision);return}
   const body=$('feedbackBody').value.trim();if(!body){setFeedbackSaveStatus(versionId,'error','请先填写意见。');return}
@@ -504,7 +431,7 @@ async function submitFeedback(e){
 async function sendAction(action,request){
   const actionVersion=versionId;
   try{
-    const result=await api('/api/action',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({version:actionVersion,action,request})});
+    const result=await postVersionAction(actionVersion,request,action);
     if(versionId===actionVersion){$('message').textContent=result.status==='started'?'任务已开始，状态会自动更新。':'操作已保存。';setTimeout(()=>{if(versionId===actionVersion)selectVersion(actionVersion,{preserveTarget:true})},350)}
     return true;
   }catch(error){if(versionId===actionVersion){$('message').className='message error';$('message').textContent=error.message}return false}
@@ -512,7 +439,7 @@ async function sendAction(action,request){
 async function decision(kind,label){const source={channel:'review',text:label,reference:`review:${versionId}:${crypto.randomUUID()}`};if(kind==='approve-and-deliver')return sendAction('deliver',{...requestBase(),decision:{kind,reviewSetId:state.reviewSet?.id,source}});return sendAction('update',{...requestBase(),operation:'decision',kind,reviewSetId:state.reviewSet?.id,source})}
 function demoScopes(){const workScopeCueIds=state.workScopeCueIds||[],presentationCueIds=state.presentationCueIds||state.cues?.map(cue=>cue.id)||[],excludedCueIds=state.excludedCueIds||[];return {workScopeCueIds,presentationCueIds,excludedCueIds}}
 async function runAction(action,label){if(action==='preview'){if(!state.storyboard)return sendAction('preview',{...requestBase(),scope:'full'});const taskId=crypto.randomUUID(),scopes=demoScopes(),detail=`完整 Demo：工作 cue ${scopes.workScopeCueIds.join('、')||'无'}；展示 cue ${scopes.presentationCueIds.join('、')||'无'}；排除 ${scopes.excludedCueIds.join('、')||'无'}`,decisionSource=source(detail);return sendAction('preview',{requestId:taskId,taskId,expectedRevision:state.editRevision,scope:'full',cueIds:scopes.workScopeCueIds,workCueIds:scopes.workScopeCueIds,excludedCueIds:scopes.excludedCueIds,decision:{kind:'authorize-demo',taskId,cueIds:scopes.workScopeCueIds,presentationCueIds:scopes.presentationCueIds,excludedCueIds:scopes.excludedCueIds,source:decisionSource}})}if(action==='deliver')return sendAction('deliver',requestBase());return decision(action,label)}
-function activateTab(name){activeTab=name;$('reviewShell').dataset.activeTab=name;renderWorkingIntent();renderCueNavigation();document.querySelectorAll('.tab').forEach(el=>el.hidden=el.id!==name);document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===name));if(name==='delivery')renderDeliveries();layoutFeedbackPanel();if(state){renderDemoFeedback();renderActions();renderDemoStatus()}}document.querySelectorAll('[data-tab]').forEach(el=>el.onclick=()=>activateTab(el.dataset.tab));$('feedbackForm').onsubmit=submitFeedback;$('locateTime').onclick=capturePlaybackTime;['feedbackBody','timeStart','timeEnd'].forEach(id=>$(id).oninput=()=>{if(activeTab==='preview'&&!draftStale&&!target.artifactId){const a=playingArtifact();if(a)target={versionId,artifactId:a.id}}if(activeTab==='preview'&&id==='feedbackBody'&&$('feedbackBody').value.trim()&&!$('timeStart').value&&!$('demoWholeFeedback').checked&&!draftStale)capturePlaybackTime();if(id==='timeStart'&&$('timeStart').value)$('demoWholeFeedback').checked=false;saveDraft();updateDemoTimeAnchor()});$('refresh').onclick=()=>versionId&&selectVersion(versionId,{preserveTarget:true});$('retargetDraft').onclick=()=>{if(activeTab==='preview'){const a=playingArtifact();target={versionId,artifactId:a?.id,timeStart:$('timeStart').value||undefined,timeEnd:$('timeEnd').value||undefined}}draftStale=false;draftBasisRevision=state.editRevision;$('submitFeedback').disabled=false;$('retargetDraft').hidden=true;setDraftNotice('草稿已按当前版本重新定位。');saveDraft()};$('compareVersion').onchange=async event=>{comparisonState=event.target.value?await api(`/api/state?version=${encodeURIComponent(event.target.value)}`):null;renderComparison()};
+function activateTab(name){activeTab=name;$('reviewShell').dataset.activeTab=name;renderWorkingIntent();renderCueNavigation();document.querySelectorAll('.tab').forEach(el=>el.hidden=el.id!==name);document.querySelectorAll('[data-tab]').forEach(el=>el.classList.toggle('active',el.dataset.tab===name));layoutFeedbackPanel();if(state){renderDemoFeedback();renderActions();renderDemoStatus()}}document.querySelectorAll('[data-tab]').forEach(el=>el.onclick=()=>activateTab(el.dataset.tab));$('feedbackForm').onsubmit=submitFeedback;$('locateTime').onclick=capturePlaybackTime;['feedbackBody','timeStart','timeEnd'].forEach(id=>$(id).oninput=()=>{if(activeTab==='preview'&&!draftStale&&!target.artifactId){const a=playingArtifact();if(a)target={versionId,artifactId:a.id}}if(activeTab==='preview'&&id==='feedbackBody'&&$('feedbackBody').value.trim()&&!$('timeStart').value&&!$('demoWholeFeedback').checked&&!draftStale)capturePlaybackTime();if(id==='timeStart'&&$('timeStart').value)$('demoWholeFeedback').checked=false;saveDraft();updateDemoTimeAnchor()});$('refresh').onclick=()=>versionId&&selectVersion(versionId,{preserveTarget:true});$('retargetDraft').onclick=()=>{if(activeTab==='preview'){const a=playingArtifact();target={versionId,artifactId:a?.id,timeStart:$('timeStart').value||undefined,timeEnd:$('timeEnd').value||undefined}}draftStale=false;draftBasisRevision=state.editRevision;$('submitFeedback').disabled=false;$('retargetDraft').hidden=true;setDraftNotice('草稿已按当前版本重新定位。');saveDraft()};$('compareVersion').onchange=async event=>{comparisonState=event.target.value?await api(`/api/state?version=${encodeURIComponent(event.target.value)}`):null;renderComparison()};
 $('cancelProduction').onclick=cancelStoryboardProduction;
 $('submitProduction').onclick=submitStoryboardProduction;
 $('productionDialog').addEventListener('cancel',cancelStoryboardProduction);
@@ -542,7 +469,7 @@ function layoutFeedbackPanel(){
   const demo=activeTab==='preview';$('demoFeedbackToolbar').hidden=!demo;
   if(demo&&!$('feedbackBody').value.trim()&&!$('timeStart').value&&playingArtifact())target={versionId,artifactId:playingArtifact().id};
   (demo?$('demoFeedbackSlot'):$('reviewShell')).append($('feedbackPanel'));
-  (demo?$('demoFeedbackToolbar'):$('previewActions')).append($('mediaTime'),$('locateTime'));
+  $('previewActions').append($('mediaTime'),$('locateTime'));
   if(demo)$('demoFeedbackToolbar').append($('submitFeedback'),$('demoTimeAnchor'),$('demoWholeFeedbackLabel'),$('editDemoTime'));
   else $('feedbackForm').append($('submitFeedback'));
   $('submitFeedback').setAttribute('form','feedbackForm');$('feedbackTimeRange').hidden=demo&&$('editDemoTime').getAttribute?.('aria-expanded')!=='true';
@@ -555,8 +482,8 @@ function renderDemoStatus(){
   if(!state)return;const full=latestFullPreview(state),shown=playingArtifact(),approved=demoIsApproved();
   $('demoStatus').textContent=!shown?'暂无视频预览':shown.id!==full?.id?'正在查看其他／历史视频；效果通过仅针对最新完整 Demo':!full.complete?incompleteText(full):`最新完整 Demo · ${formatTime(parseTime(full.range?.duration))} · ${approved?'本版效果已通过':'待审阅'}`;
   const eligible=full?.complete&&state.reviewSet?.artifactIds?.includes(full.id);
-  $('approveDemo').textContent=approved?'本版效果已通过':'本版效果通过';
-  $('approveDemo').disabled=approved||!eligible||shown?.id!==full.id||!!feedbackSaveStates.get(versionId)?.busy||!!demoRoundStates.get(versionId)?.busy;
+  $('approveDemo').textContent='确认整片，生成交付文件';
+  $('approveDemo').disabled=!eligible||shown?.id!==full.id||!!feedbackSaveStates.get(versionId)?.busy||!!demoRoundStates.get(versionId)?.busy;
 }
 function demoFeedbackSelection(){
   const full=latestFullPreview(state),ids=new Set((state?.artifacts||[]).filter(a=>a.id===full?.id||(a.current&&a.kind==='full-preview'&&full?.inputKey&&a.inputKey===full.inputKey)).map(a=>a.id));
@@ -622,5 +549,11 @@ if(typeof window!=='undefined'){window.addEventListener('keydown',handleDemoSpac
 $('demoWholeFeedback').onchange=()=>{if(draftStale){$('demoWholeFeedback').checked=false;return}if($('demoWholeFeedback').checked){$('timeStart').value='';$('timeEnd').value='';delete target.timeStart;delete target.timeEnd}else if($('feedbackBody').value.trim())capturePlaybackTime();saveDraft();updateDemoTimeAnchor()};
 $('editDemoTime').onclick=()=>{const open=$('feedbackTimeRange').hidden;$('feedbackTimeRange').hidden=!open;$('editDemoTime').setAttribute('aria-expanded',String(open))};
 $('submitDemoRound').onclick=submitDemoRound;
-$('approveDemo').onclick=async()=>{if($('approveDemo').disabled)return;if($('feedbackBody').value.trim()){setFeedbackSaveStatus(versionId,'error','还有未保存的意见，请先保存。');return}$('approveDemo').disabled=true;const ok=await runAction('approve','本版效果通过；不授权交付');if(!ok)renderDemoStatus()};
+$('approveDemo').onclick=()=>{if(!$('approveDemo').disabled)openDeliveryConfirmation()};
+$('confirmConceptProduction').onclick=submitConceptProduction;
+$('cancelConceptProduction').onclick=()=>{conceptProduction=null;$('conceptProductionDialog').close()};
+$('cancelDeliveryConfirm').onclick=()=>{deliveryConfirmation=null;$('deliveryConfirmDialog').close()};
+$('submitDeliveryConfirm').onclick=submitDeliveryConfirmation;
+$('backToTop').onclick=()=>{if(typeof window!=='undefined')window.scrollTo({top:0,behavior:'smooth'})};
+
 (async()=>{project=await api('/api/project');renderProject();const initial=project.episodes?.flatMap(e=>e.versions||[]).find(v=>!v.legacy)||project.episodes?.flatMap(e=>e.versions||[])[0];if(initial){await selectVersion(initial.id);restoreCueHash()}})().catch(error=>{$('summary').textContent=error.message});

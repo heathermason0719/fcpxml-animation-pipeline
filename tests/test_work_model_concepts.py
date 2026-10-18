@@ -85,6 +85,183 @@ class ConceptTests(unittest.TestCase):
         self.assertEqual(len(load(self.root)['concepts']), 2)
         self.publish()
 
+    def test_select_reopens_confirmed_direction_atomically_without_confirming(self):
+        first = self.register(name='first')
+        second = self.register(name='second', recommend=False)
+        self.confirm(first)
+        old = copy.deepcopy(load(self.root))
+        req = request(self.root, 'select-second', operation='concept', action='select',
+                      conceptId=second['id'], source=user('换成第二张，稍后重新确认'))
+        selected = model.update(self.root, req)['record']
+        after = load(self.root)
+        self.assertEqual(after['decisions'], old['decisions'])
+        self.assertEqual(after['concepts'][:2], old['concepts'])
+        self.assertEqual(selected['copiedFromConceptId'], second['id'])
+        self.assertEqual(selected['round'], 2)
+        self.assertEqual(selected['sha256'], second['sha256'])
+        self.assertEqual((self.root / selected['path']).read_bytes(), (self.root / second['path']).read_bytes())
+        self.assertFalse(model.status(self.root)['conceptDesign']['cues'][0]['firstConfirmed'])
+        self.assertEqual(model.update(self.root, req)['record'], selected)
+        self.confirm(selected)
+
+    def test_select_same_confirmed_image_does_not_reopen_and_failed_copy_does_not_mutate(self):
+        first = self.register(name='first')
+        second = self.register(name='second', recommend=False)
+        self.confirm(first)
+        model.update(self.root, request(self.root, 'same', operation='concept', action='select',
+                     conceptId=first['id'], source=user('保留当前图')))
+        self.assertEqual(load(self.root)['creativeObjects'][0]['concept']['round'], 1)
+        before = (self.root / 'animation-manifest.json').read_bytes()
+        (self.root / second['path']).write_bytes(b'broken')
+        with self.assertRaisesRegex(ValueError, 'image|图片'):
+            model.update(self.root, request(self.root, 'broken-select', operation='concept', action='select',
+                         conceptId=second['id'], source=user('改选第二张')))
+        self.assertEqual((self.root / 'animation-manifest.json').read_bytes(), before)
+
+    def test_copied_candidate_keeps_original_feedback_without_blocking_other_candidates(self):
+        first = self.register(name='first')
+        second = self.register(name='second', recommend=False)
+        self.confirm(first)
+        feedback = model.update(self.root, request(self.root, 'candidate-opinion', operation='feedback', body='第二张太挤',
+            source=user('第二张太挤'), target={'versionId': load(self.root)['identity']['versionId'],
+                                            'conceptId': second['id']}))['record']
+        from scripts.work_model_feedback_targets import blocking_feedback
+        from scripts.work_model_concepts import concept_target
+        self.assertEqual(blocking_feedback(load(self.root), concept_target([first])), [])
+        selected = model.update(self.root, request(self.root, 'reuse-candidate', operation='concept', action='select',
+            conceptId=second['id'], source=user('采用第二张，保留修改意见')))['record']
+        self.assertEqual([f['id'] for f in blocking_feedback(load(self.root), concept_target([selected]))], [feedback['id']])
+        with self.assertRaisesRegex(ValueError, 'unresolved-feedback'):
+            self.confirm(selected)
+        model.update(self.root, request(self.root, 'handled-opinion', operation='feedback-status',
+            feedbackId=feedback['id'], status='addressed', resolution='已调整并复核原候选意见'))
+        self.confirm(selected)
+        model.update(self.root, request(self.root, 'reopened-opinion', operation='feedback-status',
+            feedbackId=feedback['id'], status='pending'))
+        current = load(self.root)
+        self.assertEqual([f['id'] for f in blocking_feedback(current, {
+            'kind': 'scene', 'objectIds': [selected['objectId']], 'cueIds': ['poster']})], [feedback['id']])
+
+    def test_select_original_reuses_current_copy_and_preserves_its_pending_feedback(self):
+        first = self.register(name='first')
+        second = self.register(name='second', recommend=False)
+        self.confirm(first)
+        selected = model.update(self.root, request(self.root, 'select-copy', operation='concept', action='select',
+            conceptId=second['id'], source=user('选择历史的第二张')))['record']
+        opinion = model.update(self.root, request(self.root, 'copy-opinion', operation='feedback', body='文字太挤，需要改',
+            source=user(), target={'versionId': load(self.root)['identity']['versionId'],
+                                   'conceptId': selected['id']}))['record']
+        count = len(load(self.root)['concepts'])
+        again = model.update(self.root, request(self.root, 'select-original-again', operation='concept', action='select',
+            conceptId=second['id'], source=user('仍选历史中的这张原图')))['record']
+        self.assertEqual(again['id'], selected['id'], 'select must reuse the verified current-round copy')
+        self.assertEqual(len(load(self.root)['concepts']), count)
+        with self.assertRaisesRegex(ValueError, 'unresolved-feedback'):
+            self.confirm(again)
+        self.assertEqual(next(f['status'] for f in load(self.root)['feedback'] if f['id'] == opinion['id']), 'pending')
+        model.update(self.root, request(self.root, 'handled-copy-opinion', operation='feedback-status',
+            feedbackId=opinion['id'], status='addressed', resolution='已检查并处理该图意见'))
+        self.confirm(selected)
+        retained = model.update(self.root, request(self.root, 'retain-confirmed-original', operation='concept', action='select',
+            conceptId=second['id'], source=user('保留这一张已确认的原图')))['record']
+        self.assertEqual(retained['id'], selected['id'])
+        self.assertEqual(len(load(self.root)['concepts']), count)
+        self.assertTrue(model.status(self.root)['conceptDesign']['cues'][0]['firstConfirmed'])
+
+    def test_existing_same_lineage_siblings_share_feedback_but_unrelated_equal_bytes_do_not(self):
+        first = self.register(name='first')
+        second = self.register(name='second', recommend=False)
+        self.confirm(first)
+        sibling = model.update(self.root, request(self.root, 'copy-one', operation='concept', action='select',
+            conceptId=second['id'], source=user('选择第二张')))['record']
+        opinion = model.update(self.root, request(self.root, 'sibling-opinion', operation='feedback', body='同图旧意见',
+            source=user(), target={'versionId': load(self.root)['identity']['versionId'],
+                                   'conceptId': sibling['id']}))['record']
+        manifest = load(self.root)
+        # A pre-fix writer could append two siblings in one round. Preserve that
+        # history rather than requiring a migration to restore its opinions.
+        other = copy.deepcopy(sibling)
+        other['id'] = 'historical-sibling'
+        manifest['concepts'].append(other)
+        from scripts.work_model_feedback_targets import blocking_feedback
+        from scripts.work_model_concepts import concept_target
+        self.assertEqual([f['id'] for f in blocking_feedback(manifest, concept_target([other]))], [opinion['id']])
+        # Equal bytes alone are not proof of reuse: an independently registered
+        # candidate and an image belonging to another object remain unrelated.
+        independent = copy.deepcopy(other)
+        independent['id'] = 'independent-equal-bytes'
+        independent.pop('copiedFromConceptId')
+        manifest['concepts'].append(independent)
+        self.assertEqual(blocking_feedback(manifest, concept_target([independent])), [])
+        other['objectId'] = manifest['cues'][1]['objectId']
+        self.assertEqual(blocking_feedback(manifest, concept_target([other])), [])
+        # Canonical Storyboard/approval targets use the same equivalence after
+        # a sibling becomes the confirmed record, including descendant opinions.
+        other['objectId'] = sibling['objectId']
+        obj = next(o for o in manifest['creativeObjects'] if o['id'] == other['objectId'])
+        obj['concept'].update(confirmedId=other['id'], confirmationId='sibling-confirmation')
+        manifest['decisions'].append({'id':'sibling-confirmation', 'kind':'confirm-concept',
+            'objectIds':[other['objectId']], 'conceptIds':[other['id']]})
+        self.assertEqual([f['id'] for f in blocking_feedback(manifest, {
+            'kind':'scene', 'objectIds':[other['objectId']]})], [opinion['id']])
+
+    def test_unconfirmed_select_and_historical_round_reuse_do_not_rewrite_old_records(self):
+        first = self.register(name='first')
+        second = self.register(name='second')
+        selected = model.update(self.root, request(self.root, 'select-current', operation='concept', action='select',
+            conceptId=first['id'], source=user('先选第一张')))['record']
+        self.assertEqual(selected, first)
+        self.assertEqual(len(load(self.root)['concepts']), 2)
+        self.confirm(first)
+        model.update(self.root, request(self.root, 'new-round', operation='concept', action='reopen',
+            cueIds=['poster'], source=user('明确重开概念')))
+        selected = model.update(self.root, request(self.root, 'select-history', operation='concept', action='select',
+            conceptId=second['id'], source=user('重用旧轮的第二张')))['record']
+        self.assertEqual(selected['round'], 2)
+        self.assertEqual(selected['copiedFromConceptId'], second['id'])
+        self.assertEqual(selected['selectionSource'], user('重用旧轮的第二张'))
+        self.assertEqual(load(self.root)['concepts'][:2], [first, second])
+        self.assertEqual(load(self.root)['creativeObjects'][0]['concept']['round'], 2)
+
+    def test_selection_copy_rolls_back_file_and_round_when_manifest_publication_fails(self):
+        first = self.register(name='first')
+        second = self.register(name='second', recommend=False)
+        self.confirm(first)
+        before = (self.root / 'animation-manifest.json').read_bytes()
+        paths = set((self.root / 'assets/concepts').iterdir())
+        with patch('scripts.work_model.save', side_effect=ValueError('publication failed')):
+            with self.assertRaisesRegex(ValueError, 'publication failed'):
+                model.update(self.root, request(self.root, 'failed-publication', operation='concept', action='select',
+                    conceptId=second['id'], source=user('明确选择第二张')))
+        self.assertEqual((self.root / 'animation-manifest.json').read_bytes(), before)
+        self.assertEqual(set((self.root / 'assets/concepts').iterdir()), paths)
+
+    def test_copy_lineage_does_not_transfer_opinions_across_object_or_different_bytes(self):
+        first = self.register(name='first')
+        other = self.register(cue='map', name='other-image')
+        from scripts.work_model_feedback_targets import feedback_applies
+        from scripts.work_model_concepts import concept_target
+        manifest = load(self.root)
+        opinion = {'target': {'versionId': manifest['identity']['versionId'], 'conceptId': first['id']}}
+        # Even malformed provenance in an inspected historical record cannot
+        # attach another object's opinion or a different image's opinion.
+        manifest['concepts'][1]['copiedFromConceptId'] = first['id']
+        self.assertFalse(feedback_applies(manifest, opinion, concept_target([other])))
+        manifest['concepts'][1]['objectId'] = first['objectId']
+        self.assertFalse(feedback_applies(manifest, opinion, concept_target([other])))
+        manifest['concepts'][1]['sha256'] = first['sha256']
+        self.assertFalse(feedback_applies(manifest, opinion, concept_target([other])),
+                         'writer copies always point to a strictly earlier round')
+
+    def test_client_cannot_supply_copy_provenance_or_selection_source(self):
+        first = self.register(name='first')
+        before = (self.root / 'animation-manifest.json').read_bytes()
+        for field, value in (('copiedFromConceptId', first['id']), ('selectionSource', user('伪造来源'))):
+            with self.assertRaisesRegex(ValueError, 'provenance'):
+                model.update(self.root, request(self.root, 'fake-' + field, operation='concept', action='select',
+                    conceptId=first['id'], source=user('选择'), **{field: value}))
+        self.assertEqual((self.root / 'animation-manifest.json').read_bytes(), before)
+
     def test_mixed_origin_batch_confirmation_is_atomic_and_replaces_first_storyboard_confirmation(self):
         first = self.register(name='imported')
         source = self.root / '.staging/generated.png'
@@ -236,6 +413,153 @@ class ConceptTests(unittest.TestCase):
         self.assertEqual(load(self.root)['cues'][1]['finalAnimationDescription'], '   ')
 
 
+class ConceptHandoffTests(unittest.TestCase):
+    setUp = ConceptTests.setUp
+    register = ConceptTests.register
+    confirm = ConceptTests.confirm
+
+    def handoff(self, name, selected, excluded, **extra):
+        return model.update(self.root, request(self.root, name, operation='concept-handoff',
+            cueIds=[c['cueId'] for c in selected], conceptIds=[c['id'] for c in selected],
+            excludedCueIds=excluded, source=user('本轮只制作所选场景的分镜，其余暂不推进'), **extra))
+
+    def test_partial_handoff_confirms_selected_and_persists_exact_scope_on_refresh(self):
+        poster = self.register(name='poster')
+        before = load(self.root)
+        result = self.handoff('partial-handoff', [poster], ['map'])
+        record = result['record']
+        self.assertEqual(record['requestId'], 'partial-handoff')
+        self.assertEqual(record['selected'], [{'cueId': 'poster', 'objectId': poster['objectId'], 'conceptId': poster['id']}])
+        self.assertEqual(record['excluded'], [{'cueId': 'map', 'objectId': before['cues'][1]['objectId'], 'conceptId': None}])
+        self.assertEqual(record['source'], user('本轮只制作所选场景的分镜，其余暂不推进'))
+        after = load(self.root)
+        self.assertEqual([d['kind'] for d in after['decisions']], ['confirm-concept'])
+        self.assertEqual(after['decisions'][0]['conceptIds'], [poster['id']])
+        self.assertEqual(after['artifacts'], before['artifacts'])
+        self.assertEqual(after['productionRuns'], before['productionRuns'])
+        self.assertEqual(after['reviewSets'], before['reviewSets'])
+        model.open_project(self.afterforge)
+        state = model.status(self.root)
+        self.assertTrue(state['conceptDesign']['storyboardHandoff']['current'])
+        self.assertEqual(state['conceptDesign']['storyboardHandoff']['id'], record['id'])
+        self.assertEqual(state['conceptDesign']['storyboardHandoff']['problems'], [])
+        self.assertEqual([c['firstConfirmed'] for c in state['conceptDesign']['cues']], [True, False])
+
+    def test_all_confirmed_still_saves_handoff_and_duplicate_request_is_idempotent(self):
+        poster = self.register(name='poster')
+        map_image = self.register(cue='map', name='map-image')
+        self.confirm(poster, map_image)
+        before = load(self.root)
+        req = request(self.root, 'already-confirmed-handoff', operation='concept-handoff', cueIds=['poster'],
+            conceptIds=[poster['id']], excludedCueIds=['map'], source=user('只推进 poster 的分镜，map 留后'))
+        first = model.update(self.root, req)
+        self.assertEqual(model.update(self.root, req), first)
+        self.assertEqual(load(self.root)['decisions'], before['decisions'])
+        self.assertEqual(len(load(self.root)['storyboardHandoffs']), 1)
+        self.assertEqual(first['record']['excluded'][0]['conceptId'], map_image['id'])
+        second = self.handoff('next-handoff', [map_image], ['poster'])['record']
+        self.assertNotEqual(first['record']['id'], second['id'])
+        self.assertEqual(load(self.root)['storyboardHandoffs'][0], first['record'])
+        self.assertEqual(model.status(self.root)['conceptDesign']['storyboardHandoff']['id'], second['id'])
+
+    def test_handoff_validates_entire_selection_before_confirming_and_rolls_back_failed_save(self):
+        poster = self.register(name='poster')
+        map_image = self.register(cue='map', name='map-image')
+        feedback = model.update(self.root, request(self.root, 'map-opinion', operation='feedback', body='地图太挤',
+            source=user(), target={'versionId': load(self.root)['identity']['versionId'], 'conceptId': map_image['id']}))['record']
+        before = (self.root / 'animation-manifest.json').read_bytes()
+        with self.assertRaisesRegex(ValueError, 'unresolved-feedback'):
+            self.handoff('blocked-batch', [poster, map_image], [])
+        self.assertEqual((self.root / 'animation-manifest.json').read_bytes(), before)
+        model.update(self.root, request(self.root, 'map-addressed', operation='feedback-status', feedbackId=feedback['id'],
+            status='addressed', resolution='已处理地图意见'))
+        before = (self.root / 'animation-manifest.json').read_bytes()
+        with patch('scripts.work_model.save', side_effect=ValueError('handoff save failed')):
+            with self.assertRaisesRegex(ValueError, 'handoff save failed'):
+                self.handoff('failed-batch', [poster, map_image], [])
+        self.assertEqual((self.root / 'animation-manifest.json').read_bytes(), before)
+        self.assertEqual(load(self.root)['decisions'], [])
+        self.assertEqual(load(self.root)['storyboardHandoffs'], [])
+
+    def test_stale_concepts_invalid_partitions_and_revision_conflicts_are_rejected(self):
+        poster = self.register(name='poster')
+        map_image = self.register(cue='map', name='map-image')
+        valid = {'operation': 'concept-handoff', 'cueIds': ['poster'], 'conceptIds': [poster['id']],
+                 'excludedCueIds': ['map'], 'source': user('只做 poster 分镜')}
+        for index, patch_values in enumerate([
+            {'cueIds': []}, {'conceptIds': []}, {'conceptIds': [map_image['id']]},
+            {'excludedCueIds': []}, {'excludedCueIds': ['poster', 'map']},
+            {'excludedCueIds': ['map', 'map']}, {'excludedCueIds': ['unknown']},
+            {'cueIds': ['poster', 'poster'], 'conceptIds': [poster['id'], poster['id']]},
+        ]):
+            before = (self.root / 'animation-manifest.json').read_bytes()
+            with self.assertRaises(ValueError):
+                model.update(self.root, request(self.root, 'invalid-handoff-' + str(index), **{**valid, **patch_values}))
+            self.assertEqual((self.root / 'animation-manifest.json').read_bytes(), before)
+        stale = request(self.root, 'revision-stale', **valid)
+        self.register(name='poster-new')
+        before = (self.root / 'animation-manifest.json').read_bytes()
+        with self.assertRaisesRegex(ValueError, 'stale revision'):
+            model.update(self.root, stale)
+        with self.assertRaisesRegex(ValueError, 'concept-not-current|current recommended'):
+            model.update(self.root, request(self.root, 'concept-stale', **valid))
+        self.assertEqual((self.root / 'animation-manifest.json').read_bytes(), before)
+
+    def test_handoff_current_is_only_a_scoped_hint_and_keeps_immutable_history(self):
+        poster = self.register(name='poster')
+        map_image = self.register(cue='map', name='map-image')
+        record = self.handoff('scoped-handoff', [poster], ['map'])['record']
+        self.register(cue='map', name='excluded-new')
+        self.assertTrue(model.status(self.root)['conceptDesign']['storyboardHandoff']['current'])
+        manifest = load(self.root)
+        model.update(self.root, request(self.root, 'ordinary-summary', operation='edit',
+            patch={'brief': {**manifest['brief'], 'summary': '普通制作说明'}}))
+        self.assertTrue(model.status(self.root)['conceptDesign']['storyboardHandoff']['current'])
+        model.update(self.root, request(self.root, 'new-poster-feedback', operation='feedback', body='本场还要调整',
+            source=user(), target={'versionId': manifest['identity']['versionId'], 'conceptId': poster['id']}))
+        latest = model.status(self.root)['conceptDesign']['storyboardHandoff']
+        self.assertFalse(latest['current'])
+        self.assertIn('unresolved-feedback', [p['code'] for p in latest['problems']])
+        self.assertEqual(load(self.root)['storyboardHandoffs'][0], record)
+        self.assertTrue(model.status(self.root)['conceptDesign']['cues'][0]['firstConfirmed'])
+
+    def test_missing_image_or_changed_scope_only_marks_hint_and_status_never_writes(self):
+        poster = self.register(name='poster')
+        self.handoff('initial-handoff', [poster], ['map'])
+        image = self.root / poster['path']
+        image_bytes = image.read_bytes()
+        image.unlink()
+        before = (self.root / 'animation-manifest.json').read_bytes()
+        latest = model.status(self.root)['conceptDesign']['storyboardHandoff']
+        self.assertFalse(latest['current'])
+        self.assertIn('concept-image-unavailable', [p['code'] for p in latest['problems']])
+        self.assertTrue(model.status(self.root)['conceptDesign']['cues'][0]['firstConfirmed'])
+        self.assertEqual((self.root / 'animation-manifest.json').read_bytes(), before)
+        with self.assertRaisesRegex(ValueError, 'concept-image-unavailable'):
+            self.handoff('missing-image-handoff', [poster], ['map'])
+        self.assertEqual((self.root / 'animation-manifest.json').read_bytes(), before)
+        image.write_bytes(image_bytes)
+        self.assertTrue(model.status(self.root)['conceptDesign']['storyboardHandoff']['current'])
+        manifest = load(self.root)
+        model.update(self.root, request(self.root, 'scope-changed', operation='edit',
+            patch={'cues': manifest['cues'][:1]}))
+        before = (self.root / 'animation-manifest.json').read_bytes()
+        self.assertIn('handoff-scope-changed', [p['code'] for p in model.status(self.root)['conceptDesign']['storyboardHandoff']['problems']])
+        self.assertEqual((self.root / 'animation-manifest.json').read_bytes(), before)
+
+    def test_handoff_is_not_a_legacy_upgrade_or_historical_qualification(self):
+        poster = self.register(name='poster')
+        manifest = load(self.root)
+        manifest['workModelVersion'] = '2.1.0'
+        save(self.root, manifest)
+        before = (self.root / 'animation-manifest.json').read_bytes()
+        with self.assertRaisesRegex(ValueError, '2.2'):
+            self.handoff('legacy-handoff', [poster], ['map'])
+        model.status(self.root)
+        self.assertEqual((self.root / 'animation-manifest.json').read_bytes(), before)
+        self.assertEqual(load(self.root)['decisions'], [])
+
+
 class ConceptJobTests(unittest.TestCase):
     """Exercise the existing shared job path with only expensive renderers doubled."""
     from tests.test_work_model_jobs import JobTests as _JobFixture
@@ -243,6 +567,31 @@ class ConceptJobTests(unittest.TestCase):
     work_model_version = '2.2.0'
     setUp = _JobFixture.setUp
     req = _JobFixture.req
+
+    def test_handoff_does_not_change_media_identity_or_grant_demo_authority(self):
+        activate(self.root)
+        from scripts.work_model_inputs import cue_key, timeline_key
+        before = load(self.root)
+        cues = [c for c in before['cues'] if c['productionMode'] == 'animation']
+        keys = [cue_key(self.root, before, c) for c in cues]
+        timeline = timeline_key(self.root, before)
+        current = next(o for o in before['creativeObjects'] if o['id'] == cues[0]['objectId'])['concept']['recommendedId']
+        model.update(self.root, request(self.root, 'qualified-handoff', operation='concept-handoff',
+            cueIds=[cues[0]['id']], conceptIds=[current], excludedCueIds=[c['id'] for c in cues[1:]],
+            source=user('只推进这一场的分镜，不委托整版 Demo')))
+        after = load(self.root)
+        self.assertEqual([cue_key(self.root, after, c) for c in cues], keys)
+        self.assertEqual(timeline_key(self.root, after), timeline)
+        self.assertEqual(after['decisions'], before['decisions'])
+        self.assertEqual(after['productionRuns'], before['productionRuns'])
+        self.assertEqual(after['artifacts'], before['artifacts'])
+        self.assertEqual(after['reviewSets'], before['reviewSets'])
+        data = (self.root / 'animation-manifest.json').read_bytes()
+        self.assertTrue(model.status(self.root)['conceptDesign']['storyboardHandoff']['current'])
+        self.assertEqual((self.root / 'animation-manifest.json').read_bytes(), data)
+        with self.assertRaisesRegex(ValueError, 'explicit production authorization'):
+            model.preview(self.root, request(self.root, 'not-commissioned-demo', scope='full'))
+        self.assertEqual(load(self.root)['decisions'], before['decisions'])
 
     def test_preview_cache_and_resume_revalidate_concept_round_without_extra_entry_points(self):
         activate(self.root)

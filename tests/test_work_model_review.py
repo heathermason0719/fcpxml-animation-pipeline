@@ -114,6 +114,20 @@ class WorkModelReviewServerTests(unittest.TestCase):
         status, _, _ = self.request("GET", "/api/state?version=../../etc/passwd")
         self.assertEqual(status, 404)
 
+    def test_shell_loads_all_shared_and_page_scripts_through_allowlisted_routes(self):
+        import re
+        status, _, body = self.request('GET', '/')
+        self.assertEqual(status, 200)
+        scripts = re.findall(r'<script src="([^"]+)"', body.decode())
+        self.assertEqual(scripts, ['/review-state.js', '/review-common.js', '/review-scenes.js', '/review-v3.js'])
+        for script in scripts:
+            with self.subTest(script=script):
+                status, headers, body = self.request('GET', script)
+                self.assertEqual(status, 200)
+                self.assertIn('javascript', next(v for k, v in headers.items() if k.lower() == 'content-type'))
+                self.assertTrue(body)
+        self.assertEqual(self.request('GET', '/scripts/work_model.py')[0], 404)
+
     def test_feedback_preserves_target_and_rejects_stale_revision(self) -> None:
         request = {"requestId": "r1", "expectedRevision": 7, "operation": "feedback", "body": "文字太小", "source": {"channel": "review", "text": "提交反馈"}, "target": {"versionId": "v1", "artifactId": "demo", "cueIds": ["cue-1"], "timeStart": "1s"}}
         status, _, body = self.request("POST", "/api/action", {"version": "v1", "action": "update", "request": request})
@@ -252,9 +266,32 @@ class WorkModelReviewServerTests(unittest.TestCase):
             process.stdout.close()
             process.stderr.close()
 
+    def test_review_navigation_keeps_three_core_pages_and_demo_delivery_confirmation(self) -> None:
+        from html.parser import HTMLParser
+
+        class ReviewElements(HTMLParser):
+            tabs, ids = [], set()
+
+            def handle_starttag(self, tag, attributes):
+                values = dict(attributes)
+                if 'data-tab' in values:
+                    self.tabs.append(values['data-tab'])
+                if 'id' in values:
+                    self.ids.add(values['id'])
+
+        status, _, body = self.request('GET', '/')
+        self.assertEqual(status, 200)
+        page = ReviewElements()
+        page.feed(body.decode('utf-8'))
+        self.assertEqual([tab for tab in page.tabs if tab != 'exploration'],
+                         ['overview', 'storyboard', 'preview'])
+        self.assertNotIn('delivery', page.ids)
+        self.assertNotIn('deliveries', page.ids)
+        self.assertTrue({'approveDemo', 'deliveryConfirmDialog', 'submitDeliveryConfirm'} <= page.ids)
+
     def test_review_v3_client_action_and_stale_draft_contracts(self) -> None:
         harness = Path(__file__).with_name("review_v3_client_harness.cjs")
-        for scenario in ("storyboard-production", "concept-gallery", "concept-version-race", "demo-reencoded-feedback", "demo-auto-time", "demo-withdraw", "demo-save-refresh", "demo-space", "demo-capture", "demo-artifacts", "demo-round", "empty-version", "round-confirmation", "notes-and-intent", "actions", "combined", "incomplete-preview", "time-normalization", "invalid-time-draft", "stale-draft", "storyboard-round", "frame-save-status", "frame-save-sequential", "storyboard-buttons", "selection-identity", "version-draft", "late-response"):
+        for scenario in ("thread-delivery", "saved-mutation-refresh-failure", "concept-storyboard-handoff", "candidate-selection", "scene-anchor-progress", "scene-save-failure", "delivery-dialog", "version-loading-writer", "dialog-late-version", "scene-video-bounds", "storyboard-production", "concept-gallery", "concept-version-race", "demo-reencoded-feedback", "demo-auto-time", "demo-withdraw", "demo-save-refresh", "demo-space", "demo-capture", "demo-artifacts", "demo-round", "empty-version", "round-confirmation", "notes-and-intent", "actions", "combined", "incomplete-preview", "time-normalization", "invalid-time-draft", "stale-draft", "storyboard-round", "frame-save-status", "frame-save-sequential", "storyboard-buttons", "selection-identity", "version-draft", "late-response"):
             with self.subTest(scenario=scenario):
                 subprocess.run(["node", str(harness), scenario], check=True, cwd=Path(__file__).parents[1])
 

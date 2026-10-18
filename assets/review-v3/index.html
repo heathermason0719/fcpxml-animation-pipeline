@@ -3,38 +3,96 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>AfterForge 审阅</title>
+  <title>AfterForge · 审阅工作台</title>
   <link rel="stylesheet" href="/review-neutral.css">
   <link rel="stylesheet" href="/review-v3.css">
 </head>
 <body id="top">
-  <header class="topbar"><a class="brand" href="#">AfterForge <span>审阅</span></a><div id="versionTitle" class="version-title">选择一个版本</div><button id="refresh" class="quiet">刷新状态</button></header>
+  <header class="topbar">
+    <a class="brand" href="#top">AfterForge <span>审阅</span></a>
+    <div id="versionTitle" class="version-title">选择一个版本</div>
+    <button id="refresh" class="quiet" type="button">刷新状态</button>
+  </header>
   <main id="reviewShell" class="shell" data-active-tab="overview">
-    <aside class="navigator"><div class="panel-label">项目与版本</div><div id="projectTree" class="project-tree" aria-live="polite"></div><nav id="cueNavigation" class="cue-navigation" aria-label="Cue 跳转"></nav></aside>
-    <aside id="storyboardNavigator" class="storyboard-navigator" hidden aria-label="Storyboard Cue 导览"><div class="storyboard-nav-head"><h2>Cue 导览</h2><p id="storyboardNavProgress" class="muted"></p></div><nav id="storyboardCueNavigation" aria-label="Storyboard 镜头"></nav><a class="storyboard-nav-top" href="#storyboard" id="storyboardNavTop">回到本轮操作 ↑</a></aside>
-    <aside id="demoNavigator" class="storyboard-navigator" hidden aria-label="Demo Cue 导览"><div class="storyboard-nav-head"><h2>Cue 导览</h2><p class="muted">整版视频连续播放；点击 Cue 暂停定位，空格继续</p></div><nav id="demoCueNavigation" aria-label="动画 Cue"></nav></aside>
+    <aside class="navigator" aria-label="版本与场景目录">
+      <details class="project-picker" open>
+        <summary class="panel-label">项目与版本</summary>
+        <div id="projectTree" class="project-tree" aria-live="polite"></div>
+      </details>
+      <nav id="cueNavigation" class="cue-navigation" aria-label="场景目录"></nav>
+      <section id="storyboardNavigator" class="storyboard-navigator" hidden aria-label="分镜与动画场景目录">
+        <div class="storyboard-nav-head"><h2>场景目录</h2><p id="storyboardNavProgress" class="muted"></p></div>
+        <nav id="storyboardCueNavigation" aria-label="分镜与动画场景"></nav>
+        <a class="storyboard-nav-top" href="#storyboard" id="storyboardNavTop">回到本轮操作 ↑</a>
+      </section>
+      <section id="demoNavigator" class="storyboard-navigator" hidden aria-label="整片 Demo 场景定位">
+        <div class="storyboard-nav-head"><h2>场景定位</h2><p class="muted">点击场景暂停定位；整片连续播放。</p></div>
+        <nav id="demoCueNavigation" aria-label="Demo 场景"></nav>
+      </section>
+    </aside>
     <section class="workspace">
-      <div class="workspace-head"><div><p id="eyebrow" class="eyebrow">AfterForge</p><h1 id="title">审阅工作台</h1><p id="summary" class="muted">从上方选择正在制作的版本。</p></div><div id="revision" class="revision"></div></div><section class="compare"><label>与另一个版本对照 <select id="compareVersion"><option value="">不对照</option></select></label><div id="compareContent" class="compare-content"></div></section>
-      <nav class="tabs" aria-label="审阅内容"><button data-tab="overview" class="active">脚本与思路</button><button data-tab="storyboard">Storyboard</button><button id="explorationTab" data-tab="exploration" hidden>视觉探索</button><button data-tab="preview">Demo</button><button data-tab="delivery">交付</button></nav>
+      <div class="workspace-head">
+        <div><p id="eyebrow" class="eyebrow">AfterForge</p><h1 id="title">审阅工作台</h1><p id="summary" class="muted">从左侧选择正在制作的版本。</p></div>
+        <div id="revision" class="revision"></div>
+      </div>
+      <nav class="tabs" aria-label="审阅内容">
+        <button data-tab="overview" class="active" type="button">画面方案</button>
+        <button data-tab="storyboard" type="button">分镜与动画</button>
+        <button data-tab="preview" type="button">整片 Demo</button>
+        <button id="explorationTab" data-tab="exploration" type="button" hidden>视觉探索</button>
+      </nav>
+      <details class="version-context"><summary>版本对照</summary><section class="compare"><label>与另一个版本对照 <select id="compareVersion"><option value="">不对照</option></select></label><div id="compareContent" class="compare-content"></div></section></details>
       <section id="workingIntent" class="working-intent" hidden aria-label="本版工作意图"></section>
-      <section id="overview" class="tab"><div class="overview-actions"><a id="exportScript" class="quiet" download>导出本集脚本</a></div><div id="brief" class="brief"></div><div id="cues" class="cue-list"></div></section>
+      <section id="overview" class="tab">
+        <div class="overview-actions"><a id="exportScript" class="quiet" download>导出本集脚本</a></div>
+        <div id="brief" class="brief"></div><div id="cues" class="cue-list"></div>
+      </section>
       <section id="storyboard" class="tab" hidden><div id="storyboards" class="storyboard-list"></div></section>
       <section id="exploration" class="tab" hidden><div id="explorations" class="exploration-list"></div></section>
       <section id="preview" class="tab" hidden>
-        <div class="storyboard-round-actions demo-heading"><div><h2>Demo · 动态审阅</h2><p id="demoStatus" class="muted"></p></div><div><button id="approveDemo">本版效果通过</button><small class="demo-approval-help">认可当前效果；不是提交修改意见，也不授权交付。</small></div></div>
-        <div id="media" class="media-stage"><div class="empty">选择可审阅的预览素材</div></div>
-        <div id="previewActions" class="preview-actions"><span id="mediaTime" class="muted">全局时间：—</span><button id="locateTime" type="button">取当前播放时间</button></div>
-        <div id="demoFeedbackSlot"></div>
-        <section class="demo-round"><h2>本轮 Demo 意见 <span id="demoFeedbackCount" class="muted"></span></h2><div id="demoFeedbackList" class="feedback-list"></div><div class="demo-round-actions"><button id="submitDemoRound">提交本轮反馈</button><span id="demoRoundStatus" role="status" aria-live="polite"></span></div></section>
-        <div class="demo-secondary"><details><summary>其他预览与历史视频</summary><div id="artifacts" class="artifact-list"></div></details><details><summary>以往意见（含 Storyboard）</summary><div id="demoFeedbackHistory" class="feedback-list"></div></details><details><summary>制作工具与任务记录</summary><div id="demoProductionActions" class="actions"></div><div id="demoTasks"></div></details><details id="demoDeliveryActions" hidden><summary>交付操作</summary><div id="demoDeliveryButtons" class="actions"></div></details></div>
+        <div class="storyboard-round-actions demo-heading">
+          <div><h2>整片 Demo</h2><p id="demoStatus" class="muted"></p></div>
+          <div><button id="approveDemo" type="button">本版效果通过</button><small class="demo-approval-help">核对准确的整片审阅集合，明确批准并授权交付。</small></div>
+        </div>
+        <div class="demo-layout">
+          <div class="demo-view">
+            <div id="media" class="media-stage"><div class="empty">选择可审阅的预览素材</div></div>
+            <div id="previewActions" class="preview-actions"><span id="mediaTime" class="muted">全局时间：—</span><button id="locateTime" type="button">取当前播放时间</button></div>
+            <div class="demo-secondary">
+              <details><summary>其他预览与历史视频</summary><div id="artifacts" class="artifact-list"></div></details>
+              <details><summary>制作工具与任务记录</summary><div id="demoProductionActions" class="actions"></div><div id="demoTasks"></div></details>
+              <details id="demoDeliveryActions" hidden><summary>交付操作</summary><div id="demoDeliveryButtons" class="actions"></div></details>
+            </div>
+          </div>
+          <div class="demo-copy">
+            <div id="demoFeedbackSlot" class="demoFeedbackSlot"></div>
+            <section class="demo-round"><h2>本轮意见 <span id="demoFeedbackCount" class="muted"></span></h2><div id="demoFeedbackList" class="feedback-list"></div><div class="demo-round-actions"><button id="submitDemoRound" type="button">提交本轮反馈</button><span id="demoRoundStatus" role="status" aria-live="polite"></span></div></section>
+            <details class="feedback-history"><summary>以往意见（含分镜）</summary><div id="demoFeedbackHistory" class="feedback-list"></div></details>
+          </div>
+        </div>
       </section>
-      <section id="delivery" class="tab" hidden><div id="deliveries" class="delivery-list"></div></section>
     </section>
-    <aside id="feedbackPanel" class="feedback"><div class="feedback-head"><div><p class="panel-label">反馈</p><h2>留下可追踪的意见</h2></div><span id="feedbackTarget" class="target">整个版本</span></div><div id="demoFeedbackToolbar" class="demo-compose-toolbar" hidden><span id="demoTimeAnchor" class="muted"></span><label id="demoWholeFeedbackLabel"><input id="demoWholeFeedback" type="checkbox">整版意见</label><button id="editDemoTime" type="button" aria-expanded="false">调整时间</button></div><form id="feedbackForm"><textarea id="feedbackBody" placeholder="描述希望如何修改；可在预览中选择素材或镜头定位。"></textarea><div id="feedbackTimeRange" class="time-range"><label>起点（整集秒）<input id="timeStart" placeholder="例如 12s"></label><label>终点（整集秒）<input id="timeEnd" placeholder="可选，例如 25/2s"></label></div><button id="submitFeedback" class="primary" type="submit">提交反馈</button></form><div id="draftNotice" class="draft-notice" hidden></div><button id="retargetDraft" type="button" hidden>按当前版本重新定位草稿</button><div id="feedbackList" class="feedback-list"></div><div id="actions" class="actions"></div><p id="message" class="message" role="status" aria-live="polite"></p></aside>
+    <aside id="feedbackPanel" class="feedback" aria-label="保存反馈">
+      <div class="feedback-head"><div><p class="panel-label">反馈</p><h2>留下可追踪的意见</h2></div><span id="feedbackTarget" class="target">整个版本</span></div>
+      <div id="demoFeedbackToolbar" class="demo-compose-toolbar" hidden><span id="demoTimeAnchor" class="muted"></span><label id="demoWholeFeedbackLabel"><input id="demoWholeFeedback" type="checkbox">整片意见</label><button id="editDemoTime" type="button" aria-expanded="false">调整时间</button></div>
+      <form id="feedbackForm"><textarea id="feedbackBody" placeholder="描述希望如何修改；输入时会固定本条意见的位置。"></textarea><div id="feedbackTimeRange" class="time-range"><label>起点（整集秒）<input id="timeStart" placeholder="例如 12s"></label><label>终点（整集秒）<input id="timeEnd" placeholder="可选，例如 25/2s"></label></div><button id="submitFeedback" class="primary" type="submit">保存反馈</button></form>
+      <div id="draftNotice" class="draft-notice" hidden></div><button id="retargetDraft" type="button" hidden>按当前版本重新定位草稿</button><div id="feedbackList" class="feedback-list"></div><div id="actions" class="actions"></div><p id="message" class="message" role="status" aria-live="polite"></p>
+    </aside>
   </main>
-  <dialog id="frameLightbox" class="frame-lightbox"><div class="lightbox-head"><p id="lightboxTitle"></p><button id="closeLightbox" type="button">关闭 · Esc</button></div><div class="lightbox-stage"><button id="previousConcept" class="concept-arrow previous" type="button" aria-label="当前 Cue 上一张概念图" hidden>‹</button><img id="lightboxImage" alt="放大的静帧"><button id="nextConcept" class="concept-arrow next" type="button" aria-label="当前 Cue 下一张概念图" hidden>›</button></div><p id="conceptGalleryPosition" class="concept-gallery-position" aria-live="polite"></p></dialog>
+  <dialog id="frameLightbox" class="frame-lightbox" aria-labelledby="lightboxTitle">
+    <div class="lightbox-head"><p id="lightboxTitle"></p><button id="closeLightbox" type="button">关闭 · Esc</button></div>
+    <div class="lightbox-stage"><button id="previousConcept" class="concept-arrow previous" type="button" aria-label="本场上一张候选图" hidden>‹</button><img id="lightboxImage" alt="放大的静帧"><button id="nextConcept" class="concept-arrow next" type="button" aria-label="本场下一张候选图" hidden>›</button></div>
+    <div id="galleryThumbnails" class="gallery-thumbnails"></div>
+    <div class="gallery-bottom"><div><p id="conceptGalleryPosition" class="concept-gallery-position" aria-live="polite"></p><p id="galleryIdea"></p><p id="galleryStatus" class="muted" role="status"></p></div><div class="gallery-actions"><button id="galleryFeedback" type="button" hidden>对此候选留言</button><button id="galleryAdopt" class="primary" type="button" hidden>采用这版候选</button></div></div>
+  </dialog>
+  <dialog id="conceptProductionDialog" class="design-confirm-dialog" aria-labelledby="conceptProductionTitle"><h2 id="conceptProductionTitle">确认本轮画面方案</h2><p class="muted">核对本次制作与暂不制作的场景。方案和本次制作范围将一起保存，回到对话后可继续制作分镜。</p><div id="conceptProductionContent"></div><p id="conceptProductionMessage" role="status" aria-live="polite"></p><div class="design-confirm-actions"><button id="cancelConceptProduction" type="button" autofocus>返回检查</button><button id="confirmConceptProduction" type="button" class="primary">确认方案，继续制作分镜</button></div></dialog>
   <dialog id="designConfirmDialog" class="design-confirm-dialog" aria-labelledby="designConfirmTitle"><h2 id="designConfirmTitle">确认本轮设计</h2><p class="muted">确认以下设计可以开始动画制作，后续仍可根据动画效果继续调整。</p><div id="designConfirmContent"></div><p id="designConfirmMessage" role="status" aria-live="polite"></p><div class="design-confirm-actions"><button id="cancelDesignConfirm" type="button" autofocus>返回检查</button><button id="submitDesignConfirm" type="button" class="primary">确认这些设计</button></div></dialog>
-  <dialog id="productionDialog" class="design-confirm-dialog" aria-labelledby="productionTitle"><h2 id="productionTitle">通过 Storyboard，开始制作动画</h2><p>勾选本轮要制作的动画，未勾选的暂不制作。交棒后回到对话让 Agent 继续制作，完成后在 Demo 审阅动画效果。</p><div id="productionContent"></div><p id="productionScope"></p><p id="productionMessage" role="status" aria-live="polite"></p><div class="design-confirm-actions"><button id="cancelProduction" type="button" autofocus>返回检查</button><button id="submitProduction" type="button" class="primary">通过并交棒制作</button></div></dialog>
+  <dialog id="productionDialog" class="design-confirm-dialog" aria-labelledby="productionTitle"><h2 id="productionTitle">确认本轮，生成整片 Demo</h2><p>核对本轮工作范围、Demo 展示范围和明确排除的场景。交棒后回到对话让 Agent 继续制作，完成后在整片 Demo 审阅。</p><div id="productionContent"></div><p id="productionScope"></p><p id="productionMessage" role="status" aria-live="polite"></p><div class="design-confirm-actions"><button id="cancelProduction" type="button" autofocus>返回检查</button><button id="submitProduction" type="button" class="primary">确认范围并交棒制作</button></div></dialog>
+  <dialog id="deliveryConfirmDialog" class="design-confirm-dialog" aria-labelledby="deliveryConfirmTitle"><h2 id="deliveryConfirmTitle">确认整片，生成交付文件</h2><p class="muted">本次批准与交付授权绑定下面列出的完整审阅版本和准确输入集合。</p><div id="deliveryConfirmContent"></div><p id="deliveryConfirmMessage" role="status" aria-live="polite"></p><div class="design-confirm-actions"><button id="cancelDeliveryConfirm" type="button" autofocus>返回检查</button><button id="submitDeliveryConfirm" type="button" class="primary">确认整片并授权交付</button></div></dialog>
+  <button id="backToTop" class="back-to-top" type="button" aria-label="回到页面顶部">↑ 回顶部</button>
+  <script src="/review-state.js"></script>
+  <script src="/review-common.js"></script>
+  <script src="/review-scenes.js"></script>
   <script src="/review-v3.js"></script>
 </body>
 </html>

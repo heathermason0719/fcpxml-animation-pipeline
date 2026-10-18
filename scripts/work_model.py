@@ -66,7 +66,7 @@ def _blank(identity):
                         "delivery": {"width": 1920, "height": 1080}},
             "brief": {"summary": "", "segments": []}, "cues": [], "artifacts": [], "reviewSets": [],
             "feedback": [], "decisions": [], "deliveries": [], "requests": {},
-            "creativeObjects": [], "concepts": [], "storyboards": [], "reviewRounds": [], "explorations": [], "productionRuns": []}
+            "creativeObjects": [], "concepts": [], "storyboards": [], "storyboardHandoffs": [], "sceneReviews": [], "reviewRounds": [], "explorations": [], "productionRuns": []}
 
 
 def _legacy_visual_defaults(text):
@@ -462,6 +462,8 @@ def status(version_root):
     if concepts.enabled(manifest):
         result['conceptDesign'] = concepts.status(root, manifest)
     result['workingIntent'] = copy.deepcopy(manifest.get('workingIntent', {'items': []}))
+    from scripts.work_model_scene_review import status as scene_review_status
+    result['sceneReviews'] = scene_review_status(root, manifest)
     from scripts.work_model_policy import artifact_eligible, first_confirmed, storyboard_current
     for artifact in result["artifacts"]:
         artifact["mediaCurrent"] = _artifact_current(root, manifest, artifact)
@@ -487,6 +489,9 @@ def status(version_root):
                        for i in board['artifactIds']] if board else [],
             'canConfirm': not problems and not concepts.enabled(manifest),
             'confirmationProblems': [] if concepts.enabled(manifest) else problems, 'firstConfirmed': confirmed})
+        cards[-1]['sceneReview'] = {kind: next((r for r in reversed(result['sceneReviews'])
+            if r['objectId'] == cue.get('objectId') and r['kind'] == kind), None)
+            for kind in ('storyboard', 'animation')}
         if concepts.enabled(manifest):
             from scripts.work_model_storyboard_production import cue_status
             cards[-1].update(cue_status(root, manifest, cue, board, problems))
@@ -634,16 +639,23 @@ def update(version_root, request):
     # Check read-only before creating a lock in a historical directory.
     load(root, writable=True)
     afterforge, _ = layout(root)
-    if request.get('operation') == 'working-intent':
-        # Context-only writes must not upgrade policy or correct production
-        # history as a side effect of leaving a memo.
+    if request.get('operation') in {'working-intent', 'scene-review', 'concept-handoff'}:
+        # These short writes must not upgrade policy or correct unrelated
+        # production history. A concept handoff confirms only its selected images.
         with manifest_transaction(root):
             manifest = load(root, writable=True)
             previous = request_check(manifest, request)
             if previous is not None:
                 return previous
-            from scripts.work_model_intent import update_intent
-            record = update_intent(manifest, request)
+            if request['operation'] == 'working-intent':
+                from scripts.work_model_intent import update_intent
+                record = update_intent(manifest, request)
+            elif request['operation'] == 'scene-review':
+                from scripts.work_model_scene_review import acknowledge
+                record = acknowledge(root, manifest, request)
+            else:
+                from scripts.work_model_concepts import handoff
+                record = handoff(root, manifest, request)
             manifest['editRevision'] += 1
             result = {'status': 'updated', 'editRevision': manifest['editRevision'], 'record': record}
             remember(manifest, request, result)

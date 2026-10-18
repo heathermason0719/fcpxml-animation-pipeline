@@ -145,7 +145,54 @@ def confirm(root, manifest, request, *, prepared=None):
 def update_concept(root, manifest, request):
     if not enabled(manifest):
         raise ValueError('concept work requires a fresh work model 2.2 version')
+    if any(field in request for field in ('copiedFromConceptId', 'selectionSource')):
+        raise ValueError('concept copy provenance is assigned only by the version writer')
     action = request.get('action')
+    if action == 'select':
+        # A user selection changes the recommended direction, never its approval.
+        # Prepare and verify all bytes before touching the round; update() owns
+        # publication, schema validation and rollback under the version lock.
+        source = user_source(request.get('source'))
+        record = _concept(manifest, request.get('conceptId'))
+        cue = next((c for c in manifest['cues'] if record and c.get('objectId') == record['objectId']
+                    and c['productionMode'] == 'animation'), None)
+        if not record or not cue:
+            raise ValueError('select requires a concept belonging to a current animation object')
+        if not image_current(root, record):
+            raise ValueError('concept image unavailable; restore the recorded image bytes')
+        state = _object(manifest, record['objectId'])['concept']
+        adopted = confirmed(manifest, record['objectId'])
+        from scripts.work_model_feedback_targets import same_concept_image
+        if adopted and same_concept_image(manifest, adopted['id'], record['id']):
+            if not image_current(root, adopted):
+                raise ValueError('confirmed concept image unavailable; restore the recorded image bytes')
+            return adopted, []
+        data = safe(root, record['path']).read_bytes()
+        if hashlib.sha256(data).hexdigest() != record['sha256']:
+            raise ValueError('concept image changed while selecting; restore recorded bytes')
+        if adopted:
+            state['round'] += 1
+            state.setdefault('revisions', []).append({'round': state['round'], 'source': source, 'createdAt': now()})
+        if record['round'] == state['round']:
+            state['recommendedId'] = record['id']
+            return record, []
+        # A repeated historical selection reuses an owned current-round copy.
+        # This keeps one candidate identity and its opinions through retries or
+        # selecting the original thumbnail again; equal bytes alone do not link
+        # independently registered directions.
+        for candidate in reversed(manifest['concepts']):
+            if (candidate['round'] == state['round']
+                    and same_concept_image(manifest, candidate['id'], record['id'])
+                    and image_current(root, candidate)):
+                state['recommendedId'] = candidate['id']
+                return candidate, []
+        copied = copy.deepcopy(record)
+        copied.update(id=identifier('concept'), cueId=cue['id'], round=state['round'], createdAt=now(),
+                      copiedFromConceptId=record['id'], selectionSource=source)
+        copied['path'] = 'assets/concepts/' + copied['id'] + Path(record['path']).suffix.lower()
+        manifest['concepts'].append(copied)
+        state['recommendedId'] = copied['id']
+        return copied, [(safe(root, copied['path'], exists=False), data, None)]
     if action == 'reopen':
         source = user_source(request.get('source'))
         ids = request.get('cueIds')
@@ -172,7 +219,7 @@ def update_concept(root, manifest, request):
         state['recommendedId'] = record['id']
         return record, []
     if action != 'register':
-        raise ValueError('concept action must be register, propose, or reopen')
+        raise ValueError('concept action must be register, propose, select, or reopen')
     cue_id = request.get('cueId')
     oid = object_ids(manifest, [cue_id])[0]
     state = _object(manifest, oid).setdefault('concept', {'round': 1})
@@ -214,6 +261,79 @@ def update_concept(root, manifest, request):
     return record, [(safe(root, relative, exists=False), data, None)]
 
 
+def _handoff_partition(manifest, selected, excluded):
+    for values in (selected, excluded):
+        if (not isinstance(values, list) or not all(isinstance(cid, str) and cid for cid in values)
+                or len(set(values)) != len(values)):
+            raise ValueError('concept handoff requires explicit unique cueIds and excludedCueIds')
+    all_ids = {c['id'] for c in manifest['cues'] if c['productionMode'] == 'animation'}
+    if not selected or set(selected) & set(excluded) or set(selected) | set(excluded) != all_ids:
+        raise ValueError('concept handoff must exactly partition selected and excluded animation cues')
+    return object_ids(manifest, selected), object_ids(manifest, excluded)
+
+
+def handoff(root, manifest, request):
+    """Confirm selected current images and save the stated Storyboard scope.
+
+    This is a short version transaction, not a Motion/Demo commission or a
+    new production gate. Validate the entire selection before confirming any
+    image; the caller publishes both facts with one schema-checked save.
+    """
+    if not enabled(manifest):
+        raise ValueError('concept handoff requires a fresh work model 2.2 version')
+    source = user_source(request.get('source'))
+    cue_ids, excluded_ids = request.get('cueIds'), request.get('excludedCueIds')
+    objects, excluded_objects = _handoff_partition(manifest, cue_ids, excluded_ids)
+    concept_ids = request.get('conceptIds')
+    if (not isinstance(concept_ids, list) or len(concept_ids) != len(cue_ids)
+            or not all(isinstance(cid, str) and cid for cid in concept_ids)
+            or len(set(concept_ids)) != len(concept_ids)):
+        raise ValueError('concept handoff requires one explicit current recommended concept per selected cue')
+    records = [_concept(manifest, cid) for cid in concept_ids]
+    if any(not record or record['objectId'] != oid for record, oid in zip(records, objects)):
+        raise ValueError('concept handoff requires the current recommended concept for each selected object')
+    problems = confirmation_problems(root, manifest, records)
+    if problems:
+        raise ValueError('concept handoff requires current reviewable images: ' + str(problems))
+    pending = [record['id'] for record in records if not confirmed(manifest, record['objectId'])]
+    if pending:
+        confirm(root, manifest, {'conceptIds': pending, 'source': source})
+    record = {'id': identifier('storyboard-handoff'), 'requestId': request['requestId'],
+              'source': source, 'createdAt': now(),
+              'selected': [{'cueId': cid, 'objectId': oid, 'conceptId': concept_id}
+                           for cid, oid, concept_id in zip(cue_ids, objects, concept_ids)],
+              'excluded': [{'cueId': cid, 'objectId': oid,
+                            'conceptId': _object(manifest, oid).get('concept', {}).get('recommendedId')}
+                           for cid, oid in zip(excluded_ids, excluded_objects)]}
+    manifest.setdefault('storyboardHandoffs', []).append(record)
+    return record
+
+
+def handoff_status(root, manifest):
+    """Latest handoff and advisory validity, never consumed as eligibility."""
+    latest = next(iter(reversed(manifest.get('storyboardHandoffs', []))), None)
+    if not latest:
+        return None
+    problems = []
+    cues = {c['id']: c for c in manifest['cues'] if c['productionMode'] == 'animation'}
+    items = latest['selected'] + latest['excluded']
+    if (len({item['cueId'] for item in items}) != len(items) or {item['cueId'] for item in items} != set(cues)
+            or any(cues.get(item['cueId'], {}).get('objectId') != item['objectId'] for item in items)):
+        problems.append({'code': 'handoff-scope-changed', 'message': '动画范围或创意对象已变化，请核对原分镜交棒范围。'})
+    records = []
+    for item in latest['selected']:
+        record = _concept(manifest, item['conceptId'])
+        active = confirmed(manifest, item['objectId'])
+        if not record or record['objectId'] != item['objectId'] or not active or active['id'] != item['conceptId']:
+            problems.append({'code': 'handoff-concept-changed', 'cueId': item['cueId'],
+                             'message': '本场当前概念依据已变化，请核对原分镜交棒。'})
+        if record:
+            records.append(record)
+    if records:
+        problems.extend(confirmation_problems(root, manifest, records))
+    return {**copy.deepcopy(latest), 'current': not problems, 'problems': problems}
+
+
 def status(root, manifest):
     cards = []
     for cue in manifest['cues']:
@@ -230,4 +350,4 @@ def status(root, manifest):
                       'firstConfirmed': bool(adopted), 'revisionPending': bool(state.get('confirmedId') and not adopted),
                       'canConfirm': not problems and not adopted, 'confirmationProblems': problems,
                       'conceptIds': [c['id'] for c in manifest.get('concepts', []) if c['objectId'] == cue.get('objectId')]})
-    return {'cues': cards}
+    return {'cues': cards, 'storyboardHandoff': handoff_status(root, manifest)}
