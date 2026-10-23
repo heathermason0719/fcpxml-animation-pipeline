@@ -10,7 +10,7 @@ import time
 from urllib.parse import urlencode, urlparse
 from urllib.request import urlopen
 
-from scripts.work_model_store import atomic_json, layout, load
+from scripts.work_model_store import layout, load
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
@@ -29,14 +29,44 @@ def service_identity(afterforge):
     return {'root':str(Path(afterforge).resolve()), 'mode':'project', 'pid':os.getpid(), **code_identity()}
 
 
-def result_target(root, result):
-    """Describe this result, never substitute the latest production result."""
+def result_targets(root, result):
+    """Describe every exact result; recommendations and newest artifacts are irrelevant."""
     manifest = load(root)
-    artifact = next((a for a in manifest['artifacts'] if a['id'] in result.get('artifactIds', []) and a['kind'] == 'full-preview'), None)
-    if not artifact:
-        return None
-    return {'versionId':manifest['identity']['versionId'], 'tab':'preview', 'artifactId':artifact['id'],
-            'videoPath':str(Path(root) / artifact['path'])}
+    version = {'versionId': manifest['identity']['versionId']}
+    concepts = {c['id']: c for c in manifest.get('concepts', [])}
+    boards = {b['id']: b for b in manifest.get('storyboards', [])}
+    artifacts = {a['id']: a for a in manifest.get('artifacts', [])}
+    records = result.get('record', [])
+    records = records if isinstance(records, list) else [records]
+    targets = []
+    for record in records:
+        concept = concepts.get(record.get('id')) if isinstance(record, dict) else None
+        if not concept and isinstance(record, dict) and all(key in record for key in ('id', 'cueId', 'objectId', 'origin', 'path')):
+            concept = record  # Preserve the successful receipt even when its target later goes missing.
+        if concept:
+            targets.append({**version, 'tab': 'overview', 'kind': 'concept',
+                            'conceptId': concept['id'], 'cueId': concept['cueId']})
+    for key in result.get('storyboardIds', []):
+        board = boards.get(key)
+        targets.append({**version, 'tab': 'storyboard', 'kind': 'storyboard', 'storyboardId': key,
+                        **({'cueId': board['cueId']} if board else {})})
+    for key in result.get('artifactIds', []):
+        artifact = artifacts.get(key)
+        if artifact is None:
+            targets.append({**version, 'tab': 'preview', 'kind': 'missing-artifact', 'artifactId': key})
+        elif artifact['kind'] in {'full-preview', 'local-preview', 'cue-preview'}:
+            targets.append({**version, 'tab': 'preview', 'kind': artifact['kind'], 'artifactId': key,
+                            'videoPath': str(Path(root) / artifact['path'])})
+    return targets
+
+
+def result_target(root, result):
+    """Compatibility accessor for callers expecting one primary result."""
+    return next(iter(result_targets(root, result)), None)
+
+
+def _query(target):
+    return {key: target[key] for key in ('versionId', 'tab', 'conceptId', 'storyboardId', 'cueId', 'artifactId', 'frameId') if key in target}
 
 
 def _verified_service(locator, expected):
@@ -56,15 +86,22 @@ def _verified_service(locator, expected):
     return None
 
 
-def handoff(root, result):
-    target = result_target(root, result)
-    if not target:
+def handoff(root, result, *, start_service=True):
+    targets = result_targets(root, result)
+    if not targets:
         return result
+    target = targets[0]
     afterforge, _ = layout(root)
     locator = afterforge / '工程/review-service.json'
-    expected = {'root':str(afterforge), 'mode':'project', **code_identity()}
-    entry = {**target, 'available':False}
+    query = _query(target)
+    if len(targets) > 1:
+        query['targets'] = json.dumps([_query(t) for t in targets], ensure_ascii=False, separators=(',', ':'))
+    entry = {**target, 'targets': targets, 'available': False, 'query': query,
+             'reopen': f'{sys.executable} scripts/serve_workflow_review.py {str(afterforge)!r} --port 0'}
+    if not start_service:
+        return {**result, 'reviewEntry': {**entry, 'serviceSuppressed': True}}
     try:
+        expected = {'root':str(afterforge), 'mode':'project', **code_identity()}
         from scripts.work_model_store import project_lock
         with project_lock(afterforge):
             base = _verified_service(locator, expected)
@@ -81,7 +118,8 @@ def handoff(root, result):
                     time.sleep(.1)
             if not base:
                 raise OSError('Review service did not become available; see ' + str(log))
-        entry.update(available=True, url=base + '/?' + urlencode({k:target[k] for k in ('versionId','tab','artifactId')}))
+        entry.update(available=True, url=base + '/?' + urlencode(query),
+                     targets=[{**t, 'url': base + '/?' + urlencode(_query(t))} for t in targets])
     except (OSError, ValueError, subprocess.SubprocessError) as error:
-        entry.update(error=str(error), reopen=f'{sys.executable} scripts/serve_workflow_review.py {str(afterforge)!r} --port 0')
+        entry.update(error=str(error))
     return {**result, 'reviewEntry':entry}

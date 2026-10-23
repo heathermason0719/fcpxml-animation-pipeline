@@ -1210,6 +1210,9 @@
       "items": {
         "$ref": "#/$defs/storyboardHandoff"
       }
+    },
+    "creativePlanning": {
+      "$ref": "#/$defs/creativePlanning"
     }
   },
   "additionalProperties": false,
@@ -1468,6 +1471,10 @@
                 ],
                 "additionalProperties": false
               }
+            },
+            "selectionId": {
+              "type": "string",
+              "minLength": 1
             }
           },
           "required": [
@@ -2541,6 +2548,10 @@
         },
         "selectionSource": {
           "$ref": "#/$defs/source"
+        },
+        "planningAttemptId": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "required": [
@@ -2770,6 +2781,369 @@
         "createdAt",
         "selected",
         "excluded"
+      ],
+      "additionalProperties": false
+    },
+    "creativePlanning": {
+      "type": "object",
+      "properties": {
+        "plans": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "createdAt": {
+                "type": "string",
+                "minLength": 1
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1
+              },
+              "question": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scope": {
+                "enum": [
+                  "all",
+                  "selected"
+                ]
+              },
+              "objects": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "cueId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "object"
+                    },
+                    "contentKey": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "objectId",
+                    "cueId",
+                    "title",
+                    "content",
+                    "contentKey"
+                  ],
+                  "additionalProperties": false
+                },
+                "minItems": 1
+              },
+              "closure": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "$ref": "#/$defs/source"
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "source",
+                  "createdAt"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "createdAt",
+              "summary",
+              "question",
+              "scope",
+              "objects"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "rounds": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "objectId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "planId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "createdAt": {
+                "type": "string",
+                "minLength": 1
+              },
+              "previousRoundId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "source": {
+                "$ref": "#/$defs/source"
+              },
+              "end": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "reason",
+                  "createdAt"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "id",
+              "objectId",
+              "planId",
+              "createdAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "createdAt": {
+                "type": "string",
+                "minLength": 1
+              },
+              "targets": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "objectId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "roundId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "planId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "contentKey": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "directionId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "direction": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "kind": {
+                      "enum": [
+                        "direction",
+                        "correction"
+                      ]
+                    },
+                    "problemId": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "problem": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "conceptBasis": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "objectId",
+                    "roundId",
+                    "planId",
+                    "contentKey",
+                    "directionId",
+                    "direction",
+                    "kind",
+                    "conceptBasis"
+                  ],
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "kind": {
+                            "const": "correction"
+                          }
+                        }
+                      },
+                      "then": {
+                        "required": [
+                          "problemId",
+                          "problem"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "minItems": 1
+              },
+              "outcome": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "generated",
+                      "failed",
+                      "not-called"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "toolReference": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "evaluations": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "objectId": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "conceptIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "minItems": 1,
+                          "uniqueItems": true
+                        },
+                        "disposition": {
+                          "enum": [
+                            "continue",
+                            "satisfied",
+                            "stop"
+                          ]
+                        },
+                        "note": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "problemResolved": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "objectId",
+                        "conceptIds",
+                        "disposition",
+                        "note"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  }
+                },
+                "required": [
+                  "kind",
+                  "note",
+                  "createdAt"
+                ],
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "kind": {
+                          "const": "generated"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "toolReference",
+                        "evaluations"
+                      ]
+                    }
+                  },
+                  {
+                    "if": {
+                      "properties": {
+                        "kind": {
+                          "const": "failed"
+                        }
+                      }
+                    },
+                    "then": {
+                      "required": [
+                        "toolReference"
+                      ]
+                    }
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "createdAt",
+              "targets"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "plans",
+        "rounds",
+        "attempts"
       ],
       "additionalProperties": false
     }

@@ -30,6 +30,7 @@ let incomplete=false;
 let localPreview=false;
 let withStoryboard=false;
 let boardId='board-a';
+let entryData=null;
 const realStatusPath=process.argv[3];
 const realStatus=realStatusPath?JSON.parse(fs.readFileSync(realStatusPath,'utf8')):null;
 function projectData(){if(realStatus)return {projectId:realStatus.identity.projectId,title:'项目',episodes:[{id:realStatus.identity.episodeId,title:realStatus.identity.episodeTitle,versions:[{id:realStatus.identity.versionId,title:realStatus.identity.versionTitle,root:'x',legacy:false}]}]};return {projectId:'p',title:'项目',episodes:[{id:'e',title:'第一集',versions:[{id:'v1',title:'V1',root:'x',legacy:false}]}]}}
@@ -47,15 +48,55 @@ const context = vm.createContext({
   localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
   crypto:{randomUUID:()=>`id-${++uuidSequence}`},
   setInterval:(fn,ms)=>{intervalCalls.push({fn,ms});return intervalCalls.length},clearInterval:()=>{},setTimeout:fn=>{fn();return 1},
-  fetch:async(url,options)=>{requests.push({url,options}); if(url==='/api/project') return {ok:true,json:async()=>projectData()}; if(url.startsWith('/api/state')) {const data=realStatus||version();if(!realStatus)data.identity.versionId=new URL(url,'http://review.test').searchParams.get('version');return {ok:true,json:async()=>data};} const request=options?.body&&JSON.parse(options.body).request; return {ok:true,json:async()=>request?.operation==='feedback'?{status:'saved',record:{id:'feedback-saved'}}:{status:'started',requestId:'x'}};},
+  fetch:async(url,options)=>{requests.push({url,options}); if(url==='/api/project') return {ok:true,json:async()=>projectData()}; if(url.startsWith('/api/state')) {const data=realStatus||entryData||version();if(!realStatus)data.identity.versionId=new URL(url,'http://review.test').searchParams.get('version');return {ok:true,json:async()=>structuredClone(data)};} const request=options?.body&&JSON.parse(options.body).request; return {ok:true,json:async()=>request?.operation==='feedback'?{status:'saved',record:{id:'feedback-saved'}}:{status:'started',requestId:'x'}};},
 });
 
 async function main() {
+  if(process.argv[2].startsWith('entry-')){
+    withStoryboard=true;entryData=version();entryData.cues[0].range={start:'2s',duration:'2s'};
+    entryData.storyboard.cues[0].objectId='object-a';entryData.storyboard.cues[0].storyboardId='board-new';
+    const old={...structuredClone(entryData.storyboard.cues[0]),storyboardId:'board-old',current:false,canConfirm:false,finalAnimationDescription:'Frozen description',productionProblems:[{code:'storyboard-not-current'}]};old.frames[0].path='frames/old.png';old.frames[0].artifactId='frame-old';
+    entryData.storyboard.snapshots=[old,structuredClone(entryData.storyboard.cues[0])];
+    entryData.concepts=[{id:'c1',objectId:'object-a',cueId:'cue-a',path:'concepts/one.png',idea:'Recommended',motion:'One'},{id:'c2',objectId:'object-a',cueId:'cue-a',path:'concepts/two.png',idea:'Alternative',motion:'Two'}];
+    entryData.conceptDesign={cues:[{cueId:'cue-a',objectId:'object-a',title:'开场',recommendedId:'c1',conceptIds:['c1','c2'],canConfirm:true,confirmationProblems:[]}]};
+    entryData.artifacts.push({id:'local-old',kind:'local-preview',path:'previews/local-old.mp4',current:true,complete:true,createdAt:'2026-01-01',range:{start:'2s',duration:'2s'},cueIds:['cue-a'],reviewCues:[{id:'cue-a',title:'Frozen scene',resolvedTimeline:{start:'2s',duration:'2s'}}]});
+    const params={versionId:'v1',...(process.argv[2]==='entry-concept'?{tab:'overview',conceptId:'c2'}:process.argv[2]==='entry-storyboard'?{tab:'storyboard',storyboardId:'board-old',cueId:'cue-a',frameId:'hero'}:process.argv[2]==='entry-missing'?{tab:'storyboard',storyboardId:'missing',cueId:'cue-a'}:process.argv[2]==='entry-batch'?{tab:'overview',conceptId:'c2',targets:JSON.stringify([{versionId:'v1',tab:'overview',conceptId:'c2'},{versionId:'v1',tab:'storyboard',storyboardId:'board-old',cueId:'cue-a'},{versionId:'v1',tab:'preview',artifactId:'local-old'}])}:{tab:'preview',artifactId:'local-old'})};
+    context.location={search:'?'+new URLSearchParams(params),hash:''};context.URLSearchParams=URLSearchParams;
+    context.history={replaceState:(_,__,url)=>{context.location.search=url.slice(url.indexOf('?'))}};
+  }
   if(process.argv[2]==='demo-missing-link'){context.location={search:'?versionId=v1&tab=preview&artifactId=missing',hash:''};context.URLSearchParams=URLSearchParams;}
-  for(const name of ['review-state.js','review-common.js','review-scenes.js','review-v3.js'])vm.runInContext(fs.readFileSync('assets/review-v3/'+name,'utf8'),context);
+  for(const name of ['review-state.js','review-common.js','review-scenes.js','review-entry.js','review-v3.js'])vm.runInContext(fs.readFileSync('assets/review-v3/'+name,'utf8'),context);
   await new Promise(setImmediate);
   const scenario=process.argv[2];
-  if(scenario==='demo-poll') {
+  if(scenario==='entry-concept'){
+    assert.equal(byId('frameLightbox').open,true,'direct candidate link opens the actual requested candidate');assert.match(byId('lightboxImage').src,/two.png/);
+    context.setSceneDraft('cue-a','Keep this candidate','concept');assert.equal(context.getSceneDraft('cue-a','concept').target.conceptId,'c2');
+    entryData.concepts.push({...entryData.concepts[0],id:'c3',path:'concepts/three.png'});entryData.conceptDesign.cues[0].conceptIds.push('c3');entryData.conceptDesign.cues[0].recommendedId='c3';entryData.editRevision++;
+    await context.selectVersion('v1',{preserveTarget:true});assert.match(byId('lightboxImage').src,/two.png/);assert.equal(context.getSceneDraft('cue-a','concept').target.conceptId,'c2');assert.equal(context.sceneAnchorForDisplay('cue-a','concept').conceptId,'c2');
+  } else if(scenario==='entry-storyboard'){
+    assert.equal(byId('reviewShell').dataset.activeTab,'storyboard');assert.equal(context.sceneCue('cue-a').storyboardId,'board-old');assert.match(byId('storyboards').innerHTML,/Frozen description/);assert.match(byId('storyboards').innerHTML,/old.png/);
+    context.setSceneDraft('cue-a','Old frame feedback');assert.equal(context.getSceneDraft('cue-a').target.storyboardId,'board-old');
+    entryData.editRevision++;entryData.storyboard.cues[0].storyboardId='board-newer';await context.selectVersion('v1',{preserveTarget:true});assert.equal(context.sceneCue('cue-a').storyboardId,'board-old');assert.equal(context.getSceneDraft('cue-a').target.artifactId,'frame-old');
+    await context.selectVersion('v2');await context.selectVersion('v1');assert.equal(context.sceneCue('cue-a').storyboardId,'board-old','reading preference survives leaving and returning');
+  } else if(scenario==='entry-missing'){
+    assert.match(byId('reviewEntryStatus').textContent,/不可用/);assert.doesNotMatch(byId('storyboards').innerHTML,/frames%2Fa.png|确认此场/,'missing explicit snapshot must not display current scene as substitute');await context.selectVersion('v1',{preserveTarget:true});assert.match(byId('reviewEntryStatus').textContent,/不可用/);
+  } else if(scenario==='entry-batch'){
+    assert.equal(byId('reviewEntryTargets').children.length,3,'all batch results have a visible exact navigation target');await byId('reviewEntryTargets').children[1].onclick();assert.equal(context.sceneCue('cue-a').storyboardId,'board-old');await byId('reviewEntryTargets').children[2].onclick();assert.equal(byId('media').dataset.artifactId,'local-old');
+    assert.equal(new URLSearchParams(context.location.search).get('artifactId'),'local-old','reload URL tracks the selection while preserving the batch');assert.equal(JSON.parse(new URLSearchParams(context.location.search).get('targets')).length,3);
+  } else if(scenario==='entry-local'){
+    assert.equal(byId('media').dataset.artifactId,'local-old');assert.match(byId('demoStatus').textContent,/局部预览/);assert.doesNotMatch(byId('demoStatus').textContent,/历史视频/);assert.equal(byId('requestDemoRework').hidden,true);assert.equal(byId('approveDemo').hidden,true);
+    const previewCopy=()=>{assert.equal(byId('demoNavigator').attributes['aria-label'],'当前预览场景定位');assert.equal(byId('demoNavHelp').textContent,'点击场景暂停定位；当前预览连续播放。');assert.equal(byId('demoCueNavigation').attributes['aria-label'],'预览场景');assert.equal(byId('feedbackBody').attributes['aria-label'],'预览修改意见');assert.equal(byId('demoWholeFeedbackText').textContent,'整个预览意见')};previewCopy();
+    const player=byId('media').video;player.currentTime=.5;byId('feedbackBody').value='Local timing';byId('feedbackBody').oninput();assert.equal(byId('timeStart').value,'5/2s');
+    entryData.artifacts.push({...entryData.artifacts.at(-1),id:'local-new',path:'previews/new.mp4',createdAt:'2027'});entryData.editRevision++;await context.selectVersion('v1',{preserveTarget:true});assert.equal(byId('media').video,player);assert.equal(byId('media').dataset.artifactId,'local-old');
+    const before=requests.filter(r=>r.options?.method==='POST').length;await context.submitDemoRound(true);assert.equal(requests.filter(r=>r.options?.method==='POST').length,before,'local preview never grants a full Demo rework');
+    elements.clear();const reloaded=vm.createContext({...context});for(const name of ['review-state.js','review-common.js','review-scenes.js','review-entry.js','review-v3.js'])vm.runInContext(fs.readFileSync('assets/review-v3/'+name,'utf8'),reloaded);await new Promise(setImmediate);
+    assert.equal(byId('feedbackBody').value,'Local timing','a reload after new production restores the saved draft');assert.equal(vm.runInContext('target.artifactId',reloaded),'local-old');assert.equal(byId('timeStart').value,'5/2s');
+    await reloaded.submitFeedback({preventDefault(){}});assert.equal(byId('feedbackBody').value,'','saving a restored draft removes its original storage entry');
+    entryData.artifacts.push({...entryData.artifacts.at(-1),id:'cue-movie',kind:'cue-preview',createdAt:'2028'},{...entryData.artifacts[0],id:'full-new',createdAt:'2030'});entryData.editRevision++;await reloaded.selectVersion('v1',{preserveTarget:true});
+    reloaded.showArtifact(vm.runInContext("state.artifacts.find(a=>a.id==='cue-movie')",reloaded));previewCopy();byId('demoWholeFeedback').checked=true;byId('demoWholeFeedback').onchange();assert.equal(byId('demoTimeAnchor').textContent,'整个预览意见 · 不绑定时间');
+    assert.equal(byId('newDemoNotice').hidden,false);assert.equal(byId('newDemoNoticeText').textContent,'新整片 Demo 已生成，');assert.equal(byId('viewNewDemo').textContent,'查看整片 Demo');assert.equal(byId('media').dataset.artifactId,'cue-movie','new full Demo notice does not switch the current preview');
+    byId('viewNewDemo').onclick();assert.equal(byId('media').dataset.artifactId,'full-new');assert.equal(byId('demoNavigator').attributes['aria-label'],'整片 Demo 场景定位');assert.equal(byId('demoNavHelp').textContent,'点击场景暂停定位；整片连续播放。');assert.equal(byId('feedbackBody').attributes['aria-label'],'Demo 修改意见');assert.equal(byId('demoWholeFeedbackText').textContent,'整片意见');assert.equal(byId('demoTimeAnchor').textContent,'整版意见 · 不绑定时间');
+  } else if(scenario==='demo-poll') {
     context.activateTab('preview');assert.equal(intervalCalls.at(-1).ms,15000,'visible idle Demo discovers future jobs');
     let release,reads=0;context.fetch=async()=>{reads++;return new Promise(resolve=>{release=()=>resolve({ok:true,json:async()=>version()})})};const first=context.refreshReview();await Promise.resolve();context.refreshReview();assert.equal(reads,1,'no overlapping idle request');release();await first;
     context.document.hidden=true;const before=intervalCalls.length;context.scheduleReviewPoll();assert.equal(intervalCalls.length,before,'hidden page has no idle interval');context.document.hidden=false;context.fetch=async()=>({ok:true,json:async()=>version()});await documentEvents.visibilitychange();

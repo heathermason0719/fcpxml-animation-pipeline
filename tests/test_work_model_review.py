@@ -119,7 +119,7 @@ class WorkModelReviewServerTests(unittest.TestCase):
         status, _, body = self.request('GET', '/')
         self.assertEqual(status, 200)
         scripts = re.findall(r'<script src="([^"]+)"', body.decode())
-        self.assertEqual(scripts, ['/review-state.js', '/review-common.js', '/review-scenes.js', '/review-v3.js'])
+        self.assertEqual(scripts, ['/review-state.js', '/review-common.js', '/review-scenes.js', '/review-entry.js', '/review-v3.js'])
         for script in scripts:
             with self.subTest(script=script):
                 status, headers, body = self.request('GET', script)

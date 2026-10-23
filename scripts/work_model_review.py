@@ -354,7 +354,7 @@ def make_handler(afterforge_root: Path, *, model_api: Any | None = None):
                     self._asset("review-neutral.css", "text/css; charset=utf-8")
                 elif parsed.path == "/review-v3.css":
                     self._asset("review-v3.css", "text/css; charset=utf-8")
-                elif parsed.path in {"/review-v3.js", "/review-state.js", "/review-common.js", "/review-scenes.js"}:
+                elif parsed.path in {"/review-v3.js", "/review-state.js", "/review-common.js", "/review-scenes.js", "/review-entry.js"}:
                     self._asset(parsed.path[1:], "text/javascript; charset=utf-8")
                 elif parsed.path == "/api/identity":
                     self._json(200, identity)

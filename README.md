@@ -8,6 +8,12 @@
 
 需要本地 Python、FFmpeg/ffprobe、Node/npm，以及明确版本的 HyperFrames。Python 依赖在 `requirements.txt`。依赖安装和 Skill 安装需单独授权；命令不会探测 latest 或自动迁移旧工程。
 
+首次投稿时，在工作区的 `user-inbox/` 下自建并命名单集材料目录，放好材料后提供准确路径。文案起步必需完整脚本及本集主题；参考图、电影片段和风格示例可选。粗剪起步需要同一时间线版本导出的 FCPXML/FCPXMLD、匹配参考视频，以及足够旁白依据（脚本、字幕或明确无旁白的证据），并保持源媒体可访问。Agent 先检查已有材料：无法理解内容时只补问缺少的必需项；可以讨论但制作材料不足时，说明限制，由用户决定先补齐还是先讨论。
+
+材料齐全后，Agent 理解完整脚本与可用粗剪，主动提出动画方案，并协商增删、调整与合并。生图前汇总完整待制作清单，询问是否还需新增，等待明确答复；含糊回复不算收口。`cues` 是唯一可编辑方案，版本内可选的 `creativePlanning` 只保存呈现快照、真实答复、探索轮次及调用历史，供恢复时区分当前约定、待回复、待讨论和已被替代的内容。明确局部指令可直接推进，不要求全片重新讨论。
+
+概念图探索按稳定创作对象、每轮最多 3 个风格方向、同问题连续 3 次未解决修正、9 次实际图像调用控制；失败和真正重试计入调用，一次多图计一次，多对象分别计数。满意或明显无效可提前停，达到任一上限交回现有候选及未解决问题；用户明确要求继续才能保留历史另开轮。未决调用占用额度，先核对真实结果，不因换会话、技术改名或重试清零。具体判断与记录方法以 [SKILL](SKILL.md) 和 [操作细节](references/agent-operations.md) 为准，不增加渲染或交付门槛。
+
 ```bash
 .venv/bin/python scripts/afterforge.py open "/workspace/AfterForge"
 .venv/bin/python scripts/afterforge.py open "/workspace/AfterForge" --request-file /tmp/open.json
@@ -124,6 +130,8 @@ AfterForge/
 
 开发约束见 [AGENTS.md](AGENTS.md)，项目边界见 [PROJECT](docs/PROJECT.md)，可靠状态见 [CURRENT](docs/CURRENT.md)，接口与实现见 [ARCHITECTURE](docs/ARCHITECTURE.md)，决策适用范围见 [DECISIONS](docs/DECISIONS.md)。
 
-完整 Demo 的正常 CLI preview、缓存返回与 resume 回执含本次 `reviewEntry`，Agent 在线程交给用户准确 URL。CLI 复用身份匹配的本地审核服务，缺失时启动；入口失败保留媒体成功及重开方法。URL 定位制作版、Demo 与视频；可见空闲页会低频发现新片并提示“查看新版”，旧播放、草稿及意见不改绑。场景定位来自所审产物的冻结时序；旧视频缺映射时仍可保存视频 ID、时间和正文，显示场景未定位。返修一轮由一个执行线程负责；浏览和留言可并行。受管过程资产通过工具换图和整理，不在 Finder 直接搬动。
+每次向用户提交画面供查看、反馈或确认，都提供准确正式 `reviewEntry.url`：包括非推荐或批量概念候选、Storyboard 快照／场景、局部／单场视频及完整 Demo。媒体直发、临时 HTML 或自建画廊不能替代 Review；内部生成筛选无需逐次交棒。CLI 概念 update 及完成的 preview／缓存／resume 返回入口，`targets` 保留批量全部目标，首目标兼容放在顶层。URL 使用 `versionId/tab` 加 `conceptId`、`storyboardId+cueId`（可加 `frameId`）或 `artifactId`；批量 `targets` 为 JSON 编码数组。明确目标缺失时报错，不改看最新结果。
+
+CLI 在业务事务后复用或启动身份匹配的本地服务，服务管理不进入共享制作 API。内部操作可加 `--no-review-entry` 暂不启动服务，仍返回准确 `targets/query/reopen`。入口失败保留登记／媒体成功事实，修复服务或用原请求重试入口，不重新生成、登记或渲染；可用 URL 才算完成对用户的交棒。页面刷新、服务重启或新产物到达后保留阅读选择及草稿原定位，切换新版由用户决定。local/cue 视频显示实际类型、时间与反馈，不提供整片专用返修／交付操作。场景定位来自所审视频冻结时序；无映射旧片仍可保存视频、时间和正文意见。返修由一个执行线程负责，浏览留言可并行；受管资产通过工具管理。
 
 日常开始／恢复默认使用 `status --summary`，按需 `--cue-id` 或 `--feedback-id` 展开，原全量 `status` 保留。局部 Cue 用 edit 的 `cueUpdates`；多张概念候选用 `concept/register-batch` 并逐项明确推荐，登记不确认。请求例子与字段按需见 [Agent 操作细节](references/agent-operations.md)。已有项目入口不自动覆盖。

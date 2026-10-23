@@ -149,7 +149,7 @@ def register_batch(root, manifest, request):
     items = request.get('items')
     if not isinstance(items,list) or not items:
         raise ValueError('register-batch requires nonempty items')
-    allowed = {'cueId','imageSource','origin','idea','motion','recommend'}
+    allowed = {'cueId','imageSource','origin','idea','motion','recommend','planningAttemptId'}
     recommended = set()
     for item in items:
         if not isinstance(item,dict) or set(item) - allowed or type(item.get('recommend')) is not bool:
@@ -188,6 +188,7 @@ def update_concept(root, manifest, request):
         if not image_current(root, record):
             raise ValueError('concept image unavailable; restore the recorded image bytes')
         state = _object(manifest, record['objectId'])['concept']
+        state['selectionId'] = identifier('concept-selection')
         adopted = confirmed(manifest, record['objectId'])
         from scripts.work_model_feedback_targets import same_concept_image
         if adopted and same_concept_image(manifest, adopted['id'], record['id']):
@@ -238,6 +239,10 @@ def update_concept(root, manifest, request):
         record = _concept(manifest, request.get('conceptId'))
         if not record:
             raise ValueError('unknown conceptId')
+        if record.get('planningAttemptId'):
+            from scripts.work_model_planning import candidate_current
+            if not candidate_current(manifest, record['planningAttemptId'], record['objectId'], registering=False):
+                raise ValueError('stale generated candidate requires an explicit user selection')
         state = _object(manifest, record['objectId'])['concept']
         if confirmed(manifest, record['objectId']) and state.get('confirmedId') != record['id']:
             raise ValueError('confirmed concept changes require an explicit user concept revision')
@@ -253,6 +258,12 @@ def update_concept(root, manifest, request):
     recommend, adopt = request.get('recommend', True), request.get('adopt', False)
     if type(recommend) is not bool or type(adopt) is not bool:
         raise ValueError('concept recommend/adopt must be booleans')
+    if 'planningAttemptId' in request:
+        from scripts.work_model_planning import candidate_current
+        current = candidate_current(manifest, request['planningAttemptId'], oid)
+        if adopt:
+            raise ValueError('generated planning results are candidates; confirm the registered image separately')
+        recommend = recommend and current
     if confirmed(manifest, oid) and (recommend or adopt):
         raise ValueError('confirmed concept changes require an explicit user concept revision')
     if adopt and not recommend:
@@ -262,6 +273,8 @@ def update_concept(root, manifest, request):
             or not isinstance(origin.get('reference'), str) or not origin['reference'].strip()
             or set(origin) - {'kind', 'reference', 'model'}):
         raise ValueError('concept origin requires actual kind and source reference; model is optional')
+    if 'planningAttemptId' in request and origin['kind'] != 'codex-generated':
+        raise ValueError('planningAttemptId belongs to an actual generated candidate, not an imported image')
     for field in ('idea', 'motion'):
         if not isinstance(request.get(field), str) or not request[field].strip():
             raise ValueError('concept requires a short idea and motion description')
@@ -280,6 +293,8 @@ def update_concept(root, manifest, request):
               'path': relative, 'sha256': hashlib.sha256(data).hexdigest(), 'dimensions': dimensions,
               'origin': copy.deepcopy(origin), 'idea': request['idea'].strip(), 'motion': request['motion'].strip(),
               'contentContext': content_context(manifest, cue)}
+    if 'planningAttemptId' in request:
+        record['planningAttemptId'] = request['planningAttemptId']
     manifest.setdefault('concepts', []).append(record)
     if recommend:
         state['recommendedId'] = concept_id

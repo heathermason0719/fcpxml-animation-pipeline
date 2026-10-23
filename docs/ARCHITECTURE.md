@@ -9,6 +9,10 @@
 
 旧 schema 2.0 位于 `references/legacy/animation-manifest-v2.schema.json`；Stage Contract 1.0.0 与原阶段语义不变。旧生产实现的解释见 [legacy 架构](../references/legacy/architecture-v2.md)，仅在读取历史合同或显式旧工具维护时加载。新版不调用阶段 resolver。
 
+当前创作方案只编辑 `cues`。可选 `creativePlanning: {plans, rounds, attempts}` 保存在版本 manifest：present 冻结已向用户汇总的完整或明确局部方案及收口问题，close 绑定 planId 和真实答复；内容或范围实质变化只使相关约定需要讨论，无关写入和技术改名不清空。Agent 的入口行为是先理解完整脚本／可用粗剪、主动提案协商，生图前等待新增问题的明确答复；记录不替 Agent 判断答复含义，也不成为生产资格。
+
+begin-image／finish-image 记录实际工具调用与看图判断，候选通过现有 concept 登记关联 planningAttemptId。每稳定对象每轮最多 3 个方向、同问题连续 3 次未解决修正、9 次实际调用；失败及实际重试计数，多图一次、多对象各一次，用户导入图不消耗额度。pending 先占位并等待真实证据核对，不能盲目重试或另开轮；stop 可提前结束，continue 须真实用户来源并保留 previousRoundId。探索轮独立于 concept.round，记录不调用／拦截图像工具，不进入媒体、审阅或交付指纹。summary 投影当前约定、待回复／待讨论、额度及停止原因；完整 status 和 Cue 详情保留 history，不把历史方案当作当前要求。
+
 ## 布局与边界
 
 ```text
@@ -38,7 +42,7 @@ AfterForge/
 
 ## 应用层
 
-`update` 的创作交互包括 `concept`、`concept-handoff`、`scene-review`、`feedback`、`review-submit`、`review-progress`、`feedback-applicability`、`decision`/原子 `decisions`、`exploration` 与 `exploration-adopt`。`preview` 支持 `storyboard`、`exploration`、局部与 `full`；full 绑定已有或 inline `authorize-demo` 的 taskId 和范围。`work_model_policy.py` 管对象关系、生产依据和可执行来源发布，`work_model_feedback.py` 管反馈/轮次，`work_model_storyboard.py` 管静帧，`work_model_exploration.py` 管候选与采用。
+`update` 的创作交互包括 `creative-planning`、`concept`、`concept-handoff`、`scene-review`、`feedback`、`review-submit`、`review-progress`、`feedback-applicability`、`decision`/原子 `decisions`、`exploration` 与 `exploration-adopt`。`preview` 支持 `storyboard`、`exploration`、局部与 `full`；full 绑定已有或 inline `authorize-demo` 的 taskId 和范围。`work_model_policy.py` 管对象关系、生产依据和可执行来源发布，`work_model_feedback.py` 管反馈/轮次，`work_model_storyboard.py` 管静帧，`work_model_exploration.py` 管候选与采用。
 
 | 组件 | 职责 |
 |---|---|
@@ -50,6 +54,7 @@ AfterForge/
 | `work_model_jobs.py` | 固定快照、可恢复执行、缓存验证、产物/交付发布 |
 | `work_model_media.py` | 受应用层制作依据核验后的原生渲染、FFmpeg 合成与实际 Alpha |
 | `work_model_concepts.py` | 概念图片校验、受控登记、推荐／原子改稿选择、历史图重用与来源链、批量确认、原子分镜交棒及生产依据 |
+| `work_model_planning.py` | 可选创作讨论快照、收口答复、按稳定对象的图像探索轮次／调用记录及恢复投影；不执行图像工具 |
 | `work_model_policy.py` | 产品创作对象、首次确认、限定探索、整版任务依据及资格核验 |
 | `work_model_storyboard_production.py` | Storyboard 制作交棒的范围／快照校验、暂缓提示与委托状态投影 |
 | `work_model_storyboard.py` | PNG 合同 5 输入、旧合同核验复用、完整 Storyboard 文字快照及局部说明引用 |
@@ -60,6 +65,7 @@ AfterForge/
 | `delivery_contract.py` / `delivery_media.py` / `delivery_validation.py` | 读取 JSON 合同、解析资源图与登记来源、哈希/inode 及实际媒体规格核验 |
 | `work_model_native_delivery.py` | 待发布媒体硬链接；发布后仅保留正式目录定位与输入键索引 |
 | `work_model_review.py` / `assets/review-v3` | 系列 Review、统一 API、媒体流、下载与冲突草稿 |
+| `work_model_review_entry.py` / `review-entry.js` | CLI 结果的精确正式入口、批量目标、事务后服务定位与页面阅读位置恢复 |
 
 CLI 与 HTTP 调用同一应用层。短写入在已有 `manifest_transaction` 版本锁内重新读取、校验并发布，多文件失败回滚；跨系列操作先项目锁后版本锁。所有写入要求 requestId 和 expectedRevision，重复请求不能丢评论或重复交付。
 
@@ -129,6 +135,8 @@ Storyboard 顶部的「确认本轮，生成整片 Demo」复用 `update decisio
 
 新 full/local Demo 在产物 `reviewCues` 中只冻结所呈现场景的 id/objectId/title 与有理数 start/duration；既有 productionBasis、previewRequest 和原 authorize-demo 决定继续提供执行与范围依据。反馈 writer 用冻结时序核验场景及对象，不用当前时序解释旧片；无映射历史视频允许时间正文意见。明确返修的 review-submit 校验 artifact SHA 与准确反馈集合，按原委托复制展示、排除、时间边界并登记新 taskId，已有 roundId 可精确引用。普通提交无新委托；任务、事务和去重仍复用原机制。
 
-CLI 的 work_model_review_entry 为本次结果整理 reviewEntry；服务查找／启动仅在 CLI 层，媒体结果与 job 回执不写 URL。项目运行区 工程/review-service.json 只保留单个定位线索；/api/identity 返回进程启动时项目、模式、代码目录与内容身份。匹配才复用，不杀未知或旧进程；服务失败保留媒体成功。页面以 versionId/tab/artifactId 精确定位，明确缺失不降级。可见 Demo 空闲时每 15 秒读取已有 state，任务运行时沿用 4 秒；隐藏时停止定时读取，回前台／进入 Demo／手动刷新均可发现新片。防重叠与既有 revision 保护并用；同视频不重建播放器，切换须用户点击。
+CLI 的 work_model_review_entry 在概念 update 或完成的 preview／缓存／resume 后整理 reviewEntry，保留全部有序 targets 并兼容顶层首目标。每项绑定 versionId/tab 与 conceptId、storyboardId+cueId（可含 frameId）或 artifactId，覆盖非推荐候选、历史分镜及 local/cue/full 视频；批量 URL 的 targets 是 JSON 编码数组。work_model_storyboard 的纯投影生成 status.storyboard.snapshots，提供冻结文字、帧映射和图片身份；页面读取准确快照，明确缺失不替换为当前内容。对用户提交画面必须交棒此正式入口，不以媒体直发或临时 HTML 替代；内部生成筛选无需逐次交棒。
+
+服务查找／启动只在 CLI 的业务事务之后，manifest 和 job 不保存 URL。--no-review-entry 暂不启动服务但保留 targets/query/reopen。项目运行区 工程/review-service.json 仅是定位线索；/api/identity 返回启动时项目、模式、代码目录与内容身份，匹配才复用。服务失败保留登记／产物成功回执与准确重开目标，原请求重试只重开已有结果。review-entry.js 保存阅读偏好，不复制生产事实；刷新／重启／新产物不切换所选内容或改绑未保存意见。local/cue 共用播放器及原时间范围，不显示整片专用返修／交付操作。可见视频页空闲每 15 秒读 state，任务运行时每 4 秒，隐藏时停止；同视频不重建播放器，切新版须用户点击。
 
 Agent 的 status --summary／--cue-id／--feedback-id 由现有完整 status 派生，完整 HTTP／Python／CLI 默认接口保留。work_model_summary 只投影当前目标、意图、Cue 索引、原反馈及委托／预览定位；Cue 相关性复用 feedback_applies，所有 open 意见仍在索引中，不能以摘要代替执行核验。edit 的 cueUpdates 在原事务中展开为完整内存 Cue 列表，再走原对象绑定、Schema、依赖与发布校验；字典合并、数组替换。concept/register-batch 同一外层事务逐项调用原 register 图片准备器，先核对显式推荐每对象至多一个，再统一发布或回滚；没有额外资产或任务引擎。参数细节集中于 references/agent-operations.md，SKILL 和新项目模板默认使用短查询，不自动覆盖已有入口。

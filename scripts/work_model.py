@@ -464,6 +464,8 @@ def status(version_root, *, view='full', cue_id=None, feedback_id=None):
     if concepts.enabled(manifest):
         result['conceptDesign'] = concepts.status(root, manifest)
     result['workingIntent'] = copy.deepcopy(manifest.get('workingIntent', {'items': []}))
+    from scripts.work_model_planning import status as planning_status
+    result['creativePlanning'] = planning_status(manifest)
     from scripts.work_model_scene_review import status as scene_review_status
     result['sceneReviews'] = scene_review_status(root, manifest)
     from scripts.work_model_policy import artifact_eligible, first_confirmed, storyboard_current
@@ -500,6 +502,8 @@ def status(version_root, *, view='full', cue_id=None, feedback_id=None):
     from scripts.work_model_storyboard_production import latest_request
     result['storyboard'] = {'cues': cards, 'rounds': copy.deepcopy(manifest.get('reviewRounds', [])),
                             'productionRequest': copy.deepcopy(latest_request(manifest))}
+    from scripts.work_model_storyboard import review_snapshots
+    result['storyboard']['snapshots'] = review_snapshots(manifest, artifacts, cards)
     result['explorations'] = copy.deepcopy(manifest.get('explorations', []))
     result['workScopeCueIds'] = []
     result['presentationCueIds'] = [c['id'] for c in animation_cues(manifest)]
@@ -670,7 +674,7 @@ def update(version_root, request):
     # Check read-only before creating a lock in a historical directory.
     load(root, writable=True)
     afterforge, _ = layout(root)
-    if request.get('operation') in {'working-intent', 'scene-review', 'concept-handoff'}:
+    if request.get('operation') in {'working-intent', 'scene-review', 'concept-handoff', 'creative-planning'}:
         # These short writes must not upgrade policy or correct unrelated
         # production history. A concept handoff confirms only its selected images.
         with manifest_transaction(root):
@@ -681,6 +685,9 @@ def update(version_root, request):
             if request['operation'] == 'working-intent':
                 from scripts.work_model_intent import update_intent
                 record = update_intent(manifest, request)
+            elif request['operation'] == 'creative-planning':
+                from scripts.work_model_planning import update_planning
+                record = update_planning(manifest, request)
             elif request['operation'] == 'scene-review':
                 from scripts.work_model_scene_review import acknowledge
                 record = acknowledge(root, manifest, request)

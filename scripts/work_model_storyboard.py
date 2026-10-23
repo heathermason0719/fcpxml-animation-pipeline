@@ -40,6 +40,33 @@ _SCRIPT_WITH_SRC = re.compile(r"<script\b[^>]*\bsrc\s*=\s*([\"'])(?P<src>[^\"']+
 _MODULE_IMPORT = re.compile(r"(?:import\s+(?:[^;]*?\s+from\s+)?|import\s*\()([\"'])(?P<src>[^\"']+)\1[^;]*;?", re.I)
 
 
+def review_snapshots(manifest, artifacts, current_cards):
+    """Read-only frozen scenes for exact historical Review links, never qualifications."""
+    current = {card['storyboardId']: card for card in current_cards if card.get('storyboardId')}
+    cues = {cue['id']: cue for cue in manifest.get('cues', [])}
+    snapshots = []
+    for board in manifest.get('storyboards', []):
+        if board['id'] in current:
+            card = copy.deepcopy(current[board['id']])
+            card['current'] = not any(p.get('code') in {'missing-storyboard', 'storyboard-not-current'}
+                                      for p in card.get('productionProblems', []) + card.get('confirmationProblems', []))
+        else:
+            narrations = {f['frameId']: f.get('narration') for f in board.get('frameNarrations', [])}
+            card = {'id': board['cueId'], 'objectId': board['objectId'], 'storyboardId': board['id'],
+                    'title': board.get('title', cues.get(board['cueId'], {}).get('title', board['cueId'])),
+                    'current': False, 'canConfirm': False, 'firstConfirmed': False,
+                    'confirmationProblems': [],
+                    'productionProblems': [{'code': 'storyboard-not-current', 'message': 'Historical Storyboard snapshot'}],
+                    'frames': [{**copy.deepcopy(artifacts[key]), 'artifactId': key,
+                                'frameNarration': narrations.get(artifacts[key].get('frameId'))}
+                               for key in board['artifactIds'] if key in artifacts]}
+            for key, default in [('narration', ''), ('finalAnimationDescription', ''), ('contentContext', {}),
+                                 ('animationNotes', []), ('reviewInputKey', None)]:
+                card[key] = copy.deepcopy(board.get(key, default))
+        snapshots.append(card)
+    return snapshots
+
+
 def _inside(root: Path, path: Path) -> Path:
     root = root.expanduser().resolve()
     path = path.expanduser().resolve(strict=False)

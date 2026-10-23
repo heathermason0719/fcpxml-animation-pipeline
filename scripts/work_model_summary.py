@@ -40,7 +40,9 @@ def project_view(manifest, state, *, view='full', cue_id=None, feedback_id=None)
         cue = next((c for c in cues if c['id'] == cue_id), None)
         if cue is None:
             raise ValueError('unknown cue_id')
+        from scripts.work_model_planning import status as planning_status
         return {**base, 'cue':copy.deepcopy(cue),
+            'creativePlanning':planning_status(manifest, object_id=cue.get('objectId')) if cue.get('objectId') else None,
             'feedback':[copy.deepcopy(f) for f in opened if applies(f,cue)],
             'conceptDesign':next((copy.deepcopy(c) for c in state.get('conceptDesign', {}).get('cues', []) if c['cueId'] == cue_id), None),
             'storyboard':next((copy.deepcopy(c) for c in state.get('storyboard', {}).get('cues', []) if c['id'] == cue_id), None)}
@@ -54,6 +56,7 @@ def project_view(manifest, state, *, view='full', cue_id=None, feedback_id=None)
     tasks = sorted(state.get('tasks', []), key=lambda t:t.get('createdAt',''))
     return {**base, 'currentGoal':_fields(state.get('brief', {}), ('summary','changeSummary')),
         'workingIntent':copy.deepcopy(state.get('workingIntent', {'items':[]})), 'cues':cue_index,
+        'creativePlanning':_fields(state.get('creativePlanning', {}), ('objects','rounds','historyCount')),
         'productionRequest':copy.deepcopy(state.get('storyboard', {}).get('productionRequest')),
         'conceptHandoff':copy.deepcopy(state.get('conceptDesign', {}).get('storyboardHandoff')),
         'latestPreview':_fields(latest, ('id','kind','path','sha256','range','complete','current','coverage')) if latest else None,

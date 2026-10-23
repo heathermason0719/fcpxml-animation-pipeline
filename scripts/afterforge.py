@@ -17,6 +17,7 @@ def main(argv=None):
     parser.add_argument("action", choices=("open", "status", "update", "preview", "deliver", "resume"))
     parser.add_argument("target", type=Path)
     parser.add_argument("--request-file", type=Path)
+    parser.add_argument('--no-review-entry', action='store_true', help='保留准确审阅目标，内部制作时不启动 Review 服务')
     views = parser.add_mutually_exclusive_group()
     views.add_argument('--summary', action='store_true', help='短状态，制作默认查询')
     views.add_argument('--cue-id', help='展开一个 Cue 及适用反馈')
@@ -42,9 +43,9 @@ def main(argv=None):
             if request is None:
                 raise ValueError("write operations require --request-file")
             result = getattr(work_model, args.action)(args.target, request)
-        if args.action in {'preview', 'resume'} and result.get('status') == 'complete':
+        if args.action in {'update', 'preview', 'resume'} and result.get('status') in {'updated', 'complete'}:
             from scripts.work_model_review_entry import handoff
-            result = handoff(args.target, result)
+            result = handoff(args.target, result, start_service=not args.no_review_entry)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:

@@ -5,7 +5,7 @@ const attemptedReviewRequests=new WeakSet();
 let stateReadCount=0,stateReadSequence=0;
 const storyboardSaveStates=new Map(),storyboardDrafts=new Map(),confirmedDesignCueIds=new Set(),savedStoryboardFeedbackIds=new Set();
 const storyboardStorageKey=(id=versionId)=>`afterforge-review-v3:storyboard:${id||'none'}`;
-const storageKey=()=>`afterforge-review-v3:${versionId||'none'}:${target.artifactId||'all'}:${state?.editRevision??'none'}`;const draftPointerKey=()=>`afterforge-review-v3:pointer:${versionId||'none'}:${state?.editRevision??'none'}`;
+const storageKey=()=>`afterforge-review-v3:${versionId||'none'}:${target.artifactId||'all'}:${state?.editRevision??'none'}`;const draftPointerKey=()=>`afterforge-review-v3:pointer:${versionId||'none'}`;
 const api=async(path,options)=>{const r=await fetch(path,options);const body=await r.json();if(!r.ok){const e=new Error(body.error||'请求失败');e.status=r.status;throw e}return body};
 function versionReady(id=versionId){return id===versionId&&state?.identity?.versionId===id}
 function updateVersionReadiness(){const loading=!versionReady();$('reviewShell').setAttribute('aria-busy',String(loading));for(const node of document.querySelectorAll('.workspace, #feedbackPanel'))node.inert=loading}
@@ -42,10 +42,12 @@ async function selectVersion(id,{preserveTarget=false}={}){
   if(versionId!==id||sequence!==stateReadSequence||nextState.editRevision<(reviewRevisions.get(id)||0))return;
   reviewRevisions.set(id,nextState.editRevision);
   state=nextState;
+  restoreReviewReading();
   settleMutationReceipts(id,nextState.editRevision);
   updateVersionReadiness();
   for(const cueId of confirmedDesignCueIds){const cue=storyboardCues().find(item=>item.id===cueId);if(!cue?.canConfirm||selectedBasis.get(cueId)!==selectionAnchor(cue))confirmedDesignCueIds.delete(cueId)}
   restoreStoryboardDrafts();renderProject();renderState();
+  syncReviewUrl();
   if(preserveTarget&&hadDraft&&basis!==state.editRevision&&!immutableVideoDraft())markDraftStale(basis);
   scheduleReviewPoll();
 }

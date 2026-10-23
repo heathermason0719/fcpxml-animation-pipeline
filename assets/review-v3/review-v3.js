@@ -1,6 +1,6 @@
 let explicitDemoId=null;
 function renderProject(){const root=$('projectTree');root.innerHTML=(project.episodes||[]).map(ep=>{const versions=ep.versions||[],selected=versions.find(v=>v.id===versionId)||versions.at(-1),older=versions.filter(v=>v!==selected);const button=v=>`<button class="version ${v.id===versionId?'active':''} ${v.legacy?'legacy':''}" data-version="${esc(v.id)}">${esc(v.title||v.id)}</button>`;return `<section><div class="episode">${esc(ep.title||ep.id)}</div>${selected?button(selected):''}${older.length?`<details><summary>其他制作版（${older.length}）</summary>${older.map(button).join('')}</details>`:''}</section>`}).join('');document.querySelectorAll('[data-version]').forEach(el=>el.onclick=()=>selectVersion(el.dataset.version))}
-function renderState(){if(!state)return;$('versionTitle').textContent=`${state.identity?.episodeTitle||''} · ${state.identity?.versionTitle||''}`;$('title').textContent=state.brief?.summary||state.identity?.versionTitle||'审阅工作台';$('summary').textContent=state.legacy?'这是旧版记录，可查看历史产物。':'集中查看预览、反馈和交付状态。';$('revision').textContent=`编辑版本 ${state.editRevision}`;$('exportScript').href=`/script?version=${encodeURIComponent(versionId)}`;renderBrief();renderWorkingIntent();renderCueNavigation();renderStoryboards();renderExplorations();renderCues();renderArtifacts();renderFeedback();renderActions();renderTasks();renderComparison();restoreDraft();layoutFeedbackPanel();renderDemoFeedback();updateDemoTimeAnchor();renderFeedbackSaveStatus()}
+function renderState(){if(!state)return;$('versionTitle').textContent=`${state.identity?.episodeTitle||''} · ${state.identity?.versionTitle||''}`;$('title').textContent=state.brief?.summary||state.identity?.versionTitle||'审阅工作台';$('summary').textContent=state.legacy?'这是旧版记录，可查看历史产物。':'集中查看预览、反馈和交付状态。';$('revision').textContent=`编辑版本 ${state.editRevision}`;$('exportScript').href=`/script?version=${encodeURIComponent(versionId)}`;renderBrief();renderWorkingIntent();renderCueNavigation();renderStoryboards();renderExplorations();renderCues();renderArtifacts();renderFeedback();renderActions();renderTasks();renderComparison();restoreDraft();layoutFeedbackPanel();renderDemoFeedback();updateDemoTimeAnchor();renderFeedbackSaveStatus();renderReviewEntry();saveReviewReading()}
 const conceptSelections=new Map(),conceptWrites=new Set(),conceptMessages=new Map();
 let conceptGallery=null;
 function clearConceptGallery(){conceptGallery=null;candidateChange=null;$('previousConcept').hidden=true;$('nextConcept').hidden=true;$('conceptGalleryPosition').textContent='';for(const id of ['galleryAdopt','galleryFeedback','galleryThumbnails','galleryIdea','galleryStatus'])$(id).hidden=true}
@@ -76,7 +76,7 @@ async function submitStoryboardProduction(){
   finally{productionChecking=false;if(storyboardProduction===plan)$('submitProduction').disabled=changed}
 }
 
-function storyboardCues(){return state?.storyboard?.cues||[]}
+function storyboardCues(){return displayedStoryboardCues()}
 function storyboardKey(cue,frame){return JSON.stringify([versionId,cue.id,cue.storyboardId,frame.frameId])}
 function storyboardAnchor(frame){return JSON.stringify([frame.artifactId,frame.path,frame.sha256])}
 function storyboardFrame(cue,frame){return (cue.frames||[]).find(item=>item.frameId===frame.frameId)}
@@ -352,6 +352,7 @@ function incompleteText(a){const missing=(a.missingCueIds||[]).join('、');retur
 function updateMediaTime(a,localTime=0){$('mediaTime').textContent=`全局时间：${formatTime(parseTime(a?.range?.start)+localTime)}`}
 function isVideoArtifact(a){return /\.(mp4|mov|webm)$/i.test(a?.path||'')}
 function playingArtifact(){return (state?.artifacts||[]).find(a=>a.id===$('media').dataset.artifactId)}
+function partialPreview(a=playingArtifact()){return ['local-preview','cue-preview'].includes(a?.kind)}
 function renderMedia(a){
   if(!a)return;
   const video=isVideoArtifact(a);$('media').innerHTML=video?`<video controls preload="metadata" src="${esc(artifactUrl(a))}"></video>`:`<img alt="${esc(a.kind||'审阅素材')}" src="${esc(artifactUrl(a))}">`;
@@ -371,11 +372,11 @@ function renderArtifacts(){
   if(selected&&($('media').dataset.artifactId!==selected.id||!$('media').querySelector?.('video')))renderMedia(selected);
   renderDemoStatus();
 }
-function showArtifact(a){if(!a)return;explicitDemoId=null;if(!demoRoundStates.get(versionId)?.busy)demoRoundStates.delete(versionId);if(!feedbackSaveStates.get(versionId)?.busy)feedbackSaveStates.delete(versionId);$('message').textContent='';renderMedia(a);activateTab('preview');renderDemoNavigation();renderDemoFeedback();renderDemoStatus()}
+function showArtifact(a){if(!a)return;explicitDemoId=a.id;rememberReviewTarget({tab:'preview',artifactId:a.id});if(!demoRoundStates.get(versionId)?.busy)demoRoundStates.delete(versionId);if(!feedbackSaveStates.get(versionId)?.busy)feedbackSaveStates.delete(versionId);$('message').textContent='';renderMedia(a);activateTab('preview');renderDemoNavigation();renderDemoFeedback();renderDemoStatus()}
 function jumpToTime(value,artifactId){
   const seconds=parseTime(value);if(!Number.isFinite(seconds)||seconds<0)return false;
   const art=(state.artifacts||[]).find(a=>a.id===artifactId&&isVideoArtifact(a))||(artifactId?null:playingArtifact()||latestFullPreview(state));if(!art){$('demoStatus').textContent='指定视频不可用，未切换到其他视频。';return false;}
-  explicitDemoId=null;
+  explicitDemoId=art.id;rememberReviewTarget({tab:'preview',artifactId:art.id});
   if(playingArtifact()?.id!==art.id||!$('media').querySelector?.('video'))renderMedia(art);
   renderDemoNavigation();renderDemoFeedback();
   const player=$('media').querySelector?.('video');if(player){player.pause();player.currentTime=Math.max(0,seconds-parseTime(art.range?.start||'0s'))}
@@ -407,7 +408,7 @@ function renderTasks(){
   const tasks=state.tasks||[];$('demoTasks').innerHTML=tasks.map(task=>`<details><summary>${esc({failed:'历史失败',complete:'已完成',completed:'已完成'}[task.status]||'执行中')} · ${esc(task.createdAt||task.id)}</summary><p class="muted">${esc(task.error||task.id)}</p>${task.status==='failed'?`<button data-resume="${esc(task.id)}">恢复此任务</button>`:''}</details>`).join('')||'<p class="muted">暂无任务记录。</p>';
   document.querySelectorAll('[data-resume]').forEach(el=>el.onclick=()=>sendAction('resume',{...requestBase(),jobId:el.dataset.resume}));
 }
-function draft(){return {wholeDemo:$('demoWholeFeedback').checked,body:$('feedbackBody').value,timeStart:$('timeStart').value,timeEnd:$('timeEnd').value,target,basisRevision:draftBasisRevision??state?.editRevision}}function setDraftNotice(message,stale=false){$('draftNotice').hidden=false;$('draftNotice').textContent=message;$('retargetDraft').hidden=!stale;$('submitFeedback').disabled=stale}function saveDraft(){const key=storageKey();localStorage.setItem(key,JSON.stringify(draft()));localStorage.setItem(draftPointerKey(),key)}function clearDraft(){const key=storageKey();localStorage.removeItem(key);if(localStorage.getItem(draftPointerKey())===key)localStorage.removeItem(draftPointerKey())}function markDraftStale(previous){draftStale=true;draftBasisRevision=previous;setDraftNotice(`草稿基于编辑版本 ${previous}，当前已更新为 ${state.editRevision}；请核对后重新定位。`,true)}function restoreDraft(){const raw=localStorage.getItem(localStorage.getItem(draftPointerKey())||storageKey());if(!raw)return;try{const d=JSON.parse(raw);$('demoWholeFeedback').checked=d.wholeDemo??!!(d.body&&!d.timeStart);if(d.target?.versionId===versionId)target=d.target;$('feedbackBody').value=d.body||'';$('timeStart').value=d.timeStart||'';$('timeEnd').value=d.timeEnd||'';draftBasisRevision=d.basisRevision??state.editRevision;if(d.body){$('feedbackTarget').textContent=(target.conceptId||target.artifactId||(target.cueIds||[]).length||target.timeStart)?'已定位反馈':'整个版本';renderCues();if(draftBasisRevision!==state.editRevision&&!immutableVideoDraft())markDraftStale(draftBasisRevision);else setDraftNotice('已恢复本版本、素材和编辑版本对应的本地草稿。')}}catch{}}
+function draft(){return {wholeDemo:$('demoWholeFeedback').checked,body:$('feedbackBody').value,timeStart:$('timeStart').value,timeEnd:$('timeEnd').value,target,basisRevision:draftBasisRevision??state?.editRevision}}function setDraftNotice(message,stale=false){$('draftNotice').hidden=false;$('draftNotice').textContent=message;$('retargetDraft').hidden=!stale;$('submitFeedback').disabled=stale}function saveDraft(){const key=storageKey();localStorage.setItem(key,JSON.stringify(draft()));localStorage.setItem(draftPointerKey(),key)}function clearDraft(){const key=storageKey();localStorage.removeItem(key);if(localStorage.getItem(draftPointerKey())===key)localStorage.removeItem(draftPointerKey())}function markDraftStale(previous){draftStale=true;draftBasisRevision=previous;setDraftNotice(`草稿基于编辑版本 ${previous}，当前已更新为 ${state.editRevision}；请核对后重新定位。`,true)}function restoreDraft(){const raw=localStorage.getItem(localStorage.getItem(draftPointerKey())||localStorage.getItem(`${draftPointerKey()}:${state?.editRevision??'none'}`)||storageKey());if(!raw)return;try{const d=JSON.parse(raw);$('demoWholeFeedback').checked=d.wholeDemo??!!(d.body&&!d.timeStart);if(d.target?.versionId===versionId)target=d.target;$('feedbackBody').value=d.body||'';$('timeStart').value=d.timeStart||'';$('timeEnd').value=d.timeEnd||'';draftBasisRevision=d.basisRevision??state.editRevision;if(d.body){$('feedbackTarget').textContent=(target.conceptId||target.artifactId||(target.cueIds||[]).length||target.timeStart)?'已定位反馈':'整个版本';renderCues();if(draftBasisRevision!==state.editRevision&&!immutableVideoDraft())markDraftStale(draftBasisRevision);else setDraftNotice('已恢复本版本、素材和编辑版本对应的本地草稿。')}}catch{}}
 function selectionAnchor(cue){return JSON.stringify([cue.storyboardId,(cue.frames||[]).map(storyboardAnchor)])}
 async function submitFeedback(e){
   e.preventDefault();if(feedbackSaveStates.get(versionId)?.busy||demoRoundStates.get(versionId)?.busy)return;if(draftStale){markDraftStale(draftBasisRevision);return}
@@ -416,7 +417,7 @@ async function submitFeedback(e){
   if(start===null||end===null||(start&&parseTime(start)<0)||(end&&(!start||parseTime(end)<parseTime(start)))){setFeedbackSaveStatus(versionId,'error','时间必须是有效秒数，且终点不早于起点。');saveDraft();return}
   if(activeTab==='preview'&&!target.artifactId){const a=playingArtifact();if(!a){setFeedbackSaveStatus(versionId,'error','请先选择 Demo 视频。');return}target={versionId,artifactId:a.id}}
   $('timeStart').value=start;$('timeEnd').value=end;
-  const actionVersion=versionId,storedKey=storageKey(),pointerKey=draftPointerKey(),originalTarget=JSON.stringify(target),storedSnapshot=localStorage.getItem(storedKey);
+  const actionVersion=versionId,storedKey=localStorage.getItem(draftPointerKey())||storageKey(),pointerKey=draftPointerKey(),originalTarget=JSON.stringify(target),storedSnapshot=localStorage.getItem(storedKey);
   const request={...requestBase(),operation:'feedback',body,source:{channel:'review',text:body,reference:`review:${actionVersion}:${crypto.randomUUID()}`},target:{...target,timeStart:start||undefined,timeEnd:end||undefined}};
   let saved=false;const token={};setFeedbackSaveStatus(actionVersion,'pending','保存中…',true);feedbackSaveStates.get(actionVersion).token=token;
   const notify=(kind,message,busy=false)=>{if(feedbackSaveStates.get(actionVersion)?.token===token){setFeedbackSaveStatus(actionVersion,kind,message,busy);feedbackSaveStates.get(actionVersion).token=token}};
@@ -478,17 +479,23 @@ function layoutFeedbackPanel(){
   else $('feedbackForm').append($('submitFeedback'));
   $('submitFeedback').setAttribute('form','feedbackForm');$('feedbackTimeRange').hidden=demo&&$('editDemoTime').getAttribute?.('aria-expanded')!=='true';
   $('feedbackBody').placeholder=demo?'开始输入会暂停视频并记录时间，写下希望调整的地方…':'描述希望如何修改；可在预览中选择素材或镜头定位。';
-  $('feedbackBody').setAttribute('aria-label',demo?'Demo 修改意见':'反馈内容');renderFeedbackSaveStatus();
+  $('feedbackBody').setAttribute('aria-label',demo?(partialPreview()?'预览修改意见':'Demo 修改意见'):'反馈内容');updateDemoTimeAnchor();renderFeedbackSaveStatus();
 }
-function updateDemoTimeAnchor(){const t=parseTime($('timeStart').value);$('demoTimeAnchor').textContent=Number.isFinite(t)?`意见时间：${formatTime(t)}`:$('demoWholeFeedback').checked?'整版意见 · 不绑定时间':'开始输入时自动记录时间'}
+function updateDemoTimeAnchor(){const t=parseTime($('timeStart').value);$('demoTimeAnchor').textContent=Number.isFinite(t)?`意见时间：${formatTime(t)}`:$('demoWholeFeedback').checked?(partialPreview()?'整个预览意见 · 不绑定时间':'整版意见 · 不绑定时间'):'开始输入时自动记录时间'}
 function demoIsApproved(){return !!state?.reviewSet&&(state.decisions||[]).some(d=>d.reviewSetId===state.reviewSet.id&&['approve','approve-and-deliver'].includes(d.kind))}
 function renderDemoStatus(){
   if(!state)return;const full=latestFullPreview(state),shown=playingArtifact(),approved=demoIsApproved();
+  const fullVideo=shown?.kind==='full-preview';$('previewTitle').textContent=shown&&!fullVideo?artifactLabels[shown.kind]||'视频预览':'整片 Demo';
+  const partial=partialPreview(shown);$('demoNavigator').setAttribute('aria-label',partial?'当前预览场景定位':'整片 Demo 场景定位');$('demoNavHelp').textContent=partial?'点击场景暂停定位；当前预览连续播放。':'点击场景暂停定位；整片连续播放。';$('demoCueNavigation').setAttribute('aria-label',partial?'预览场景':'Demo 场景');$('demoWholeFeedbackText').textContent=partial?'整个预览意见':'整片意见';
+  $('newDemoNoticeText').textContent=partial?'新整片 Demo 已生成，':'新 Demo 已生成，';$('viewNewDemo').textContent=partial?'查看整片 Demo':'查看新版';
   const newest=latestArtifact((state.artifacts||[]).filter(a=>a.kind==='full-preview')),newer=newest&&shown&&newest.id!==shown.id&&String(newest.createdAt||'')>=String(shown.createdAt||'');$('newDemoNotice').hidden=!newer;$('viewNewDemo').onclick=()=>showArtifact(newest);
   $('demoStatus').textContent=!shown?(explicitDemoId?'指定视频不可用，未切换到其他视频。':'暂无视频预览'):shown.id!==full?.id?`正在查看：${shown.id} · 历史视频${shown.reviewCues?'':' · 场景未定位'}；效果通过仅针对最新完整 Demo`:!full.complete?incompleteText(full):`最新完整 Demo · ${formatTime(parseTime(full.range?.duration))} · ${approved?'本版效果已通过':'待审阅'}`;
+  if(shown&&!fullVideo)$('demoStatus').textContent=`${artifactLabels[shown.kind]||'视频预览'} · ${shown.current?'当前素材':'历史素材'} · ${formatTime(parseTime(shown.range?.start||'0s'))} 起 · ${formatTime(parseTime(shown.range?.duration||'0s'))} · ${shown.id}`;
   if(shown&&!shown.reviewCues&&!$('demoStatus').textContent.includes('场景未定位'))$('demoStatus').textContent+=' · 场景未定位';
   const eligible=full?.complete&&state.reviewSet?.artifactIds?.includes(full.id);
   $('approveDemo').textContent='确认整片，生成交付文件';
+  $('approveDemo').hidden=!fullVideo;$('demoApproval').hidden=!fullVideo;$('demoDeliveryActions').hidden=!fullVideo||!approved;
+  $('requestDemoRework').hidden=!fullVideo;$('demoProductionActions').hidden=!fullVideo;
   $('approveDemo').disabled=!eligible||shown?.id!==full.id||!!feedbackSaveStates.get(versionId)?.busy||!!demoRoundStates.get(versionId)?.busy;
 }
 function demoFeedbackSelection(){
@@ -501,7 +508,7 @@ function demoFeedbackSelection(){
   return {pending,current,latest};
 }
 function demoFeedbackWithdrawn(f){return f.applicability?.kind==='not-applicable'&&f.applicability?.source?.reference?.startsWith('review-feedback-withdraw:')}
-function demoFeedbackCanWithdraw(f){return !f.target?.storyboardId&&!f.target?.explorationId&&(state.artifacts||[]).some(a=>a.id===f.target?.artifactId&&['full-preview','cue-preview'].includes(a.kind))&&(!f.applicability||f.applicability.kind==='current'||demoFeedbackWithdrawn(f))}
+function demoFeedbackCanWithdraw(f){return !f.target?.storyboardId&&!f.target?.explorationId&&(state.artifacts||[]).some(a=>a.id===f.target?.artifactId&&['full-preview','local-preview','cue-preview'].includes(a.kind))&&(!f.applicability||f.applicability.kind==='current'||demoFeedbackWithdrawn(f))}
 function feedbackCard(f,submitted=false){
   const playbackId=f.target?.artifactId;
   const withdrawn=demoFeedbackWithdrawn(f),busy=demoRoundStates.get(versionId)?.busy||feedbackSaveStates.get(versionId)?.busy;
@@ -527,11 +534,13 @@ function renderDemoFeedback(){
   $('demoFeedbackHistory').innerHTML=(state.feedback||[]).filter(f=>!ids.has(f.id)).map(f=>feedbackCard(f)).join('')||'<p class="muted">暂无以往意见。</p>';
   $('demoRoundStatus').textContent=item?.message||(!pending.length&&latest?`最近一轮已提交 ${current.length} 条 · ${{submitted:'待处理',processing:'处理中',processed:'已处理'}[latest.status]||latest.status}`:'看完这一轮，再交给我处理。');
   $('submitDemoRound').disabled=!pending.length||!!item?.busy||!!feedbackSaveStates.get(versionId)?.busy;
-  const requested=(state.decisions||[]).some(d=>d.reviewRoundId===latest?.id);$('requestDemoRework').disabled=(!pending.length&&(!current.length||requested))||!!item?.busy||!!feedbackSaveStates.get(versionId)?.busy;
+  const fullVideo=playingArtifact()?.kind==='full-preview';$('requestDemoRework').hidden=!fullVideo;
+  const requested=(state.decisions||[]).some(d=>d.reviewRoundId===latest?.id);$('requestDemoRework').disabled=!fullVideo||(!pending.length&&(!current.length||requested))||!!item?.busy||!!feedbackSaveStates.get(versionId)?.busy;
   document.querySelectorAll('[data-demo-feedback-withdraw]').forEach(b=>b.onclick=()=>{const f=state.feedback.find(f=>f.id===b.dataset.demoFeedbackWithdraw);if(f)setDemoFeedbackWithdrawn(f.id,!demoFeedbackWithdrawn(f))});
   document.querySelectorAll('[data-demo-feedback-time]').forEach(b=>b.onclick=()=>jumpToTime(b.dataset.demoFeedbackTime,b.dataset.demoFeedbackArtifact));
 }
 async function submitDemoRound(rework=false){
+  if(rework&&playingArtifact()?.kind!=='full-preview')return false;
   const id=versionId;if(demoRoundStates.get(id)?.busy||feedbackSaveStates.get(id)?.busy)return;
   let outgoing,signature;const reviewedId=playingArtifact()?.id;
   const set=(message,busy=false)=>{demoRoundStates.set(id,{message,busy,artifactId:reviewedId,request:outgoing,signature});if(versionId===id){renderDemoFeedback();renderDemoStatus();renderFeedbackSaveStatus()}};
@@ -558,7 +567,7 @@ $('demoWholeFeedback').onchange=()=>{if(draftStale){$('demoWholeFeedback').check
 $('editDemoTime').onclick=()=>{const open=$('feedbackTimeRange').hidden;$('feedbackTimeRange').hidden=!open;$('editDemoTime').setAttribute('aria-expanded',String(open))};
 $('submitDemoRound').onclick=()=>submitDemoRound();
 $('requestDemoRework').onclick=()=>submitDemoRound(true);
-function demoReworkRequest(feedback){const art=playingArtifact(),scope=art?.coverage?.presentedCueIds||[],ids=[...new Set(feedback.flatMap(f=>f.target?.cueIds?.length?f.target.cueIds:f.target?.timeStart?[]:scope))];if(!art||!ids.length||ids.some(id=>!scope.includes(id)))throw new Error('场景尚未定位。意见已保存，请回到对话明确返修场景。');return {artifactId:art.id,decision:{kind:'authorize-demo',taskId:crypto.randomUUID(),cueIds:ids,source:source('按这些意见修改并更新 Demo')}}}
+function demoReworkRequest(feedback){const art=playingArtifact();if(art?.kind!=='full-preview')throw new Error('仅完整 Demo 可以登记整片返修委托。');const scope=art?.coverage?.presentedCueIds||[],ids=[...new Set(feedback.flatMap(f=>f.target?.cueIds?.length?f.target.cueIds:f.target?.timeStart?[]:scope))];if(!art||!ids.length||ids.some(id=>!scope.includes(id)))throw new Error('场景尚未定位。意见已保存，请回到对话明确返修场景。');return {artifactId:art.id,decision:{kind:'authorize-demo',taskId:crypto.randomUUID(),cueIds:ids,source:source('按这些意见修改并更新 Demo')}}}
 $('approveDemo').onclick=()=>{if(!$('approveDemo').disabled)openDeliveryConfirmation()};
 $('confirmConceptProduction').onclick=submitConceptProduction;
 $('cancelConceptProduction').onclick=()=>{conceptProduction=null;$('conceptProductionDialog').close()};
@@ -566,4 +575,23 @@ $('cancelDeliveryConfirm').onclick=()=>{deliveryConfirmation=null;$('deliveryCon
 $('submitDeliveryConfirm').onclick=submitDeliveryConfirmation;
 $('backToTop').onclick=()=>{if(typeof window!=='undefined')window.scrollTo({top:0,behavior:'smooth'})};
 
-(async()=>{project=await api('/api/project');renderProject();const initial=project.episodes?.flatMap(e=>e.versions||[]).find(v=>!v.legacy)||project.episodes?.flatMap(e=>e.versions||[])[0];const params=typeof location==='undefined'?null:new URLSearchParams(location.search);const requested=params?.get('versionId');if(requested&&!allVersions().some(v=>v.id===requested)){throw new Error('指定制作版不可用，未打开其他版本。')}if(initial){explicitDemoId=params?.get('artifactId')||null;await selectVersion(requested||initial.id);if(params?.get('tab')==='preview'||explicitDemoId){activateTab('preview');if(explicitDemoId&&!jumpToTime(playingArtifact()?.range?.start||'0s',explicitDemoId)){$('media').innerHTML='<div class="empty">指定视频不可用。</div>';delete $('media').dataset.artifactId}}else restoreCueHash()}})().catch(error=>{$('summary').textContent=error.message});
+(async()=>{
+  project=await api('/api/project');renderProject();
+  const initial=allVersions().find(v=>!v.legacy)||allVersions()[0],params=typeof location==='undefined'?null:new URLSearchParams(location.search),requested=params?.get('versionId');
+  if(requested&&!allVersions().some(v=>v.id===requested))throw new Error('指定制作版不可用，未打开其他版本。');
+  let entry=null;
+  if(params&&['conceptId','storyboardId','artifactId','cueId'].some(key=>params.has(key))){
+    if(!requested)throw new Error('精确审阅链接缺少制作版，未打开其他版本。');
+    entry={versionId:requested,tab:params.get('tab')||(params.has('artifactId')?'preview':params.has('storyboardId')?'storyboard':'overview')};
+    for(const key of ['conceptId','storyboardId','cueId','artifactId','frameId'])if(params.has(key))entry[key]=params.get(key);
+  }
+  if(params?.has('targets')){
+    const batch=JSON.parse(params.get('targets'));
+    if(!Array.isArray(batch)||!batch.length||batch.some(t=>!t||t.versionId!==requested||!['overview','storyboard','preview'].includes(t.tab)))throw new Error('本次审阅目标列表无效。');
+    reviewEntryTargets=batch;if(!entry)entry=batch[0];
+  }
+  if(initial){reviewEntrySelection=entry;explicitDemoId=entry?.artifactId||null;await selectVersion(requested||initial.id);
+    if(entry||reviewEntrySelection)await openReviewTarget(entry||reviewEntrySelection);
+    else if(params?.get('tab'))activateTab(params.get('tab'));else restoreCueHash();
+  }
+})().catch(error=>{$('summary').textContent=error.message});

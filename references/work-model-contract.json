@@ -208,5 +208,60 @@
       "authority": "registration only; no adoption or confirmation",
       "transaction": "existing update publication, rollback and request deduplication"
     }
+  },
+  "creativePlanning": {
+    "operation": "creative-planning",
+    "storage": "optional version-manifest creativePlanning: plans, rounds, attempts",
+    "editableAuthority": "cues only; planning records are snapshots and history",
+    "actions": [
+      "present",
+      "close",
+      "begin-image",
+      "finish-image",
+      "stop",
+      "continue"
+    ],
+    "discussion": "understand full script and available rough cut; propose and negotiate; present complete production list and wait for an explicit answer to additions before image generation",
+    "closure": "planId plus actual user source; affected content or scope changes need discussion, unrelated writes and technical renaming do not reset agreement",
+    "statusStates": [
+      "unrecorded",
+      "waiting-response",
+      "needs-discussion",
+      "ready"
+    ],
+    "status": "summary gives current objects, rounds and historyCount; full status and cue detail retain relevant history",
+    "limits": {
+      "scope": "stable creative object per autonomous exploration round",
+      "styleDirections": 3,
+      "consecutiveUnresolvedCorrectionsPerProblem": 3,
+      "actualImageCalls": 9
+    },
+    "counting": "actual failures and retries count; one multi-image call counts once per object; user-imported images do not count; idempotent writes do not duplicate calls",
+    "pending": "occupies one slot; reconcile actual tool evidence before retry or a new round; never reset as uncalled without evidence",
+    "candidateLink": "concept register/register-batch planningAttemptId; archive all outputs; stale results do not replace the current recommendation",
+    "continuation": "explicit user source opens a new round with previousRoundId; retain history; separate from concept.round",
+    "authority": "creative recovery records only; no image-tool execution or interception, no production qualification and no media/review/delivery identity input"
+  },
+  "reviewEntry": {
+    "entry": "CLI concept update and completed preview/cache/resume results; service lookup/start only after the core transaction",
+    "submission": "every visual result submitted to the user uses its exact formal Review URL; internal screening needs no per-call handoff; direct media or temporary HTML does not replace Review",
+    "targets": "ordered complete targets list; first target remains at top level for compatibility",
+    "navigation": {
+      "common": [
+        "versionId",
+        "tab"
+      ],
+      "concept": "tab=overview plus conceptId, including non-recommended candidates",
+      "storyboard": "tab=storyboard plus storyboardId and cueId; optional frameId",
+      "video": "tab=preview plus artifactId for local-preview, cue-preview or full-preview",
+      "batch": "targets query parameter is a JSON-encoded array of exact target descriptors"
+    },
+    "historicalStoryboard": "status.storyboard.snapshots projects frozen scene text, frame mapping and image identities",
+    "missingTarget": "explicit error; no fallback to latest result or another version",
+    "internalFlag": "--no-review-entry suppresses service startup but retains targets, query and reopen",
+    "failure": "preserve successful write or production receipt and exact reopen targets; retry the original request without duplicate generation, registration or rendering",
+    "reading": "refresh, service restart and new artifacts preserve the selection and unsaved feedback anchors; user chooses a newer result",
+    "localVideo": "reuse the formal player with original type/time/feedback; no full-Demo-only rework or delivery actions",
+    "authority": "navigation only; no production or delivery authorization; URLs are not persisted in manifest or jobs"
   }
 }
