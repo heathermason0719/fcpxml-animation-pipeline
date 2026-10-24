@@ -263,5 +263,18 @@
     "reading": "refresh, service restart and new artifacts preserve the selection and unsaved feedback anchors; user chooses a newer result",
     "localVideo": "reuse the formal player with original type/time/feedback; no full-Demo-only rework or delivery actions",
     "authority": "navigation only; no production or delivery authorization; URLs are not persisted in manifest or jobs"
+  },
+  "reviewCollection": {
+    "operation": "collect-review",
+    "kind": "individual-cues",
+    "inputs": [
+      "artifactIds",
+      "source"
+    ],
+    "coverage": "exactly one current eligible isolated movie per animated Cue, covering its entire duration; no missing or excluded cues",
+    "authority": "immutable review set only; separate explicit approval and delivery authorization remain required",
+    "currentness": "full timeline inputKey plus each selected artifact actual SHA and current production inputs",
+    "compatibility": "missing kind means existing full-timeline review with overlap supplements; no full Demo is generated or inferred",
+    "delivery": "existing protocol 3, native media validation and inherited-source coverage unchanged"
   }
 }

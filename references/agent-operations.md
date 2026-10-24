@@ -63,3 +63,13 @@ CLI 概念 update 和完成的 preview/resume 返回 reviewEntry。targets 保�
 ## 短查询与详情
 
 status --summary 从同一完整 status 判断派生，不加新的状态权威。creativePlanning 包含当前方案依据、待回复事项及各对象实际／未决调用、方向数和停止原因；摘要不搬运整段历史，--cue-id 和完整 status 保留相关 history。feedbackIndex 保留全部尚未处理的意见及原 applicability，body 超过 240 字符时标明 bodyTruncated；--feedback-id 返回完整原文与来源，包括历史／已处理记录。--cue-id 给出原 Cue、当前概念／Storyboard 详情及由共享反馈 resolver 判断适用的意见，同时保留完整待办索引供核对。不能只按 Cue ID 丢掉全片、对象、旧产物或时间意见。--summary／--cue-id／--feedback-id 只用于制作版本 status；项目列表仍使用 open。
+
+## 已逐场审完后直接交付
+
+用户明确表示已审完全部当前独立动画并要求不出整片 Demo 时，先核对正式 Review 中实际提供的视频，再以明确列表收集审阅依据：
+
+```json
+{"requestId":"collect-current-cues","expectedRevision":20,"operation":"collect-review","artifactIds":["<每场当前完整视频ID>"],"source":{"channel":"chat","text":"用户实际原话","reference":"实际消息引用"}}
+```
+
+每个当前动画 Cue 必须恰好一份 current、eligible、complete 的 local-preview 或 cue-preview，覆盖整场时段（可含上下文），仅呈现该条动画。重复、缺场、排除、局部截段、损坏、过期均拒绝。返回 record 为 immutable individual-cues reviewSet，绑定全时间线输入与明确用户来源；不是 full Demo，也不自动批准／授权。随后按实际用户指令使用 deliver 的 approve-and-deliver 或分别记录 approve / authorize。scene-review 进度不能替代此集合。原完整 Demo 路径、协议 3、全部源资源动画及高清 Alpha 校验保持不变。

@@ -91,7 +91,7 @@ python3 <skill>/scripts/serve_workflow_review.py "/workspace/AfterForge"
 
 Every writing request uses a unique `requestId` and the latest version `expectedRevision`. Retry the identical request to deduplicate. Freeze a comment’s version, object, frame/artifact and playback-time anchor when input begins; navigation must not silently retarget a draft. On conflict retain the proposal/comment and original location; reread and reconcile rather than silently retargeting.
 
-HyperFrames renders 480p cue media; FFmpeg composites all overlapping cues with original local times, layer order, rough-cut picture and sound. A complete full-length sample plus full-duration supplements for overlapping cues form the formal review set. A local sample cannot substitute for it. Do not track or claim whether the user watched everything.
+HyperFrames renders 480p cue media; FFmpeg composites all overlapping cues with original local times, layer order, rough-cut picture and sound. A complete full-length sample plus full-duration supplements for overlapping cues form the formal review set. When the user explicitly states that all current individual animations have been reviewed and requests delivery without a full Demo, use update `operation: "collect-review"` with explicit `artifactIds` and the actual user `source`. This creates an `individual-cues` review set only if one current eligible isolated movie covers the entire duration of every animated Cue. It does not generate or claim a full-timeline review, and does not itself approve or authorize delivery. Scene-review progress alone is insufficient. Do not infer that the user watched everything.
 
 ## Feedback and decisions
 
@@ -109,6 +109,8 @@ python3 <skill>/scripts/afterforge.py resume "<version-root>" --request-file /tm
 Resume uses `jobId` and current `expectedRevision`. Jobs retain verified cue results after failure. Changed inputs require a new request and reuse unaffected media. Final delivery covers every animated cue, verifying native 1920×1080 ProRes 4444, exact source frame rate/duration, decoded alpha, source timeline invariance, placement, references, DTD and package inventory. No-animation episodes return “无需动画交付”.
 
 ## Deliver and learn
+
+For an explicitly requested single-movie export, put the file in `AfterForge/交付/<episode-title>-单条素材/`, alongside the formal D-numbered packages. Resolve the episode from the registered version identity and apply the existing delivery title sanitization. Do not append files to an already published D-numbered package or create a separate top-level `AfterForge/单条素材/`. Supply only the requested movie when the user does not want XML or a full package. Never overwrite an existing filename: append `-2`, `-3`, and so on before the extension until an unused name is found.
 
 The Review has three core pages and no separate delivery tab. Keep the exact-review-set delivery confirmation in the full Demo. After the existing backend finishes and verifies a delivery, provide its actual published directory, XML and every animation MOV with an Alpha channel directly in the conversation, with readable file links where available. Tell the user to import all MOVs before the XML. Retain backend delivery history and download capabilities; this presentation change adds no approval or authorization step and does not replace current delivery checks. Do not claim actual delivery or FCP acceptance from page acceptance.
 

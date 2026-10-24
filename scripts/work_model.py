@@ -351,11 +351,63 @@ def _artifact_current(root, manifest, artifact):
         return False
 
 
+def _individual_review_artifacts(root, manifest, artifact_ids):
+    """Require one current, complete, isolated movie for every animated Cue."""
+    from scripts.hyperframes_adapter import parse_time
+    from scripts.work_model_policy import artifact_eligible
+    if (not isinstance(artifact_ids, list) or not artifact_ids
+            or any(not isinstance(key, str) for key in artifact_ids)
+            or len(set(artifact_ids)) != len(artifact_ids)):
+        raise ValueError('individual review requires unique explicit artifactIds')
+    artifacts = {a['id']: a for a in manifest['artifacts']}
+    required = {c['id']: c for c in animation_cues(manifest)}
+    selected, supplied = [], set()
+    for key in artifact_ids:
+        artifact = artifacts.get(key)
+        if (not artifact or artifact['kind'] not in {'local-preview', 'cue-preview'}
+                or len(artifact.get('cueIds', [])) != 1 or not artifact.get('complete')
+                or artifact.get('missingCueIds') or artifact.get('excludedCueIds')):
+            raise ValueError('individual review requires complete isolated animation movies')
+        cid = artifact['cueIds'][0]
+        if cid not in required or cid in supplied:
+            raise ValueError('individual review requires exactly one movie per animated Cue')
+        cue = required[cid]
+        placement = cue['resolvedTimeline']
+        start, duration = (parse_time(placement[k]) for k in ('start', 'duration'))
+        movie_start, movie_duration = (parse_time(artifact['range'][k]) for k in ('start', 'duration'))
+        if movie_start > start or movie_start + movie_duration < start + duration:
+            raise ValueError('individual review movie must cover the entire animation duration')
+        if not artifact_eligible(manifest, artifact) or not _artifact_current(root, manifest, artifact):
+            raise ValueError('individual review movie is stale, damaged or ineligible')
+        supplied.add(cid)
+        selected.append(artifact)
+    if supplied != set(required):
+        raise ValueError('individual review must cover every current animated Cue')
+    return selected
+
+
+def _collect_individual_review(root, manifest, request):
+    source = user_source(request.get('source'))
+    selected = _individual_review_artifacts(root, manifest, request.get('artifactIds'))
+    record = {'id': _identifier('review'), 'kind': 'individual-cues',
+              'inputKey': timeline_key(root, manifest), 'artifactIds': [a['id'] for a in selected],
+              'source': source, 'createdAt': now()}
+    manifest['reviewSets'].append(record)
+    return record
+
+
 def current_review_set(root, manifest):
     from scripts.work_model_policy import artifact_eligible
     for review in reversed(manifest["reviewSets"]):
         try:
             if review["inputKey"] != timeline_key(root, manifest):
+                continue
+            kind = review.get('kind', 'full-timeline')
+            if kind == 'individual-cues':
+                user_source(review.get('source'))
+                _individual_review_artifacts(root, manifest, review['artifactIds'])
+                return review
+            if kind != 'full-timeline':
                 continue
             artifacts = {a["id"]: a for a in manifest["artifacts"]}
             selected = [artifacts[key] for key in review["artifactIds"]]
@@ -847,6 +899,8 @@ def update(version_root, request):
             if value == "addressed" and not request.get("resolution"):
                 raise ValueError("addressed feedback requires a resolution")
             record.update(status=value, updatedAt=now(), resolution=request.get("resolution", ""))
+        elif operation == 'collect-review':
+            record = _collect_individual_review(root, manifest, request)
         elif operation == "decision":
             record = _record_decision(root, manifest, request)
         elif operation == "decisions":

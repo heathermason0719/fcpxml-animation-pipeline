@@ -1,5 +1,5 @@
 /* Authoritative API access, revisions and serialized writes. */
-const $=id=>document.getElementById(id);let project=null,state=null,versionId=null,target={},pollTimer=null,comparisonState=null,draftBasisRevision=null,draftStale=false;
+const $=id=>document.getElementById(id);let project=null,state=null,versionId=null,target={},comparisonState=null,draftBasisRevision=null,draftStale=false;
 const frameFeedbackWrites=new Map(),reviewRevisions=new Map(),storyboardActionStates=new Map();
 const attemptedReviewRequests=new WeakSet();
 let stateReadCount=0,stateReadSequence=0;
@@ -49,10 +49,11 @@ async function selectVersion(id,{preserveTarget=false}={}){
   restoreStoryboardDrafts();renderProject();renderState();
   syncReviewUrl();
   if(preserveTarget&&hadDraft&&basis!==state.editRevision&&!immutableVideoDraft())markDraftStale(basis);
-  scheduleReviewPoll();
 }
 function immutableVideoDraft(){return !!target.artifactId&&!target.storyboardId&&!target.explorationId&&(state?.artifacts||[]).some(a=>a.id===target.artifactId&&isVideoArtifact(a))}
-function refreshReview(){if(stateReadCount||!versionId)return;return selectVersion(versionId,{preserveTarget:true}).catch(error=>{if(storyboardActionStates.get(versionId)?.kind==='running')setStoryboardActionState(versionId,{...storyboardActionStates.get(versionId),message:`状态刷新失败：${error.message}。正在重试…`})})}
-function scheduleReviewPoll(){clearInterval(pollTimer);pollTimer=null;if(typeof document!=='undefined'&&document.hidden)return;const running=(state?.tasks||[]).some(t=>!['complete','completed','failed'].includes(t.status))||storyboardActionStates.get(versionId)?.kind==='running';if(running||activeTab==='preview')pollTimer=setInterval(refreshReview,running?4000:15000)}
-if(typeof document.addEventListener==='function')document.addEventListener('visibilitychange',()=>{scheduleReviewPoll();if(!document.hidden)refreshReview()});
+function refreshReview(){
+  if(stateReadCount||!versionId)return;
+  const id=versionId;
+  return selectVersion(id,{preserveTarget:true}).catch(error=>{if(versionId===id){$('message').className='message error';$('message').textContent=`状态刷新失败：${error.message}。可再次点击「刷新状态」。`}});
+}
 function requestBase(){return {requestId:crypto.randomUUID(),expectedRevision:state.editRevision}}

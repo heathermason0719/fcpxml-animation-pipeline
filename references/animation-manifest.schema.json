@@ -309,6 +309,12 @@
                 "title": {
                   "type": "string"
                 },
+                "finalAnimationDescription": {
+                  "type": "string"
+                },
+                "narration": {
+                  "type": "string"
+                },
                 "resolvedTimeline": {
                   "$ref": "#/$defs/range"
                 }
@@ -395,6 +401,15 @@
           },
           "productionBasis": {
             "$ref": "#/$defs/productionBasis"
+          },
+          "kind": {
+            "enum": [
+              "full-timeline",
+              "individual-cues"
+            ]
+          },
+          "source": {
+            "$ref": "#/$defs/source"
           }
         },
         "required": [
@@ -402,7 +417,32 @@
           "inputKey",
           "artifactIds"
         ],
-        "additionalProperties": true
+        "additionalProperties": true,
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "const": "individual-cues"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "source"
+              ],
+              "properties": {
+                "artifactIds": {
+                  "minItems": 1,
+                  "uniqueItems": true
+                }
+              }
+            }
+          }
+        ]
       }
     },
     "feedback": {

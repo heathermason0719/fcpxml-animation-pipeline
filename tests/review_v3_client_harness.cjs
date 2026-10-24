@@ -47,11 +47,18 @@ const context = vm.createContext({
   Option:function(text,value){const x=new Element();x.textContent=text;x.value=value;return x;},
   localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
   crypto:{randomUUID:()=>`id-${++uuidSequence}`},
-  setInterval:(fn,ms)=>{intervalCalls.push({fn,ms});return intervalCalls.length},clearInterval:()=>{},setTimeout:fn=>{fn();return 1},
+  setInterval:(fn,ms)=>{intervalCalls.push({fn,ms,active:true});return intervalCalls.length},clearInterval:id=>{if(intervalCalls[id-1])intervalCalls[id-1].active=false},setTimeout:fn=>{fn();return 1},
   fetch:async(url,options)=>{requests.push({url,options}); if(url==='/api/project') return {ok:true,json:async()=>projectData()}; if(url.startsWith('/api/state')) {const data=realStatus||entryData||version();if(!realStatus)data.identity.versionId=new URL(url,'http://review.test').searchParams.get('version');return {ok:true,json:async()=>structuredClone(data)};} const request=options?.body&&JSON.parse(options.body).request; return {ok:true,json:async()=>request?.operation==='feedback'?{status:'saved',record:{id:'feedback-saved'}}:{status:'started',requestId:'x'}};},
 });
 
 async function main() {
+  if(process.argv[2]==='handoff-animation')return require('./review_video_entry_cases.cjs')({assert,fs,vm,context,elements,byId,storage,requests,data:realStatus});
+  const reviewTabs=['overview','storyboard','preview'].map(tab=>{const el=new Element();el.dataset.tab=tab;return el});
+  if(process.argv[2]==='manual-refresh'){
+    withStoryboard=true;entryData=version();
+    context.document.querySelectorAll=selector=>selector==='[data-tab]'?reviewTabs:[];
+  }
+  if(process.argv[2].startsWith('batch-'))return require('./review_batch_reading_cases.cjs')({scenario:process.argv[2],assert,fs,vm,context,elements,byId,storage,requests,version,setData:data=>{entryData=data}});
   if(process.argv[2].startsWith('entry-')){
     withStoryboard=true;entryData=version();entryData.cues[0].range={start:'2s',duration:'2s'};
     entryData.storyboard.cues[0].objectId='object-a';entryData.storyboard.cues[0].storyboardId='board-new';
@@ -96,10 +103,34 @@ async function main() {
     reloaded.showArtifact(vm.runInContext("state.artifacts.find(a=>a.id==='cue-movie')",reloaded));previewCopy();byId('demoWholeFeedback').checked=true;byId('demoWholeFeedback').onchange();assert.equal(byId('demoTimeAnchor').textContent,'整个预览意见 · 不绑定时间');
     assert.equal(byId('newDemoNotice').hidden,false);assert.equal(byId('newDemoNoticeText').textContent,'新整片 Demo 已生成，');assert.equal(byId('viewNewDemo').textContent,'查看整片 Demo');assert.equal(byId('media').dataset.artifactId,'cue-movie','new full Demo notice does not switch the current preview');
     byId('viewNewDemo').onclick();assert.equal(byId('media').dataset.artifactId,'full-new');assert.equal(byId('demoNavigator').attributes['aria-label'],'整片 Demo 场景定位');assert.equal(byId('demoNavHelp').textContent,'点击场景暂停定位；整片连续播放。');assert.equal(byId('feedbackBody').attributes['aria-label'],'Demo 修改意见');assert.equal(byId('demoWholeFeedbackText').textContent,'整片意见');assert.equal(byId('demoTimeAnchor').textContent,'整版意见 · 不绑定时间');
-  } else if(scenario==='demo-poll') {
-    context.activateTab('preview');assert.equal(intervalCalls.at(-1).ms,15000,'visible idle Demo discovers future jobs');
-    let release,reads=0;context.fetch=async()=>{reads++;return new Promise(resolve=>{release=()=>resolve({ok:true,json:async()=>version()})})};const first=context.refreshReview();await Promise.resolve();context.refreshReview();assert.equal(reads,1,'no overlapping idle request');release();await first;
-    context.document.hidden=true;const before=intervalCalls.length;context.scheduleReviewPoll();assert.equal(intervalCalls.length,before,'hidden page has no idle interval');context.document.hidden=false;context.fetch=async()=>({ok:true,json:async()=>version()});await documentEvents.visibilitychange();
+  } else if(scenario==='manual-refresh') {
+    const reads=()=>requests.filter(r=>r.url.startsWith('/api/state')).length;
+    const elapse=async()=>{for(const timer of [...intervalCalls])if(timer.active&&timer.ms<=30000)await timer.fn();await new Promise(setImmediate)};
+    const initialReads=reads();
+    context.activateTab('preview');
+    const player=byId('media').video;player.currentTime=2;
+    byId('feedbackBody').value='Keep my video feedback';byId('feedbackBody').oninput();await player.play();
+    context.setSceneDraft('cue-a','Keep my frame feedback');
+    const anchor=JSON.stringify(context.getSceneDraft('cue-a').target),videoAnchor=vm.runInContext('JSON.stringify(target)',context);
+    entryData.editRevision++;
+    await elapse();
+    assert.equal(reads(),initialReads,'elapsed review time must not fetch or rerender state');
+    for(const tab of reviewTabs)await tab.onclick();
+    assert.equal(reads(),initialReads,'switching review tabs must not refresh state');
+    for(const hidden of [true,false]){context.document.hidden=hidden;await documentEvents.visibilitychange?.()}
+    assert.equal(reads(),initialReads,'returning to the browser tab must not refresh state');
+    assert.equal(byId('media').video,player);assert.equal(player.currentTime,2);assert.equal(player.paused,false);
+    assert.equal(byId('feedbackBody').value,'Keep my video feedback');assert.equal(context.getSceneDraft('cue-a').body,'Keep my frame feedback');
+    assert.equal(JSON.stringify(context.getSceneDraft('cue-a').target),anchor);assert.equal(vm.runInContext('JSON.stringify(target)',context),videoAnchor);
+    await byId('refresh').onclick();
+    assert.equal(reads(),initialReads+1,'manual refresh reads updated state');assert.equal(vm.runInContext('state.editRevision',context),8);
+    assert.equal(byId('media').video,player);assert.equal(byId('feedbackBody').value,'Keep my video feedback');assert.equal(JSON.stringify(context.getSceneDraft('cue-a').target),anchor);
+    entryData.tasks=[{id:'x',requestId:'x',status:'running'}];await byId('refresh').onclick();
+    let before=reads();await elapse();assert.equal(reads(),before,'running jobs do not start background state reads');
+    await context.previewStoryboards();before=reads();await elapse();assert.equal(reads(),before,'a newly requested job does not start background refresh');
+    entryData.tasks[0].status='completed';await byId('refresh').onclick();assert.equal(vm.runInContext("storyboardActionStates.get('v1').kind",context),'success','manual refresh observes job completion');
+    let release,manualReads=0;context.fetch=async()=>{manualReads++;return new Promise(resolve=>{release=()=>resolve({ok:true,json:async()=>structuredClone(entryData)})})};
+    const first=byId('refresh').onclick();await Promise.resolve();byId('refresh').onclick();assert.equal(manualReads,1,'repeated manual clicks do not overlap state reads');release();await first;
   } else if(scenario==='demo-missing-link') {
     assert.equal(byId('media').dataset.artifactId,undefined);assert.match(byId('media').innerHTML,/指定视频不可用/);await context.selectVersion('v1',{preserveTarget:true});assert.equal(byId('media').dataset.artifactId,undefined);assert.match(byId('demoStatus').textContent,/指定视频不可用/);
   } else if(scenario==='demo-rework-retry') {

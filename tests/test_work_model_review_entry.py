@@ -67,9 +67,11 @@ class ReviewEntryTests(unittest.TestCase):
                 targets = response['reviewEntry']['targets']
                 expected = result['storyboardIds'] if scope == 'storyboard' else result['artifactIds']
                 field = 'storyboardId' if scope == 'storyboard' else 'artifactId'
-                self.assertEqual([t[field] for t in targets], expected)
+                self.assertEqual(list(dict.fromkeys(t[field] for t in targets)), expected)
                 self.assertTrue(all(t['versionId'] == load(self.root)['identity']['versionId'] for t in targets))
                 self.assertTrue(all(t['cueId'] for t in targets) if scope == 'storyboard' else all(t['kind'] == 'local-preview' for t in targets))
+                if scope == 'local':
+                    self.assertEqual([t['cueId'] for t in targets], ['p1s01_c01_title', 'second'])
 
     def test_storyboard_history_projection_keeps_original_text_and_images(self):
         first = model.preview(self.root, self.req('old-board', scope='storyboard'))
@@ -84,6 +86,42 @@ class ReviewEntryTests(unittest.TestCase):
         self.assertEqual([f['artifactId'] for f in old['frames']], [f['artifactId'] for f in before['frames']])
         self.assertFalse(old['current'])
         self.assertFalse(old['canConfirm'])
+
+    def test_actual_local_handoff_replaces_each_cached_scene_and_keeps_video_text(self):
+        """Feed the writer's actual URL and status into the page, including old links."""
+        ids = [c['id'] for c in load(self.root)['cues'] if c['productionMode'] == 'animation']
+        old_ids, new_ids = [], []
+        for generation, output in [('Old', old_ids), ('New', new_ids)]:
+            cues = copy.deepcopy(load(self.root)['cues'])
+            for cue in cues:
+                if cue['id'] not in ids:
+                    continue
+                cue['finalAnimationDescription'] = generation + ' film ' + cue['id']
+                cue['narrationAnchor'] = generation + ' narration ' + cue['id']
+                cue['resolvedTimeline'].update(start='0s' if cue['id'] == ids[0] else '5s', duration='2s')
+                path = self.root / cue['renderAdapters']['hyperframes']['compositionSrc']
+                path.write_text(path.read_text() + '\n<!-- ' + generation + ' ' + cue['id'] + ' -->')
+            model.update(self.root, self.req(generation, operation='edit', patch={'cues': cues}))
+            for cue_id in ids:
+                time = next(c['resolvedTimeline'] for c in cues if c['id'] == cue_id)
+                output.extend(model.preview(self.root, self.req(generation + cue_id, scope='local', cueIds=[cue_id],
+                    range={k: time[k] for k in ('start', 'duration')}))['artifactIds'])
+        entry = handoff(self.root, {'artifactIds': new_ids}, start_service=False)['reviewEntry']
+        cues = copy.deepcopy(load(self.root)['cues'])
+        for cue in cues:
+            cue['finalAnimationDescription'] = 'Later text ' + cue['id']
+        model.update(self.root, self.req('later-prose', operation='edit', patch={'cues': cues}))
+        data = model.status(self.root)
+        data['testCase'] = {'cueIds': ids, 'oldIds': old_ids, 'newIds': new_ids, 'query': entry['query']}
+        path = self.root / '.staging/client-state.json'
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(json.dumps(data))
+        subprocess.run(['node', 'tests/review_v3_client_harness.cjs', 'handoff-animation', str(path)],
+                       cwd=Path(__file__).resolve().parents[1], check=True)
+        self.assertTrue(all(t['tab'] == 'storyboard' and t.get('cueId') in ids for t in entry['targets']))
+        for artifact_id in new_ids:
+            frozen = next(a for a in load(self.root)['artifacts'] if a['id'] == artifact_id)['reviewCues']
+            self.assertTrue(all(c['finalAnimationDescription'] == 'New film ' + c['id'] for c in frozen))
 
     def test_cli_retry_reopens_existing_result_without_render_or_manifest_change(self):
         from scripts.afterforge import main
@@ -138,6 +176,14 @@ class ConceptReviewEntryTests(unittest.TestCase):
 
 
 class ExactReviewClientTests(unittest.TestCase):
+    def test_new_batches_override_old_reading_without_rebinding_drafts(self):
+        for scenario in ('batch-storyboard', 'batch-animation', 'batch-concept', 'batch-missing',
+                         'batch-missing-animation', 'batch-missing-concept', 'batch-alternatives',
+                         'batch-legacy-reading', 'batch-legacy-animation', 'batch-animation-missing-board'):
+            with self.subTest(scenario=scenario):
+                subprocess.run(['node', 'tests/review_v3_client_harness.cjs', scenario],
+                               cwd=Path(__file__).resolve().parents[1], check=True)
+
     def test_exact_review_results_and_drafts_survive_refresh(self):
         for scenario in ('entry-concept', 'entry-storyboard', 'entry-missing', 'entry-batch', 'entry-local'):
             with self.subTest(scenario=scenario):

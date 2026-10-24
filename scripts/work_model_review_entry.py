@@ -55,8 +55,13 @@ def result_targets(root, result):
         if artifact is None:
             targets.append({**version, 'tab': 'preview', 'kind': 'missing-artifact', 'artifactId': key})
         elif artifact['kind'] in {'full-preview', 'local-preview', 'cue-preview'}:
-            targets.append({**version, 'tab': 'preview', 'kind': artifact['kind'], 'artifactId': key,
-                            'videoPath': str(Path(root) / artifact['path'])})
+            video = {**version, 'kind': artifact['kind'], 'artifactId': key,
+                     'videoPath': str(Path(root) / artifact['path'])}
+            scenes = artifact.get('reviewCues', []) if artifact['kind'] != 'full-preview' else []
+            if scenes:
+                targets.extend({**video, 'tab': 'storyboard', 'cueId': cue['id']} for cue in scenes)
+            else:
+                targets.append({**video, 'tab': 'preview'})
     return targets
 
 

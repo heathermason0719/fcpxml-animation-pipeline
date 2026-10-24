@@ -5,7 +5,7 @@
 
 新版是 manifest 3.0 / work model 2.2.0 / delivery protocol 3。`references/work-model-contract.json` 定义操作和词汇；`animation-manifest.json` 是单个制作版本生产事实的唯一入口。系列 `工程/project.json` 只记录稳定系列/集/版本身份、路径注册和经验证的协议基线。
 
-`brief` 保存本集理解与论证段落，`cues` 保存具体表达源、依赖及有理数摆放。Cue 的 `contentContext` 分别记录 narration/screenText 的 present、none 或 unknown；实际文本仍只在既有 Cue 或关联 brief 段落中，none 保存 text/reference 依据。`artifacts` 保存实际产物 SHA、生成输入、全局覆盖范围和完整性；`reviewSets` 绑定完整小样与必要的重叠 Cue 补审；`feedback` 保存原话、位置、来源、澄清及处理；`sceneReviews` 保存绑定实际 Storyboard／视频输入的单场审阅进度，不是批准或生产依据；`decisions` 单独保存有来源的用户决定；`deliveries` 绑定不可变包及快照。反馈冲突、非空最终说明、技术上的当前 board 与历史 `firstConfirmed` 是分别核验的事实，互不替代。执行任务不保存批准权威。
+`brief` 保存本集理解与论证段落，`cues` 保存具体表达源、依赖及有理数摆放。Cue 的 `contentContext` 分别记录 narration/screenText 的 present、none 或 unknown；实际文本仍只在既有 Cue 或关联 brief 段落中，none 保存 text/reference 依据。`artifacts` 保存实际产物 SHA、生成输入、全局覆盖范围和完整性；`reviewSets` 绑定完整小样与必要的重叠 Cue 补审，或 `kind: individual-cues` 的全部独立动画审阅；`feedback` 保存原话、位置、来源、澄清及处理；`sceneReviews` 保存绑定实际 Storyboard／视频输入的单场审阅进度，不是批准或生产依据；`decisions` 单独保存有来源的用户决定；`deliveries` 绑定不可变包及快照。反馈冲突、非空最终说明、技术上的当前 board 与历史 `firstConfirmed` 是分别核验的事实，互不替代。执行任务不保存批准权威。
 
 旧 schema 2.0 位于 `references/legacy/animation-manifest-v2.schema.json`；Stage Contract 1.0.0 与原阶段语义不变。旧生产实现的解释见 [legacy 架构](../references/legacy/architecture-v2.md)，仅在读取历史合同或显式旧工具维护时加载。新版不调用阶段 resolver。
 
@@ -83,9 +83,11 @@ CLI 与 HTTP 调用同一应用层。短写入在已有 `manifest_transaction` �
 
 480p Cue 为透明 ProRes 缓存，FFmpeg 按源帧率合成原粗剪和所有重叠层，音频来自同一粗剪范围。局部默认段落加前后两秒；用帧索引/有理数计算，转 FFmpeg 参数时才确定性转换十进制。完整小样必须覆盖整个粗剪，不得悄悄省略未完成动画；请求的展示目标缺失时默认拒绝，明确 `allowDraft` 只生成 unfinished 讨论稿且不能结束 commission 或生成可交付审阅集合。明确 exclusion 可以完成受限 commission，但绝不形成正式 full Review。`productionRuns` 只登记 `commission_fulfilled` 的结果；对旧 writer 过早完成的记录，追加 `productionCorrections` 证据而不改写历史 run/artifact。所有重叠 Cue 保守生成完整单 Cue 补充小样。
 
-批准引用完整审阅集合，验证实际文件 SHA 与当前输入。只改描述保留批准，源或时间变化使相关产物过期；旧页面只能提交它实际持有的 revision 和 reviewSetId。Agent 标记反馈 addressed 不是用户接受。清楚的合并指令一次记录 approve-and-deliver；单纯批准不授权渲染。
+批准引用完整审阅集合，验证实际文件 SHA 与当前输入。`update collect-review` 在同一版本事务中，按明确 artifactIds 检查每条动画恰好一份完整、当前、有资格的 local-preview／cue-preview，保存用户来源与全时间线 inputKey。允许视频包含上下文，但必须覆盖本场完整时段且仅含该场动画；缺失、排除、重复或过期拒绝。集合本身不生成批准、Demo 委托或媒体；后续仍由既有 decision/deliver 路径复核。历史缺省 kind 保持 full-timeline 与重叠补审规则。只改描述保留批准，源或时间变化使相关产物过期；旧页面只能提交它实际持有的 revision 和 reviewSetId。Agent 标记反馈 addressed 不是用户接受。清楚的合并指令一次记录 approve-and-deliver；单纯批准不授权渲染。
 
 ## 发布与验收
+
+用户明确只要单条素材时，文件归入 `AfterForge/交付/<集名>-单条素材/`，与 D 编号正式包并列。集名来自注册版本身份，沿用正式交付的名称净化；重名在扩展名前依次加 `-2`、`-3`，不覆盖。此目录不追加进已有发布清单，也不生成用户未要求的 XML 或整包；正式包与 releases 原有完整性规则保持不变。
 
 全部 animated cues 原生 1920×1080 ProRes 4444 渲染或复用，并从所选 Project 的实际资源图追踪全部历史 AfterForge 动画。文件名仅用于发现待核实对象，来源由登记和实际 SHA 确认；未核实对象拒绝。沿用媒体身份进入交付输入指纹，不能因 XML 文本未变就复用变化的外部媒体。按内容去重，同名不同内容采用确定性不同文件名。继承资产仍是继承来源，不伪造当前 Cue。
 
@@ -133,10 +135,12 @@ Review `/media` 使用 `media_status` 读取当前 manifest 的已登记素材�
 
 Storyboard 顶部的「确认本轮，生成整片 Demo」复用 `update decision: authorize-demo`，附带所选 `storyboardIds`，在原版本事务内核验当前快照、内容、概念依据及适用反馈，所选／排除范围必须覆盖全部动画 Cue。该可选入口不改变普通制作委托语义，不建立第二次概念批准；页面只保存委托，Agent 以同 taskId 继续制作。`status.storyboard.productionRequest` 从决定和完成记录派生 pending/completed，刷新保留。暂缓勾选建议复用产品对象的反馈目标解析，用户提交时明确记录最终范围。
 
-新 full/local Demo 在产物 `reviewCues` 中只冻结所呈现场景的 id/objectId/title 与有理数 start/duration；既有 productionBasis、previewRequest 和原 authorize-demo 决定继续提供执行与范围依据。反馈 writer 用冻结时序核验场景及对象，不用当前时序解释旧片；无映射历史视频允许时间正文意见。明确返修的 review-submit 校验 artifact SHA 与准确反馈集合，按原委托复制展示、排除、时间边界并登记新 taskId，已有 roundId 可精确引用。普通提交无新委托；任务、事务和去重仍复用原机制。
+新 full/local/cue 预览在产物 `reviewCues` 中冻结所呈现场景的 id/objectId/title、有理数 start/duration、动画描述和旁白；说明来自本次任务输入，后续改文案不改写历史。历史视频缺少文字快照时，仅媒体仍对应当前输入才显示明确标记的当前制作说明；否则提示未保存，不借用 Storyboard 文案。既有 productionBasis、previewRequest 和原 authorize-demo 决定继续提供执行与范围依据。反馈 writer 用冻结时序核验场景及对象，不用当前时序解释旧片；无映射历史视频允许时间正文意见。明确返修的 review-submit 校验 artifact SHA 与准确反馈集合，按原委托复制展示、排除、时间边界并登记新 taskId，已有 roundId 可精确引用。普通提交无新委托；任务、事务和去重仍复用原机制。
 
-CLI 的 work_model_review_entry 在概念 update 或完成的 preview／缓存／resume 后整理 reviewEntry，保留全部有序 targets 并兼容顶层首目标。每项绑定 versionId/tab 与 conceptId、storyboardId+cueId（可含 frameId）或 artifactId，覆盖非推荐候选、历史分镜及 local/cue/full 视频；批量 URL 的 targets 是 JSON 编码数组。work_model_storyboard 的纯投影生成 status.storyboard.snapshots，提供冻结文字、帧映射和图片身份；页面读取准确快照，明确缺失不替换为当前内容。对用户提交画面必须交棒此正式入口，不以媒体直发或临时 HTML 替代；内部生成筛选无需逐次交棒。
+CLI 的 work_model_review_entry 在概念 update 或完成的 preview／缓存／resume 后整理 reviewEntry，保留全部有序 targets 并兼容顶层首目标。每项绑定 versionId/tab 与 conceptId、storyboardId+cueId（可含 frameId）或 artifactId，覆盖非推荐候选、历史分镜及 local/cue/full 视频；批量 URL 的 targets 是 JSON 编码数组。有冻结场景映射的 local/cue 视频按场生成 storyboard+cueId+artifactId 目标，full 或无映射视频保留 preview。旧 preview 链接兼容根据该视频的 reviewCues 逐场恢复阅读目标，不从当前视频猜测。work_model_storyboard 的纯投影生成 status.storyboard.snapshots，提供冻结文字、帧映射和图片身份；页面读取准确快照，明确缺失不替换为当前内容。对用户提交画面必须交棒此正式入口，不以媒体直发或临时 HTML 替代；内部生成筛选无需逐次交棒。
 
-服务查找／启动只在 CLI 的业务事务之后，manifest 和 job 不保存 URL。--no-review-entry 暂不启动服务但保留 targets/query/reopen。项目运行区 工程/review-service.json 仅是定位线索；/api/identity 返回启动时项目、模式、代码目录与内容身份，匹配才复用。服务失败保留登记／产物成功回执与准确重开目标，原请求重试只重开已有结果。review-entry.js 保存阅读偏好，不复制生产事实；刷新／重启／新产物不切换所选内容或改绑未保存意见。local/cue 共用播放器及原时间范围，不显示整片专用返修／交付操作。可见视频页空闲每 15 秒读 state，任务运行时每 4 秒，隐藏时停止；同视频不重建播放器，切新版须用户点击。
+Review 新入口在读取服务端状态后一次性协调全部 targets 与旧 sceneViews：每场概念／分镜／动画分别初始化准确身份，同场多候选及单播放器多视频选各自第一项，再应用入口焦点；后续状态读取不重复施加整批选择。阅读快照按版本保存于 localStorage，并随准确 URL 存入当前 history.state；reload/back_forward 优先恢复该浏览历史项，普通 navigate 重新应用入口，即使 Chrome 同 URL 导航保留旧 history.state。快照只含选择，不含反馈草稿或生产事实；主动历史选择及非焦点播放器选择均保留，其他页面改写 localStorage 不覆盖该历史项。当前显示目标逐项核验，非首目标失效显示局部错误，缺失分镜不借用当前快照的图片或资格。原草稿存储与锚点保持独立。
+
+服务查找／启动只在 CLI 的业务事务之后，manifest 和 job 不保存 URL。--no-review-entry 暂不启动服务但保留 targets/query/reopen。项目运行区 工程/review-service.json 仅是定位线索；/api/identity 返回启动时项目、模式、代码目录与内容身份，匹配才复用。服务失败保留登记／产物成功回执与准确重开目标，原请求重试只重开已有结果。review-entry.js 保存阅读偏好，不复制生产事实；刷新／重启／新产物不切换所选内容或改绑未保存意见。local/cue 共用播放器及原时间范围，不显示整片专用返修／交付操作。Review 不再周期轮询 state，切回浏览器或工作区标签也不触发读取。初次打开、切换制作版、用户点击「刷新状态」仍读取权威状态；逐场保存意见和审阅确认直接应用写入回执，仅就地更新反馈记录、按钮及保存提示，不再追加状态读取或重建场景卡片；手动刷新阻止重叠请求，失败仅提示手动重试。后台任务继续执行，页面进度与结果需手动刷新；Agent 完成修改后在线程告知用户。同视频不重建播放器，原阅读选择及反馈锚点保留，切新版须用户点击。
 
 Agent 的 status --summary／--cue-id／--feedback-id 由现有完整 status 派生，完整 HTTP／Python／CLI 默认接口保留。work_model_summary 只投影当前目标、意图、Cue 索引、原反馈及委托／预览定位；Cue 相关性复用 feedback_applies，所有 open 意见仍在索引中，不能以摘要代替执行核验。edit 的 cueUpdates 在原事务中展开为完整内存 Cue 列表，再走原对象绑定、Schema、依赖与发布校验；字典合并、数组替换。concept/register-batch 同一外层事务逐项调用原 register 图片准备器，先核对显式推荐每对象至多一个，再统一发布或回滚；没有额外资产或任务引擎。参数细节集中于 references/agent-operations.md，SKILL 和新项目模板默认使用短查询，不自动覆盖已有入口。

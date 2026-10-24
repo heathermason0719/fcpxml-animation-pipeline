@@ -43,7 +43,7 @@ CLI 与 Review 共用业务层；结构化写入使用 `requestId` 和 `expected
 
 确认概念方向后，Agent 把代码和素材准备到 `.staging/`，用 `operation: "edit"` 的 `files: [{path, source}]` 与 `patch: {brief, cues, project}` 一次发布。无需手改 manifest、写连接脚本或维护阶段字段。具体源格式见 [制作源合同](references/hyperframes-single-source.md)。
 
-静态请求为 `{"requestId":"board-1","expectedRevision":1,"scope":"storyboard","cueIds":["A"]}`，无需 Motion 源；静态 layout 不得包含可执行或随时间推进的内容。局部 Motion 指定 `workCueIds`（可兼容 `cueIds`）、`segmentIds` 或有理数 `range`。完整小样与必要重叠 Cue 的完整补充小样组成审阅集合。请求的呈现范围有缺失时默认拒绝；`allowDraft: true` 只能生成讨论稿，且在目标覆盖前不完成任务。明确排除可完成该次委托，但不能形成正式 full Review。
+静态请求为 `{"requestId":"board-1","expectedRevision":1,"scope":"storyboard","cueIds":["A"]}`，无需 Motion 源；静态 layout 不得包含可执行或随时间推进的内容。局部 Motion 指定 `workCueIds`（可兼容 `cueIds`）、`segmentIds` 或有理数 `range`。完整小样与必要重叠 Cue 的完整补充小样组成审阅集合。用户明确表示已逐场审完全部当前动画并要求跳过整片 Demo 时，也可用 `update operation: "collect-review"`、明确的 `artifactIds` 与原话 `source` 建立逐场审阅集合，再沿用批准／交付入口；缺场、残缺或过期视频均拒绝。请求的呈现范围有缺失时默认拒绝；`allowDraft: true` 只能生成讨论稿，且在目标覆盖前不完成任务。明确排除可完成该次委托，但不能形成正式 full Review。
 
 Cue 总体说明继续使用 `finalAnimationDescription`，局部说明写在 `storyboard.animationNotes: [{id, frameIds, text}]`。一条可关联多帧，多条可共享帧；帧增删或重排时同步维护引用。纯说明修改后仍通过 Storyboard 预览发布新审阅快照：核验输入和 SHA 后复用 PNG，保留旧快照及反馈，旧快照不能确认新内容。后台 `hero` 规则不变，页面统一呈现静帧。
 
@@ -83,6 +83,8 @@ Cue 总体说明继续使用 `finalAnimationDescription`，局部说明写在 `s
 XML：`{episode}-D{number}.fcpxml`，与当前 XML 使用的全部 AfterForge 动画 MOV 同级。
 同一 SHA-256 只保存一个物理媒体实体；正式版本间可硬链接。内部仅保留元数据和 XML 证据。
 <!-- delivery-contract:end -->
+
+单条素材导出统一放在 `AfterForge/交付/<集名>-单条素材/`，与正式 D 编号交付包并列；不追加进已发布的 D 编号目录，不另设 `AfterForge/单条素材/`。用户只要视频时不附加生成 XML 或整套包；遇到同名文件，在扩展名前依次添加 `-2`、`-3` 等后缀，保留已有文件。
 
 ```text
 AfterForge/
@@ -130,7 +132,11 @@ AfterForge/
 
 开发约束见 [AGENTS.md](AGENTS.md)，项目边界见 [PROJECT](docs/PROJECT.md)，可靠状态见 [CURRENT](docs/CURRENT.md)，接口与实现见 [ARCHITECTURE](docs/ARCHITECTURE.md)，决策适用范围见 [DECISIONS](docs/DECISIONS.md)。
 
-每次向用户提交画面供查看、反馈或确认，都提供准确正式 `reviewEntry.url`：包括非推荐或批量概念候选、Storyboard 快照／场景、局部／单场视频及完整 Demo。媒体直发、临时 HTML 或自建画廊不能替代 Review；内部生成筛选无需逐次交棒。CLI 概念 update 及完成的 preview／缓存／resume 返回入口，`targets` 保留批量全部目标，首目标兼容放在顶层。URL 使用 `versionId/tab` 加 `conceptId`、`storyboardId+cueId`（可加 `frameId`）或 `artifactId`；批量 `targets` 为 JSON 编码数组。明确目标缺失时报错，不改看最新结果。
+每次向用户提交画面供查看、反馈或确认，都提供准确正式 `reviewEntry.url`：包括非推荐或批量概念候选、Storyboard 快照／场景、局部／单场视频及完整 Demo。媒体直发、临时 HTML 或自建画廊不能替代 Review；内部生成筛选无需逐次交棒。CLI 概念 update 及完成的 preview／缓存／resume 返回入口，`targets` 保留批量全部目标，首目标兼容放在顶层。URL 使用 `versionId/tab` 加 `conceptId`、`storyboardId+cueId`（可加 `frameId`）或 `artifactId`；有场景映射的局部／单场视频同时带 `cueId` 并打开该场动画，完整 Demo 仍打开整片页；批量 `targets` 为 JSON 编码数组。明确目标缺失时报错，不改看最新结果。
+
+审核页不定时刷新，也不因切回浏览器或工作区标签而读取新状态。Agent 更新完成后会告知用户，由用户点击「刷新状态」或手动刷新浏览器；逐场保存意见和确认只就地更新回执及反馈列表，保留播放器和输入框；提交等明确操作仍更新各自结果，后台任务进度也由用户手动刷新查看。
+
+打开新的正式入口时，批量中各场景的明确目标优先于浏览器旧阅读状态；同场多个候选保留导航，默认先展示该场第一项，入口焦点优先。之后主动查看历史内容，刷新、返回该浏览历史页或服务重启仍保留本页选择；再次打开正式入口则按入口目标展示。显示切换不清空或改绑意见草稿，缺失的非首场景也明确报错，不以其他快照或视频替代。
 
 CLI 在业务事务后复用或启动身份匹配的本地服务，服务管理不进入共享制作 API。内部操作可加 `--no-review-entry` 暂不启动服务，仍返回准确 `targets/query/reopen`。入口失败保留登记／媒体成功事实，修复服务或用原请求重试入口，不重新生成、登记或渲染；可用 URL 才算完成对用户的交棒。页面刷新、服务重启或新产物到达后保留阅读选择及草稿原定位，切换新版由用户决定。local/cue 视频显示实际类型、时间与反馈，不提供整片专用返修／交付操作。场景定位来自所审视频冻结时序；无映射旧片仍可保存视频、时间和正文意见。返修由一个执行线程负责，浏览留言可并行；受管资产通过工具管理。
 
