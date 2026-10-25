@@ -185,6 +185,11 @@ def _begin(manifest, data, request):
                     if a.get('outcome', {}).get('kind') != 'not-called']
         if any(t['directionId'] == direction and t['direction'] != description for t in previous):
             raise ValueError('reuse the stable direction description; a new style needs a new directionId')
+        if manifest.get('workModelVersion') == '2.2.0':
+            # Freeze the same initial round that concept/register will use.
+            # This creates neither a recommendation nor a user confirmation.
+            obj = next(o for o in manifest['creativeObjects'] if o['id'] == oid)
+            obj.setdefault('concept', {'round': 1})
         target = {'objectId': oid, 'roundId': record['id'], 'planId': basis['planId'],
                   'conceptBasis': _concept_basis(manifest, oid),
                   'contentKey': _snapshot(manifest, oid)['contentKey'], 'directionId': direction,

@@ -85,7 +85,21 @@ Storyboard 是 canonical composition 在固定静帧时间的真实 PNG 投影�
 
 ## Alpha 与交付
 
-默认 `alphaExpectation.mode = transparent`；特意全屏不透明 Cue 显式用 `opaque`。可附 `samples: [{time, transparentPoints: [[x,y]], opaquePoints: [[x,y]]}]`，时间为 Cue 本地有理数秒、坐标为原生尺寸。验证实际解码像素与代表时刻，不以像素格式名代替透明性。
+`alphaExpectation` 使用 `mode: transparent|opaque` 与可选 `samples: [{time, transparentPoints: [[x,y]], opaquePoints: [[x,y]]}]`；时间为 Cue 本地有理数秒，坐标为原生尺寸整数，预览按尺寸换算。声明来自设计预期，由 Agent 选择；不按 Cue 名称分类，不以像素格式名代替实际透明性。阈值保持应透明 Alpha ≤ 8、可见 > 8、应不透明 ≥ 247。
+
+默认模式 `transparent` 区分两种证据：显式 samples 非空、每项至少有一个检查点、整体至少有一个应透明点时，逐点验证且抽样中须有实际可见内容；返回 `validationBasis: declared-points`，不另要求同一帧透明与内容共存。其他情况使用提供的时刻或默认 0、1/4、1/2、3/4 时长抽样，至少一帧同时具有透明区域与可见内容；零散指定点仍必须通过，返回 `sampled-presence`。不能满足基础条件时报告透明校验依据不足，由 Agent 按设计补充预期，不能据此自动断言设计错误或更改模式。`opaque` 保持所有所选抽样帧全不透明的要求，返回 `sampled-opaque`。
+
+同一条三秒动画若设计为先透明、正文全屏、最后透明，可用以下明确点位验证各状态，无需混合帧或时段分类系统（本例原生尺寸为 1920×1080）：
+
+```json
+{"mode":"transparent","samples":[
+  {"time":"1/2s","transparentPoints":[[0,0],[1919,1079]]},
+  {"time":"3/2s","opaquePoints":[[0,0],[1919,1079]]},
+  {"time":"5/2s","transparentPoints":[[0,0],[1919,1079]]}
+]}
+```
+
+校验保留 `status/mode/probe/samples`，新增 `validationBasis`；每条 sample 的 `pointChecks` 保存 `{kind, x, y, alpha}`。失败定位到 Cue、抽样时刻及检查点（全帧 opaque 条件报告首个失败像素）。通过只证明实际抽样和声明位置，不证明未检查的区域、整段时序或视觉质量；正文叠加要求透明的位置必须在正文时刻声明，不能用入场空白替代。预览、原生媒体与媒体缓存复用都重新执行公共校验；历史发布证据不追溯改写。
 
 正式交付覆盖全部 animated cues；已验证且输入未变的 MOV 复用。源粗剪、引用、摆放、时长、DTD、媒体 SHA、包清单和批准来源在发布前核验。不可变 release 在包外保存可复现源树、审阅证据及交付事实，排除探索、日志与无关缓存。
 

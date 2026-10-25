@@ -11,7 +11,7 @@
 
 当前创作方案只编辑 `cues`。可选 `creativePlanning: {plans, rounds, attempts}` 保存在版本 manifest：present 冻结已向用户汇总的完整或明确局部方案及收口问题，close 绑定 planId 和真实答复；内容或范围实质变化只使相关约定需要讨论，无关写入和技术改名不清空。Agent 的入口行为是先理解完整脚本／可用粗剪、主动提案协商，生图前等待新增问题的明确答复；记录不替 Agent 判断答复含义，也不成为生产资格。
 
-begin-image／finish-image 记录实际工具调用与看图判断，候选通过现有 concept 登记关联 planningAttemptId。每稳定对象每轮最多 3 个方向、同问题连续 3 次未解决修正、9 次实际调用；失败及实际重试计数，多图一次、多对象各一次，用户导入图不消耗额度。pending 先占位并等待真实证据核对，不能盲目重试或另开轮；stop 可提前结束，continue 须真实用户来源并保留 previousRoundId。探索轮独立于 concept.round，记录不调用／拦截图像工具，不进入媒体、审阅或交付指纹。summary 投影当前约定、待回复／待讨论、额度及停止原因；完整 status 和 Cue 详情保留 history，不把历史方案当作当前要求。
+begin-image／finish-image 记录实际工具调用与看图判断，候选通过现有 concept 登记关联 planningAttemptId。2.2 的 begin-image 在原版本事务内先为缺失的 concept 初始化 round: 1，再冻结依据，避免首次登记自身初始化导致过时判断；不生成推荐或确认，不回填历史调用。每稳定对象每轮最多 3 个方向、同问题连续 3 次未解决修正、9 次实际调用；失败及实际重试计数，多图一次、多对象各一次，用户导入图不消耗额度。pending 先占位并等待真实证据核对，不能盲目重试或另开轮；stop 可提前结束，continue 须真实用户来源并保留 previousRoundId。探索轮独立于 concept.round，记录不调用／拦截图像工具，不进入媒体、审阅或交付指纹。summary 投影当前约定、待回复／待讨论、额度及停止原因；完整 status 和 Cue 详情保留 history，不把历史方案当作当前要求。
 
 ## 布局与边界
 
@@ -85,6 +85,8 @@ CLI 与 HTTP 调用同一应用层。短写入在已有 `manifest_transaction` �
 
 批准引用完整审阅集合，验证实际文件 SHA 与当前输入。`update collect-review` 在同一版本事务中，按明确 artifactIds 检查每条动画恰好一份完整、当前、有资格的 local-preview／cue-preview，保存用户来源与全时间线 inputKey。允许视频包含上下文，但必须覆盖本场完整时段且仅含该场动画；缺失、排除、重复或过期拒绝。集合本身不生成批准、Demo 委托或媒体；后续仍由既有 decision/deliver 路径复核。历史缺省 kind 保持 full-timeline 与重叠补审规则。只改描述保留批准，源或时间变化使相关产物过期；旧页面只能提交它实际持有的 revision 和 reviewSetId。Agent 标记反馈 addressed 不是用户接受。清楚的合并指令一次记录 approve-and-deliver；单纯批准不授权渲染。
 
+公共 Alpha 校验区分逐点声明与基础抽样：明确 samples 的每项都有检查点且含应透明点时，逐点核验并要求实际可见内容，允许全透明／全覆盖切换；其余 transparent 请求须有同帧透明与内容证据。opaque 仍检查所选全帧不透明。返回 validationBasis 与实际 pointChecks，声明和证据仅覆盖抽样范围；预览及原生缓存复用均复验，详细接口见 references/hyperframes-single-source.md。
+
 ## 发布与验收
 
 用户明确只要单条素材时，文件归入 `AfterForge/交付/<集名>-单条素材/`，与 D 编号正式包并列。集名来自注册版本身份，沿用正式交付的名称净化；重名在扩展名前依次加 `-2`、`-3`，不覆盖。此目录不追加进已有发布清单，也不生成用户未要求的 XML 或整包；正式包与 releases 原有完整性规则保持不变。
@@ -139,7 +141,7 @@ Storyboard 顶部的「确认本轮，生成整片 Demo」复用 `update decisio
 
 CLI 的 work_model_review_entry 在概念 update 或完成的 preview／缓存／resume 后整理 reviewEntry，保留全部有序 targets 并兼容顶层首目标。每项绑定 versionId/tab 与 conceptId、storyboardId+cueId（可含 frameId）或 artifactId，覆盖非推荐候选、历史分镜及 local/cue/full 视频；批量 URL 的 targets 是 JSON 编码数组。有冻结场景映射的 local/cue 视频按场生成 storyboard+cueId+artifactId 目标，full 或无映射视频保留 preview。旧 preview 链接兼容根据该视频的 reviewCues 逐场恢复阅读目标，不从当前视频猜测。work_model_storyboard 的纯投影生成 status.storyboard.snapshots，提供冻结文字、帧映射和图片身份；页面读取准确快照，明确缺失不替换为当前内容。对用户提交画面必须交棒此正式入口，不以媒体直发或临时 HTML 替代；内部生成筛选无需逐次交棒。
 
-Review 新入口在读取服务端状态后一次性协调全部 targets 与旧 sceneViews：每场概念／分镜／动画分别初始化准确身份，同场多候选及单播放器多视频选各自第一项，再应用入口焦点；后续状态读取不重复施加整批选择。阅读快照按版本保存于 localStorage，并随准确 URL 存入当前 history.state；reload/back_forward 优先恢复该浏览历史项，普通 navigate 重新应用入口，即使 Chrome 同 URL 导航保留旧 history.state。快照只含选择，不含反馈草稿或生产事实；主动历史选择及非焦点播放器选择均保留，其他页面改写 localStorage 不覆盖该历史项。当前显示目标逐项核验，非首目标失效显示局部错误，缺失分镜不借用当前快照的图片或资格。原草稿存储与锚点保持独立。
+Review 新入口在读取服务端状态后一次性协调全部 targets 与旧 sceneViews：每场概念／分镜／动画分别初始化准确身份，同场多候选及单播放器多视频选各自第一项，再应用入口焦点；后续状态读取不重复施加整批选择。阅读快照按版本保存于 localStorage，并随准确 URL 存入当前 history.state；reload/back_forward 优先恢复该浏览历史项，普通 navigate 重新应用入口，即使 Chrome 同 URL 导航保留旧 history.state。快照只含选择，不含反馈草稿或生产事实；主动历史选择及非焦点播放器选择均保留，其他页面改写 localStorage 不覆盖该历史项。readingVersion: 2 的默认概念展示直接跟随 recommendedId，不写固定 conceptId；旧记录只凭已有精确目标保留主动选择，其余旧概念定位恢复默认，草稿和其他阅读状态不改。当前显示目标逐项核验，非首目标失效显示局部错误，缺失分镜不借用当前快照的图片或资格。原草稿存储与锚点保持独立。
 
 服务查找／启动只在 CLI 的业务事务之后，manifest 和 job 不保存 URL。--no-review-entry 暂不启动服务但保留 targets/query/reopen。项目运行区 工程/review-service.json 仅是定位线索；/api/identity 返回启动时项目、模式、代码目录与内容身份，匹配才复用。服务失败保留登记／产物成功回执与准确重开目标，原请求重试只重开已有结果。review-entry.js 保存阅读偏好，不复制生产事实；刷新／重启／新产物不切换所选内容或改绑未保存意见。local/cue 共用播放器及原时间范围，不显示整片专用返修／交付操作。Review 不再周期轮询 state，切回浏览器或工作区标签也不触发读取。初次打开、切换制作版、用户点击「刷新状态」仍读取权威状态；逐场保存意见和审阅确认直接应用写入回执，仅就地更新反馈记录、按钮及保存提示，不再追加状态读取或重建场景卡片；手动刷新阻止重叠请求，失败仅提示手动重试。后台任务继续执行，页面进度与结果需手动刷新；Agent 完成修改后在线程告知用户。同视频不重建播放器，原阅读选择及反馈锚点保留，切新版须用户点击。
 

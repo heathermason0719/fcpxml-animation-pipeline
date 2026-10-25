@@ -53,6 +53,7 @@ const context = vm.createContext({
 
 async function main() {
   if(process.argv[2]==='handoff-animation')return require('./review_video_entry_cases.cjs')({assert,fs,vm,context,elements,byId,storage,requests,data:realStatus});
+  if(process.argv[2].startsWith('concept-reading-'))return require('./review_concept_reading_cases.cjs')({scenario:process.argv[2],assert,fs,vm,context,elements,byId,storage,requests,version,setData:data=>{entryData=data}});
   const reviewTabs=['overview','storyboard','preview'].map(tab=>{const el=new Element();el.dataset.tab=tab;return el});
   if(process.argv[2]==='manual-refresh'){
     withStoryboard=true;entryData=version();
@@ -153,9 +154,9 @@ async function main() {
   } else if(scenario==='saved-mutation-refresh-failure') {
     withStoryboard=true;const data=version();data.concepts=[{id:'c1',round:1,objectId:'o',cueId:'cue-a',path:'one.png',sha256:'a',idea:'一'},{id:'c2',round:1,objectId:'o',cueId:'cue-a',path:'two.png',sha256:'b',idea:'二'}];
     data.conceptDesign={cues:[{cueId:'cue-a',title:'场景A',objectId:'o',recommendedId:'c1',firstConfirmed:false,canConfirm:true,conceptIds:['c1','c2'],confirmationProblems:[]}]};
-    const posts=[];let failRefresh=false;
-    context.fetch=async(url,options)=>{if(url.startsWith('/api/state')){if(failRefresh)throw new Error('refresh unavailable');return {ok:true,json:async()=>structuredClone(data)}}const payload=JSON.parse(options.body);posts.push(payload);failRefresh=true;return {ok:true,json:async()=>({editRevision:++data.editRevision,record:{id:'server-receipt-'+posts.length}})}};
-    for(const operation of ['confirm','adopt','scene']){
+    const posts=[];let failRefresh=false,reads=0;
+    context.fetch=async(url,options)=>{if(url.startsWith('/api/state')){reads++;if(failRefresh)throw new Error('refresh unavailable');return {ok:true,json:async()=>structuredClone(data)}}const payload=JSON.parse(options.body);posts.push(payload);failRefresh=true;return {ok:true,json:async()=>({editRevision:++data.editRevision,record:{id:'server-receipt-'+posts.length}})}};
+    for(const operation of ['confirm','adopt']){
       failRefresh=false;await context.selectVersion('v1');const before=posts.length;
       const invoke=()=>operation==='confirm'?context.confirmConcepts(['c1']):operation==='adopt'?context.adoptConcept('c2'):context.confirmSceneReview('cue-a');
       assert.equal(await invoke(),true,`${operation} reports saved despite refresh failure`);
@@ -163,6 +164,14 @@ async function main() {
       assert.match(message,/已保存.*刷新失败/,`${operation} distinguishes the actual write receipt`);assert.doesNotMatch(message,/确认未完成|采用未完成|原选择保持/);
       assert.equal(posts.length,before+1);assert.equal(await invoke(),true);assert.equal(posts.length,before+1,'retry refresh never creates a new mutation');
     }
+    // Scene confirmation deliberately does not refresh or remount the player.
+    failRefresh=false;await context.selectVersion('v1');const before=posts.length,beforeReads=reads;
+    assert.equal(await context.confirmSceneReview('cue-a'),true);assert.equal(posts.length,before+1);
+    assert.equal(reads,beforeReads,'scene confirmation must not trigger a state reload');
+    const saved=context.productionSceneHtml(data.storyboard.cues[0]);assert.match(saved,/本次审阅确认已保存/);assert.doesNotMatch(saved,/刷新失败|确认未完成/);
+    await context.refreshReview();assert.match(byId('message').textContent,/状态刷新失败/);
+    failRefresh=false;await context.refreshReview();assert.equal(posts.length,before+1,'manual read retries never repeat the saved confirmation');
+    assert.match(context.productionSceneHtml(data.storyboard.cues[0]),/本次审阅确认已保存/);
   } else if(scenario==='concept-storyboard-handoff') {
     const data=version();data.concepts=[{id:'ca',round:1,objectId:'oa',cueId:'a',path:'a.png'},{id:'cb',round:1,objectId:'ob',cueId:'b',path:'b.png'}];
     data.conceptDesign={cues:['a','b'].map(id=>({cueId:id,title:'场景'+id,objectId:'o'+id,recommendedId:'c'+id,confirmedId:'c'+id,firstConfirmed:true,canConfirm:false,conceptIds:['c'+id],confirmationProblems:[]}))};

@@ -4,7 +4,7 @@ let reviewEntryOpening=null;
 const reviewDisplayTargets=new Map();
 const readingKey=id=>`afterforge-review-v3:reading:${id}`;
 function reviewReadingSnapshot(){
-  return {target:reviewEntrySelection?.versionId===versionId?reviewEntrySelection:null,scenes:[...sceneViews].filter(([key])=>JSON.parse(key)[0]===versionId),targets:[...reviewDisplayTargets.values()].filter(t=>t.versionId===versionId)};
+  return {readingVersion:2,target:reviewEntrySelection?.versionId===versionId?reviewEntrySelection:null,scenes:[...sceneViews].filter(([key])=>JSON.parse(key)[0]===versionId),targets:[...reviewDisplayTargets.values()].filter(t=>t.versionId===versionId)};
 }
 function initializeReviewReading(id,entry){
   const saved=typeof history==='undefined'?null:history.state?.afterforgeReviewReading;
@@ -21,7 +21,14 @@ function saveReviewReading(){
 function restoreReviewReading(){
   const opening=reviewEntryOpening?.versionId===versionId?reviewEntryOpening:null;
   let saved=opening?.reading;try{if(!saved)saved=JSON.parse(localStorage.getItem(readingKey(versionId))||'null')}catch{}
-  for(const [key,value] of saved?.scenes||[])if(JSON.parse(key)[0]===versionId&&!sceneViews.has(key))sceneViews.set(key,value);
+  for(const [key,value] of saved?.scenes||[]){
+    const [version,scope,id]=JSON.parse(key);if(version!==versionId||sceneViews.has(key))continue;
+    const view={...value};
+    // Before v2, rendering the default recommendation also stored conceptId.
+    // Only exact saved navigation proves an intentional historical selection.
+    if(saved.readingVersion!==2&&view.conceptId&&![saved.target,...(saved.targets||[])].some(t=>t?.versionId===versionId&&t.tab==='overview'&&t.conceptId===view.conceptId&&reviewTargetCue(t)===id))delete view.conceptId;
+    sceneViews.set(key,view);
+  }
   for(const t of saved?.targets||[])if(t.versionId===versionId&&!reviewDisplayTargets.has(reviewTargetSlot(t)))reviewDisplayTargets.set(reviewTargetSlot(t),t);
   if(!explicitDemoId)explicitDemoId=[...reviewDisplayTargets.values()].find(t=>t.versionId===versionId&&t.tab==='preview')?.artifactId||null;
   if(reviewEntrySelection?.versionId!==versionId)reviewEntrySelection=saved?.target||null;

@@ -25,6 +25,15 @@ def png_bytes(color=(220, 130, 40)):
 
 
 class ConceptTests(unittest.TestCase):
+    def test_existing_unrecommended_images_do_not_prompt_regeneration(self):
+        candidate = self.register(recommend=False)
+        card = model.status(self.root)['conceptDesign']['cues'][0]
+        self.assertIn(candidate['id'], card['conceptIds'])
+        self.assertIsNone(card['recommendedId'])
+        self.assertFalse(card['canConfirm'])
+        self.assertIn('尚未指定推荐', card['confirmationProblems'][0]['message'])
+        self.assertNotIn('请先生成', card['confirmationProblems'][0]['message'])
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)

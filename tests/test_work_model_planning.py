@@ -13,7 +13,7 @@ from tests.test_work_model_concepts import png_bytes
 
 class PlanningTests(unittest.TestCase):
     def setUp(self):
-        parent = Path(__file__).resolve().parents[1] / 'work/review-integration-20261018/creative-planning-20261023/tmp'
+        parent = Path(__file__).resolve().parents[1] / 'work/review-integration-20261018/bugfix-20261025/tmp'
         parent.mkdir(parents=True, exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=parent)
         self.addCleanup(self.temp.cleanup)
@@ -71,6 +71,30 @@ class PlanningTests(unittest.TestCase):
 
     def state(self):
         return model.status(self.root)['creativePlanning']
+
+    def test_first_generated_candidate_can_be_recommended_before_and_after_finish(self):
+        self.align()
+        before = load(self.root)
+        self.assertTrue(all('concept' not in obj for obj in before['creativeObjects']))
+        attempt = self.begin()
+        candidate = self.register(attempt, recommend=True)
+        card = model.status(self.root)['conceptDesign']['cues'][0]
+        self.assertEqual(card['recommendedId'], candidate['id'])
+        self.assertFalse(card['firstConfirmed'])
+        self.assertEqual(candidate['planningAttemptId'], attempt['id'])
+        self.assertTrue((self.root / candidate['path']).is_file())
+        self.update('finish-image', attemptId=attempt['id'], outcome='generated',
+                    toolReference='fixture:first-image-call', note='Synthetic image regression only',
+                    evaluations=[{'objectId': candidate['objectId'], 'conceptIds': [candidate['id']],
+                                  'disposition': 'satisfied', 'note': 'Synthetic candidate is usable'}])
+        model.update(self.root, request(self.root, 'propose-first', operation='concept',
+                                       action='propose', conceptId=candidate['id']))
+        after = load(self.root)
+        self.assertEqual(model.status(self.root)['conceptDesign']['cues'][0]['recommendedId'], candidate['id'])
+        for field in ('decisions', 'artifacts', 'reviewSets', 'productionRuns'):
+            self.assertEqual(after.get(field), before.get(field))
+        self.assertNotIn('confirmedId', after['creativeObjects'][0]['concept'])
+        self.assertNotIn('concept', after['creativeObjects'][1])
 
     def test_discussion_waits_for_reply_and_restores_current_and_replaced_ideas(self):
         before_files = {p.relative_to(self.root) for p in self.root.rglob('*.md')}

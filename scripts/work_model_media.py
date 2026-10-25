@@ -276,7 +276,7 @@ def _rgba_at(path: Path, moment: Fraction, width: int, height: int, log_path: Pa
 
 
 def validate_alpha(path: Path, cue: dict[str, Any], *, log_path: Path | None = None) -> dict[str, Any]:
-    """Verify decoded alpha pixels, rather than trusting a nonempty MOV file."""
+    """Verify declared sample points, or a limited decoded-alpha presence check."""
     path = path.expanduser().resolve()
     probe = probe_delivery(path)
     width, height = int(probe["width"]), int(probe["height"])
@@ -285,30 +285,51 @@ def validate_alpha(path: Path, cue: dict[str, Any], *, log_path: Path | None = N
     if mode not in ("transparent", "opaque"):
         raise ValueError("alphaExpectation.mode must be transparent or opaque")
     samples = expectation.get("samples") or []
+    if not isinstance(samples, list) or any(not isinstance(sample, dict) for sample in samples):
+        raise ValueError('alphaExpectation.samples must be a list of sample objects')
+    # Explicit point evidence can describe empty -> full -> empty without a
+    # spatially mixed frame. A time-only row cannot silently disable the fallback.
+    declared = (bool(samples)
+                and all(sample.get('transparentPoints') or sample.get('opaquePoints') for sample in samples)
+                and any(sample.get('transparentPoints') for sample in samples))
+    basis = 'sampled-opaque' if mode == 'opaque' else 'declared-points' if declared else 'sampled-presence'
     duration = Fraction(str(probe.get("duration", "0")))
     if not samples:
         samples = [{"time": _text(duration * Fraction(part, 4)) + "s"} for part in (0, 1, 2, 3)]
-    background_seen = content_seen = False
-    opaque_only = True
+    mixed_seen = content_seen = False
+    cue_id = cue.get('id', '<unknown>')
     results: list[dict[str, Any]] = []
     for sample in samples:
         moment = _time(sample["time"])
+        if not 0 <= moment < duration:
+            raise ValueError(f"cue {cue_id}: alpha sample {sample['time']} is outside the movie duration")
         pixels = _rgba_at(path, moment, width, height, log_path)
         alpha = pixels[3::4]
         has_background = any(value <= 8 for value in alpha)
         has_content = any(value > 8 for value in alpha)
-        background_seen |= has_background
+        mixed_seen |= has_background and has_content
         content_seen |= has_content
-        opaque_only &= all(value >= 247 for value in alpha)
-        for x, y in sample.get("transparentPoints", []):
-            if not (0 <= x < width and 0 <= y < height) or alpha[y * width + x] > 8:
-                raise ValueError(f"transparent alpha expectation failed at ({x}, {y})")
-        for x, y in sample.get("opaquePoints", []):
-            if not (0 <= x < width and 0 <= y < height) or alpha[y * width + x] < 247:
-                raise ValueError(f"opaque alpha expectation failed at ({x}, {y})")
-        results.append({"time": sample["time"], "hasTransparent": has_background, "hasVisible": has_content})
-    if mode == "transparent" and (not background_seen or not content_seen):
-        raise ValueError("transparent alpha output must contain both background and nontransparent content")
-    if mode == "opaque" and not opaque_only:
-        raise ValueError("opaque alpha output must contain only fully opaque pixels")
-    return {"status": "valid", "mode": mode, "probe": probe, "samples": results}
+        checks = []
+        for kind, field in (('transparent', 'transparentPoints'), ('opaque', 'opaquePoints')):
+            points = sample.get(field, [])
+            if (not isinstance(points, list) or any(not isinstance(point, list) or len(point) != 2
+                    or any(type(value) is not int for value in point) for point in points)):
+                raise ValueError(f"cue {cue_id} at {sample['time']}: {field} must contain integer [x, y] points")
+            for x, y in points:
+                if not (0 <= x < width and 0 <= y < height):
+                    raise ValueError(f"cue {cue_id} at {sample['time']}: {kind} alpha expectation failed at ({x}, {y}); alpha unavailable outside {width}x{height}")
+                value = alpha[y * width + x]
+                if (kind == 'transparent' and value > 8) or (kind == 'opaque' and value < 247):
+                    raise ValueError(f"cue {cue_id} at {sample['time']}: {kind} alpha expectation failed at ({x}, {y}); actual alpha={value}")
+                checks.append({'kind': kind, 'x': x, 'y': y, 'alpha': value})
+        if mode == 'opaque':
+            first = next((index for index, value in enumerate(alpha) if value < 247), None)
+            if first is not None:
+                raise ValueError(f"cue {cue_id} at {sample['time']}: opaque alpha output must contain only fully opaque pixels; ({first % width}, {first // width}) actual alpha={alpha[first]}")
+        results.append({"time": sample["time"], "hasTransparent": has_background,
+                        "hasVisible": has_content, "pointChecks": checks})
+    if mode == 'transparent' and declared and not content_seen:
+        raise ValueError(f"cue {cue_id}: declared alpha samples must include visible content; sampled times: {[s['time'] for s in samples]}")
+    if mode == 'transparent' and not declared and not mixed_seen:
+        raise ValueError(f"cue {cue_id}: insufficient transparency evidence (透明校验依据不足) at sampled times {[s['time'] for s in samples]}; declare design-based points at each sample time for transparent/full-frame transitions")
+    return {"status": "valid", "mode": mode, "validationBasis": basis, "probe": probe, "samples": results}

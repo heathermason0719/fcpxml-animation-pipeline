@@ -384,12 +384,15 @@ def status(root, manifest):
         state = (_object(manifest, cue.get('objectId')) or {}).get('concept', {})
         recommendation = _concept(manifest, state.get('recommendedId'))
         adopted = confirmed(manifest, cue.get('objectId'))
+        concept_ids = [c['id'] for c in manifest.get('concepts', []) if c['objectId'] == cue.get('objectId')]
+        missing_message = ('当前推荐概念图不可用。' if state.get('recommendedId') else
+                           '已有候选，尚未指定推荐。' if concept_ids else '请先生成或导入概念图。')
         problems = confirmation_problems(root, manifest, [recommendation]) if recommendation else [
-            {'code': 'missing-concept', 'message': '请先生成或导入概念图。'}]
+            {'code': 'missing-concept', 'message': missing_message}]
         cards.append({'cueId': cue['id'], 'objectId': cue.get('objectId'), 'title': cue.get('title', cue['id']),
                       'segmentIds': cue.get('segmentIds', []), 'contentContext': content_context(manifest, cue),
                       'recommendedId': state.get('recommendedId'), 'confirmedId': state.get('confirmedId'),
                       'firstConfirmed': bool(adopted), 'revisionPending': bool(state.get('confirmedId') and not adopted),
                       'canConfirm': not problems and not adopted, 'confirmationProblems': problems,
-                      'conceptIds': [c['id'] for c in manifest.get('concepts', []) if c['objectId'] == cue.get('objectId')]})
+                      'conceptIds': concept_ids})
     return {'cues': cards, 'storyboardHandoff': handoff_status(root, manifest)}

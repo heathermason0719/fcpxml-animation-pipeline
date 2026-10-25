@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
+import copy
+import hashlib
 import cmath
 import math
+import shutil
 import subprocess
 import tempfile
 import unittest
 from fractions import Fraction
 from pathlib import Path
+from unittest.mock import patch
 
 
 def run(command: list[str]) -> None:
@@ -38,6 +42,15 @@ def make_alpha_movie(path: Path, *, foreground_alpha: int = 255, background_alph
         ),
         "-c:v", "prores_ks", "-profile:v", "4", "-pix_fmt", "yuva444p10le", str(path),
     ])
+
+
+def make_alpha_sequence(path: Path, states=(0, 255, 0), *, size=64) -> None:
+    """Hard cuts between uniform alpha frames; never a spatially mixed frame."""
+    run(['ffmpeg', '-y', '-v', 'error', '-f', 'lavfi', '-i',
+         f'color=c=red:s={size}x{size}:r=24:d=3', '-vf',
+         "format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':"
+         f"a='if(lt(T,1),{states[0]},if(lt(T,2),{states[1]},{states[2]}))',format=yuva444p10le",
+         '-c:v', 'prores_ks', '-profile:v', '4', '-pix_fmt', 'yuva444p10le', str(path)])
 
 
 def make_temporal_overlay(path: Path, *, lower: bool) -> None:
@@ -229,6 +242,177 @@ class WorkModelMediaTests(unittest.TestCase):
                     offset = (y * 854 + x) * 3
                     self.assertLessEqual(max(errors[offset:offset + 3]), 3)
             self.assertGreater(tone_energy(local, 1000), tone_energy(local, 300) * 3)
+
+
+class AlphaEvidenceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        parent = Path(__file__).resolve().parents[1] / 'work/review-integration-20261018/bugfix-20261025/media'
+        parent.mkdir(parents=True, exist_ok=True)
+        cls.root = Path(tempfile.mkdtemp(prefix='alpha-', dir=parent))
+        cls.movie = cls.root / 'empty-full-empty.mov'
+        make_alpha_sequence(cls.movie)
+        print('Alpha evidence:', cls.root)
+
+    @staticmethod
+    def cue(samples=None):
+        expectation = {'mode': 'transparent'}
+        if samples is not None:
+            expectation['samples'] = samples
+        return {'id': 'alpha-sequence', 'resolvedTimeline': {'duration': '3s'},
+                'alphaExpectation': expectation}
+
+    @staticmethod
+    def declared_samples(edge=63):
+        return [{'time': '1/2s', 'transparentPoints': [[0, 0], [edge, edge]]},
+                {'time': '3/2s', 'opaquePoints': [[0, 0], [edge, edge]]},
+                {'time': '5/2s', 'transparentPoints': [[0, 0], [edge, edge]]}]
+
+    def test_blank_frame_cannot_supply_default_transparency_for_opaque_body(self):
+        from scripts.work_model_media import validate_alpha
+        with self.assertRaisesRegex(ValueError, 'insufficient|依据不足'):
+            validate_alpha(self.movie, self.cue())
+
+    def test_declared_transparent_full_transparent_sequence_without_mixed_frames(self):
+        from scripts.work_model_media import validate_alpha
+        raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', str(self.movie),
+                              '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], check=True, capture_output=True).stdout
+        frame_bytes = 64 * 64 * 4
+        self.assertEqual(len(raw), 72 * frame_bytes)
+        frame_alpha = []
+        for index in range(72):
+            alpha = raw[index * frame_bytes + 3:(index + 1) * frame_bytes:4]
+            want = 255 if 24 <= index < 48 else 0
+            self.assertEqual((min(alpha), max(alpha)), (want, want), f'frame {index}')
+            frame_alpha.append({'frame': index, 'min': min(alpha), 'max': max(alpha)})
+        result = validate_alpha(self.movie, self.cue(self.declared_samples()))
+        self.assertEqual(result['validationBasis'], 'declared-points')
+        self.assertFalse(any(s['hasTransparent'] and s['hasVisible'] for s in result['samples']))
+        self.assertEqual([s['pointChecks'][0]['alpha'] for s in result['samples']], [0, 255, 0])
+        (self.root / 'evidence.json').write_text(json.dumps({
+            'sha256': hashlib.sha256(self.movie.read_bytes()).hexdigest(),
+            'decodedFrames': frame_alpha, 'validation': result}, indent=2) + '\n')
+
+    def test_declared_entry_body_and_exit_each_reject_wrong_pixels(self):
+        from scripts.work_model_media import validate_alpha
+        for name, states, moment, actual in (
+                ('covered-entry', (255, 255, 0), '1/2s', 255),
+                ('missing-body', (0, 0, 0), '3/2s', 0),
+                ('covered-exit', (0, 255, 255), '5/2s', 255)):
+            with self.subTest(name=name):
+                path = self.root / (name + '.mov')
+                make_alpha_sequence(path, states)
+                with self.assertRaises(ValueError) as caught:
+                    validate_alpha(path, self.cue(self.declared_samples()))
+                message = str(caught.exception)
+                for part in ('alpha-sequence', moment, '(0, 0)', str(actual)):
+                    self.assertIn(part, message)
+
+    def test_body_transparency_expectation_is_not_overridden_by_other_frames(self):
+        from scripts.work_model_media import validate_alpha
+        samples = self.declared_samples()
+        samples[1] = {'time': '3/2s', 'transparentPoints': [[32, 32]]}
+        with self.assertRaisesRegex(ValueError, r'3/2s.*\(32, 32\).*255'):
+            validate_alpha(self.movie, self.cue(samples))
+
+    def test_incomplete_point_declarations_keep_the_presence_check(self):
+        from scripts.work_model_media import validate_alpha
+        for samples in ([{'time': '1/2s', 'transparentPoints': [[0, 0]]}, {'time': '3/2s'}],
+                        [{'time': '3/2s', 'opaquePoints': [[0, 0]]}]):
+            with self.subTest(samples=samples), self.assertRaisesRegex(ValueError, 'insufficient|依据不足'):
+                validate_alpha(self.movie, self.cue(samples))
+
+    def test_all_empty_declared_samples_still_require_visible_content(self):
+        from scripts.work_model_media import validate_alpha
+        samples = [{'time': '1/2s', 'transparentPoints': [[0, 0]]},
+                   {'time': '5/2s', 'transparentPoints': [[0, 0]]}]
+        with self.assertRaisesRegex(ValueError, 'visible|可见'):
+            validate_alpha(self.movie, self.cue(samples))
+
+    def test_presence_and_opaque_evidence_remain_distinct(self):
+        from scripts.work_model_media import validate_alpha
+        overlay = self.root / 'semi-overlay.mov'
+        make_alpha_movie(overlay, foreground_alpha=153)
+        result = validate_alpha(overlay, self.cue())
+        self.assertEqual(result['validationBasis'], 'sampled-presence')
+        self.assertTrue(all(s['hasTransparent'] and s['hasVisible'] for s in result['samples']))
+        with self.assertRaisesRegex(ValueError, 'fully opaque'):
+            validate_alpha(self.movie, {'id': 'opaque', 'alphaExpectation': {'mode': 'opaque'}})
+        body = validate_alpha(self.movie, {'id': 'opaque', 'alphaExpectation': {
+            'mode': 'opaque', 'samples': [{'time': '3/2s', 'opaquePoints': [[32, 32]]}]}})
+        self.assertEqual(body['validationBasis'], 'sampled-opaque')
+
+    def test_shared_media_validator_scales_only_preview_points(self):
+        from scripts.work_model_jobs import _validate_media
+        native = self.root / 'native-sequence.mov'
+        make_alpha_sequence(native, size=128)
+        manifest = {'project': {'source': {'frameDuration': '1/24s'},
+                               'preview': {'width': 64, 'height': 64},
+                               'delivery': {'width': 128, 'height': 128}}}
+        cue = self.cue(self.declared_samples(edge=127))
+        original = copy.deepcopy(cue)
+        preview_result = _validate_media(self.movie, manifest, cue, 'preview', self.root / 'preview.log')
+        native_result = _validate_media(native, manifest, cue, 'delivery', self.root / 'native.log')
+        self.assertEqual(cue, original)
+        for result, edge in ((preview_result, 63), (native_result, 127)):
+            alpha = result['alpha']
+            self.assertEqual(alpha['validationBasis'], 'declared-points')
+            self.assertEqual(alpha['samples'][0]['pointChecks'][1],
+                             {'kind': 'transparent', 'x': edge, 'y': edge, 'alpha': 0})
+        for quality, movie in (('preview', self.movie), ('delivery', native)):
+            with self.subTest(quality=quality), self.assertRaisesRegex(ValueError, 'insufficient|依据不足'):
+                _validate_media(movie, manifest, self.cue(), quality, self.root / 'rejected.log')
+
+    def test_cache_reuse_rechecks_decoded_pixels_and_does_not_retrust_old_valid_status(self):
+        from scripts import work_model as model
+        from scripts.work_model_inputs import cue_key
+        from scripts.work_model_jobs import _cache
+        from scripts.work_model_store import load, sha
+        from tests.test_hyperframes_single_source import SingleSourceFixture
+        from tests.work_model_fixtures import user
+        for quality in ('preview', 'delivery'):
+            with self.subTest(quality=quality):
+                base = self.root / ('cache-' + quality)
+                legacy = SingleSourceFixture().make_version(str(base / 'synthetic-source'))
+                root = Path(model.open_project(base / 'AfterForge', {
+                    'requestId': 'open-cache-test', 'expectedRevision': 0, 'episodeTitle': 'Synthetic alpha cache',
+                    'copyFrom': str(legacy), 'copyMode': 'restart', 'commission': user('Create isolated cache fixture')})['root'])
+                manifest = load(root)
+                manifest['project']['preview'] = {'width': 64, 'height': 64}
+                manifest['project']['delivery'] = {'width': 64, 'height': 64}
+                cue = next(c for c in manifest['cues'] if c['productionMode'] == 'animation')
+                cue['resolvedTimeline']['duration'] = '3s'
+                cue['alphaExpectation'] = {'mode': 'transparent'}
+                before = (root / 'animation-manifest.json').read_bytes()
+                for declared in (False, True):
+                    if declared:
+                        cue['alphaExpectation']['samples'] = self.declared_samples()
+                    key = cue_key(root, manifest, cue, quality)
+                    cached = root / f'cache/cues/{quality}/{key}/media.mov'
+                    cached.parent.mkdir(parents=True)
+                    shutil.copy2(self.movie, cached)
+                    metadata = cached.with_suffix('.json')
+                    metadata.write_text(json.dumps({'inputKey': key, 'sha256': sha(cached),
+                        'path': cached.relative_to(root).as_posix(), 'alpha': {'status': 'valid'}}))
+                    old_metadata = metadata.read_bytes()
+                    snapshot = base / ('declared' if declared else 'default')
+                    shutil.copytree(root, snapshot, ignore=shutil.ignore_patterns('cache', 'jobs'))
+                    job = {'id': 'job-' + ('b' if declared else 'a') * 24}
+                    def render_again(root, manifest, cue, *, quality, target, log_path):
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(self.movie, target)
+                    with patch('scripts.work_model_jobs.render_cue', side_effect=render_again):
+                        if declared:
+                            result = _cache(root, snapshot, manifest, cue, quality, job)
+                            self.assertEqual(result['alpha']['validationBasis'], 'declared-points')
+                            self.assertEqual(job['mediaReuse'][cue['id']], 'cache-hit')
+                        else:
+                            with self.assertRaisesRegex(ValueError, 'insufficient|依据不足'):
+                                _cache(root, snapshot, manifest, cue, quality, job)
+                            self.assertNotIn('completedCueIds', job)
+                    self.assertEqual(metadata.read_bytes(), old_metadata)
+                    self.assertEqual(sha(cached), sha(self.movie))
+                    self.assertEqual((root / 'animation-manifest.json').read_bytes(), before)
 
 
 if __name__ == "__main__":

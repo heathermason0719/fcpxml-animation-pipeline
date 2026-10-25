@@ -295,6 +295,13 @@ class WorkModelReviewServerTests(unittest.TestCase):
             with self.subTest(scenario=scenario):
                 subprocess.run(["node", str(harness), scenario], check=True, cwd=Path(__file__).parents[1])
 
+    def test_concept_reading_follows_recommendations_and_preserves_explicit_anchors(self) -> None:
+        harness = Path(__file__).with_name("review_v3_client_harness.cjs")
+        for case in ('default', 'explicit', 'legacy', 'no-recommendation', 'missing'):
+            with self.subTest(case=case):
+                subprocess.run(['node', str(harness), 'concept-reading-' + case],
+                               check=True, cwd=Path(__file__).parents[1])
+
 class RealStatusReviewClientTests(unittest.TestCase):
     """Feed the browser harness a status object produced by the public model API."""
 
